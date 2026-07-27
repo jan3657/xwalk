@@ -10,7 +10,10 @@ build/
 .ruff_cache/
 .coverage
 htmlcov/
+# secrets: the bare name plus every variant (.env.local, .env.bak, .env.openrouter)
 .env
+.env.*
+!.env.example
 # never commit run artefacts, indexes, or data
 run/
 runs/

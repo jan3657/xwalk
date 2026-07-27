@@ -60,6 +60,17 @@ mkdir -p "$TMPDIR"
 
 cd "$PROJECT_DIR"
 
+# ---- Local secrets -----------------------------------------------------------
+# pytest does not read .env on its own and xwalk has no dotenv dependency, so the
+# live-provider test would skip forever without this. `set -a` exports every
+# assignment; the file is gitignored.
+if [ -f "$PROJECT_DIR/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$PROJECT_DIR/.env"
+    set +a
+fi
+
 # Activate the project venv, with a readable error rather than a cryptic one.
 if [ ! -x "$VENV/bin/python" ]; then
     echo "[_env] ERROR: no venv at $VENV" >&2
@@ -84,7 +95,15 @@ export TOKENIZERS_PARALLELISM=false
 export XWALK_DATA_ROOT="${XWALK_DATA_ROOT:-$SCRATCH}"
 export PYTHONUNBUFFERED=1
 
+if [ -n "${XWALK_TEST_API_KEY:-}" ] && [ -n "${XWALK_TEST_BASE_URL:-}" ] \
+   && [ -n "${XWALK_TEST_MODEL:-}" ]; then
+    _provider="$XWALK_TEST_MODEL @ $XWALK_TEST_BASE_URL"
+else
+    _provider="unset (integration test will skip)"
+fi
+
 echo "[_env] PROJECT_DIR=$PROJECT_DIR  python=$_pyver  TMPDIR=$TMPDIR"
+echo "[_env] live provider: $_provider"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader 2>/dev/null || true
 
 # Restore normal shell behavior for interactive terminals (prevent terminal exit on
