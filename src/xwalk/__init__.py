@@ -5,6 +5,6 @@
 # ever pulls `xwalk.batch` back in while __version__ is still unbound.
 __version__ = "0.1.0.dev0"
 
-from xwalk.records import Candidate, Record, RetrievalHit, Usage
+from xwalk.records import Candidate, Record, RetrievalHit, RetryProposal, Usage
 
-__all__ = ["Candidate", "Record", "RetrievalHit", "Usage", "__version__"]
+__all__ = ["Candidate", "Record", "RetrievalHit", "RetryProposal", "Usage", "__version__"]

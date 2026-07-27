@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -87,3 +87,17 @@ class Usage:
         if other == 0:
             return self
         return self.__add__(other)
+
+
+@dataclass(frozen=True)
+class RetryProposal:
+    """A lead for the next attempt.
+
+    `kind="candidate"` means "look again at a record we already retrieved" — no new
+    search. `kind="query"` means "run a genuinely new search". Conflating the two makes
+    the loop re-retrieve records it already has in hand.
+    """
+
+    kind: Literal["candidate", "query"]
+    value: str
+    source: Literal["scorer", "rewriter"]

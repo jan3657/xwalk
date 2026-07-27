@@ -4808,7 +4808,7 @@ git commit -m "feat: selector stage with deterministic candidate budget"
 1. **The gate scores against the full source record and context, never the retrieval query.** The query is deliberately lossy — for a multi-field source it may omit exactly the fields needed to disambiguate — so scoring against it evaluates the wrong thing.
 2. **Verification returns a verdict, not a second number.** `min(primary, verifier)` over two uncalibrated scores is arbitrary and cannot distinguish agreement-with-different-numbers from genuine disagreement. `disagree` or `no_match` forces review regardless of the arithmetic. When the verifier names a different `preferred_key`, that key is **recorded and flagged, not chased** — re-entering selection on the verifier's preference would make loop termination depend on two models negotiating.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_gate.py`:
 
@@ -4993,7 +4993,7 @@ async def test_verifier_prompt_is_not_the_scorer_prompt():
     assert scorer_llm.requests[0].user != verifier_llm.requests[0].user
 ```
 
-- [ ] **Step 2: Add `RetryProposal` to `src/xwalk/records.py`**
+- [x] **Step 2: Add `RetryProposal` to `src/xwalk/records.py`**
 
 Merge the import into the existing block at the top of the file rather than pasting it here — a mid-file `import` is `E402` and fails the lint gate.
 
@@ -5017,12 +5017,12 @@ class RetryProposal:
 
 Add `RetryProposal` to `src/xwalk/__init__.py`'s imports and `__all__`.
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_gate.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.stages.gate'`.
 
-- [ ] **Step 4: Write `src/xwalk/stages/gate.py`**
+- [x] **Step 4: Write `src/xwalk/stages/gate.py`**
 
 ```python
 """The gate: an independent score, and — when it is uncertain — an independent verdict."""
@@ -5248,12 +5248,12 @@ class Verifier:
         )
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `python -m pytest tests/test_gate.py -v`
 Expected: 18 passed.
 
-- [ ] **Step 6: Lint, type-check, commit**
+- [x] **Step 6: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
