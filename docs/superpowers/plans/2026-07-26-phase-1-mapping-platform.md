@@ -3565,7 +3565,7 @@ git commit -m "feat: opaque candidate keys with exact-only resolution"
 
 **Design note:** the skeleton owns the fixed structure — role line, input blocks, opaque-key candidate list, rubric table, hard rules, JSON output contract. Domain content lives only in the slots file. A bad draft can therefore produce a poor rubric but never a broken prompt.
 
-- [ ] **Step 1: Write `src/xwalk/prompts/base/select.j2`**
+- [x] **Step 1: Write `src/xwalk/prompts/base/select.j2`**
 
 ```jinja
 You are matching a {{ slots.entity_noun }} to at most one {{ slots.target_noun }}.
@@ -3606,7 +3606,7 @@ The example must be **literal, parseable JSON**. `contract.py` parses whatever f
 `{"chosen_key": "C01" or null}` fails validation outright. The variability belongs in the
 prose above the example, never inside it.
 
-- [ ] **Step 2: Write `src/xwalk/prompts/base/score.j2`**
+- [x] **Step 2: Write `src/xwalk/prompts/base/score.j2`**
 
 The gate scores against the **full source record and context**, never the retrieval query — the query is deliberately lossy, and for a multi-field source it may omit the very fields needed to disambiguate.
 
@@ -3649,7 +3649,7 @@ Return only a JSON object of exactly this shape. `confidence_score` is between 0
 {"confidence_score": 0.7, "explanation": "one sentence", "better_candidate_keys": ["C03"], "better_queries": ["alternative search string"]}
 ```
 
-- [ ] **Step 3: Write `src/xwalk/prompts/base/verify.j2`**
+- [x] **Step 3: Write `src/xwalk/prompts/base/verify.j2`**
 
 Verification returns an independent **verdict**, not a second number to be `min()`-ed with the first. Two uncalibrated scores cannot distinguish agreement-with-different-numbers from genuine disagreement.
 
@@ -3686,7 +3686,7 @@ or no_match; `preferred_key` is one of the keys above or null:
 {"decision": "support", "preferred_key": null, "confidence_score": 0.8, "explanation": "one sentence"}
 ```
 
-- [ ] **Step 4: Write `src/xwalk/prompts/base/rewrite.j2`**
+- [x] **Step 4: Write `src/xwalk/prompts/base/rewrite.j2`**
 
 ```jinja
 You are improving a search query used to find a {{ slots.target_noun }} for a
@@ -3719,7 +3719,7 @@ Return only this JSON object:
 {"queries": ["first alternative", "second alternative"], "explanation": "one sentence"}
 ```
 
-- [ ] **Step 5: Write the failing test**
+- [x] **Step 5: Write the failing test**
 
 Create `tests/test_prompt_contract.py`:
 
@@ -3969,7 +3969,7 @@ def test_the_shipped_chemistry_example_validates():
     validate_contract(PromptSet.from_slots(load_slots(path)))
 ```
 
-- [ ] **Step 6: Write `src/xwalk/prompts/contract.py`**
+- [x] **Step 6: Write `src/xwalk/prompts/contract.py`**
 
 ```python
 """Prompt skeletons plus the contract that keeps them safe to modify.
@@ -4332,7 +4332,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 7: Write `examples/chemistry/slots.yaml`**
+- [x] **Step 7: Write `examples/chemistry/slots.yaml`**
 
 ```yaml
 entity_noun: chemical entity mention
@@ -4360,7 +4360,7 @@ hard_rules:
   - A salt, ester, or hydrate is a distinct entity from its parent compound
 ```
 
-- [ ] **Step 8: Ship the `.j2` files in the wheel**
+- [x] **Step 8: Ship the `.j2` files in the wheel**
 
 Add to `pyproject.toml`:
 
@@ -4371,12 +4371,12 @@ Add to `pyproject.toml`:
 
 If hatchling already includes package data under `src/xwalk`, verify with `python -m pip install -e . && python -c "from xwalk.prompts.contract import BASE_DIR; print(sorted(p.name for p in BASE_DIR.iterdir()))"` — expect all four `.j2` names.
 
-- [ ] **Step 9: Run the tests**
+- [x] **Step 9: Run the tests**
 
 Run: `python -m pytest tests/test_prompt_contract.py -v`
 Expected: 20 passed.
 
-- [ ] **Step 10: Lint, type-check, commit**
+- [x] **Step 10: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy

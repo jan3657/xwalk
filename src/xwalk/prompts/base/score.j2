@@ -1,0 +1,36 @@
+You are judging a proposed match between a {{ slots.entity_noun }} and a {{ slots.target_noun }}.
+Domain: {{ slots.domain_brief }}
+
+## Source record
+{% for key, value in source_fields.items() %}- {{ key }}: {{ value }}
+{% endfor %}
+{% if context %}
+## Context
+{{ context }}
+{% endif %}
+## Proposed match
+{{ chosen_block }}
+{% if other_candidates %}
+## Other candidates that were available
+{{ other_candidates }}
+{% endif %}
+## Rubric
+| Score | Name | Applies when |
+|---|---|---|
+{% for row in slots.rubric %}| {{ row.score }} | {{ row.name }} | {{ row.when }}{% if row.example %} (e.g. {{ row.example }}){% endif %} |
+{% endfor %}
+{% if slots.hard_rules %}
+## Hard rules
+{% for rule in slots.hard_rules %}- {{ rule }}
+{% endfor %}
+{% endif %}
+## Rules
+- Judge the proposed match against the whole source record above, not against any search string.
+- If the score is below {{ review_floor }}, you may propose better options.
+- Propose a candidate key only if it appears in "Other candidates that were available".
+- Propose a search query only for an entity that is not present in any listed candidate.
+
+## Output
+Return only a JSON object of exactly this shape. `confidence_score` is between 0.0 and
+1.0; both lists may be empty:
+{"confidence_score": 0.7, "explanation": "one sentence", "better_candidate_keys": ["C03"], "better_queries": ["alternative search string"]}

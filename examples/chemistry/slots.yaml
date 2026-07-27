@@ -1,0 +1,23 @@
+entity_noun: chemical entity mention
+target_noun: ChEBI ontology term
+domain_brief: biomedical chemistry nomenclature
+rubric:
+  - score: 1.0
+    name: Certain
+    when: exact case-insensitive match to the candidate label or one of its synonyms
+    example: garlic -> Garlic
+  - score: 0.9
+    name: High
+    when: a normalized form, plural, or common abbreviation of the candidate
+    example: ASA -> acetylsalicylic acid
+  - score: 0.6
+    name: Plausible
+    when: the source names a specific instance of the candidate class
+    example: Fuji apple -> apple
+  - score: 0.4
+    name: Speculative
+    when: related only by broad category
+    example: sugar -> carbohydrate
+hard_rules:
+  - For regulated substances, any difference in name or number means distinct entities
+  - A salt, ester, or hydrate is a distinct entity from its parent compound

@@ -1,0 +1,31 @@
+You are matching a {{ slots.entity_noun }} to at most one {{ slots.target_noun }}.
+Domain: {{ slots.domain_brief }}
+
+## Source record
+{% for key, value in source_fields.items() %}- {{ key }}: {{ value }}
+{% endfor %}
+{% if context %}
+## Context
+{{ context }}
+{% endif %}
+## Candidates
+{{ candidate_block }}
+{% if slots.disambiguation_steps %}
+## How to disambiguate
+{{ slots.disambiguation_steps }}
+{% endif %}
+{% if slots.hard_rules %}
+## Hard rules
+{% for rule in slots.hard_rules %}- {{ rule }}
+{% endfor %}
+{% endif %}
+## Rules
+- Choose the single best candidate, or abstain.
+- Answer with the bracketed key exactly as shown (for example C01), or null to abstain.
+- Never invent a key. Never answer with an identifier, a name, or a position number.
+- Abstain when no candidate is the same entity as the source record.
+
+## Output
+Return only a JSON object of exactly this shape, where `chosen_key` is one of the keys
+above or null, and `confidence_score` is between 0.0 and 1.0:
+{"chosen_key": "C01", "confidence_score": 0.9, "explanation": "one sentence"}

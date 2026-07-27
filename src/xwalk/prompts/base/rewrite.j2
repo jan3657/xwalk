@@ -1,0 +1,28 @@
+You are improving a search query used to find a {{ slots.target_noun }} for a
+{{ slots.entity_noun }}.
+Domain: {{ slots.domain_brief }}
+
+## Source record
+{% for key, value in source_fields.items() %}- {{ key }}: {{ value }}
+{% endfor %}
+{% if context %}
+## Context
+{{ context }}
+{% endif %}
+## Queries already tried
+{% for q in previous_queries %}- {{ q }}
+{% endfor %}
+{% if best_candidates %}
+## Best candidates those queries returned
+{{ best_candidates }}
+{% endif %}
+## Rules
+- Propose up to {{ max_queries }} new search queries that are materially different from
+  the queries already tried.
+- Expand abbreviations, use the full formal name, or drop qualifiers that are not part of
+  the entity name.
+- Do not repeat a query that has already been tried.
+
+## Output
+Return only this JSON object:
+{"queries": ["first alternative", "second alternative"], "explanation": "one sentence"}

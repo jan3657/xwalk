@@ -1,0 +1,30 @@
+You are independently verifying a proposed match. Do not assume the proposal is correct.
+Domain: {{ slots.domain_brief }}
+
+## Source record
+{% for key, value in source_fields.items() %}- {{ key }}: {{ value }}
+{% endfor %}
+{% if context %}
+## Context
+{{ context }}
+{% endif %}
+## Proposed match
+{{ chosen_block }}
+{% if other_candidates %}
+## Other candidates
+{{ other_candidates }}
+{% endif %}
+{% if slots.hard_rules %}
+## Hard rules
+{% for rule in slots.hard_rules %}- {{ rule }}
+{% endfor %}
+{% endif %}
+## Rules
+- Answer "support" if the proposed match is the same entity as the source record.
+- Answer "disagree" if a different listed candidate is the correct match, and name its key.
+- Answer "no_match" if no listed candidate is the correct match.
+
+## Output
+Return only a JSON object of exactly this shape. `decision` is one of support, disagree,
+or no_match; `preferred_key` is one of the keys above or null:
+{"decision": "support", "preferred_key": null, "confidence_score": 0.8, "explanation": "one sentence"}
