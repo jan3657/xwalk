@@ -1298,7 +1298,7 @@ git commit -m "feat: record sources and in-memory target store"
 
 `default_limit` lives on the retriever because the spec is explicit that "retrieval depth `k` belongs to each retriever's own configuration — a BM25 and a dense retriever have no reason to share a depth." `Matcher.retriever_limit` is only the fallback for a retriever that does not declare one.
 
-- [ ] **Step 1: Verify the Tantivy API before writing any code against it**
+- [x] **Step 1: Verify the Tantivy API before writing any code against it**
 
 ```bash
 python -m pip install "tantivy>=0.22"
@@ -1349,7 +1349,7 @@ Record the real names in a scratch note. If any of `SchemaBuilder`, `add_text_fi
 
 Verified against `tantivy 0.26.0` (index format v7) at the time of writing: every name above exists with these shapes, and `searcher.doc(address)["record_id"]` returns a one-element list.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `tests/test_bm25.py`:
 
@@ -1497,12 +1497,12 @@ def test_bm25_satisfies_the_retriever_protocol(retriever):
     assert isinstance(retriever, Retriever)
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_bm25.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.retrieval'`.
 
-- [ ] **Step 4: Write `src/xwalk/retrieval/base.py`**
+- [x] **Step 4: Write `src/xwalk/retrieval/base.py`**
 
 ```python
 """The retrieval contract. Implement this to plug in any backend."""
@@ -1573,7 +1573,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 5: Write `src/xwalk/retrieval/bm25.py`**
+- [x] **Step 5: Write `src/xwalk/retrieval/bm25.py`**
 
 Adapt the Tantivy calls to whatever Step 1 observed.
 
@@ -1812,12 +1812,12 @@ class BM25Retriever:
         return await asyncio.to_thread(self._search_sync, request.text, request.limit)
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `python -m pytest tests/test_bm25.py -v`
 Expected: 18 passed, in well under a second with `TMPDIR` on tmpfs. If a ranking assertion fails, fix the *schema, sanitiser, or doc template* — never the assertion. "Exact label match ranks first" is a requirement, and the `exact` field is how it is met; see the note at the top of this task for why plain BM25 cannot meet it on this fixture.
 
-- [ ] **Step 7: Lint and type-check**
+- [x] **Step 7: Lint and type-check**
 
 Run: `python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
 Expected: clean. `tantivy` ships no stubs; if mypy complains, add to `pyproject.toml`:
@@ -1828,7 +1828,7 @@ module = "tantivy.*"
 ignore_missing_imports = true
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/xwalk/retrieval tests/test_bm25.py pyproject.toml
