@@ -1,10 +1,12 @@
 """xwalk — LLM-RAG record matching between two collections."""
 
-# Defined before any submodule import and kept that way: `batch.py` (Task 18) does
-# `from xwalk import __version__`, which fails if a submodule import above this line
-# ever pulls `xwalk.batch` back in while __version__ is still unbound.
+# __version__ is defined FIRST, before any submodule import. `batch.py` does
+# `from xwalk import __version__`, so if a batch name were re-exported below while
+# __version__ was still unbound, importing xwalk would raise
+# "cannot import name '__version__' from partially initialized module".
 __version__ = "0.1.0.dev0"
 
+from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
 from xwalk.records import (
     Attempt,
@@ -17,6 +19,7 @@ from xwalk.records import (
     RetryProposal,
     Usage,
 )
+from xwalk.templates import TemplateSet
 
 __all__ = [
     "Attempt",
@@ -25,9 +28,11 @@ __all__ = [
     "MatchPolicy",
     "MatchResult",
     "MatchStatus",
+    "Matcher",
     "Record",
     "RetrievalHit",
     "RetryProposal",
+    "TemplateSet",
     "Usage",
     "__version__",
 ]

@@ -8651,7 +8651,7 @@ git commit -m "feat: the matching loop with retry routing, verification, and deg
 
 **This is the task that makes the phase's promise true:** a user points at two CSVs and gets a reviewed mapping table.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_batch.py`:
 
@@ -9062,7 +9062,7 @@ def test_run_batch_sync_works_outside_an_event_loop(tmp_path):
     assert report.total == 2
 ```
 
-- [ ] **Step 2: Write `src/xwalk/batch.py`**
+- [x] **Step 2: Write `src/xwalk/batch.py`**
 
 ```python
 """Batch matching: the mapping platform.
@@ -9367,7 +9367,7 @@ def export_manifest(ledger: Ledger, run_fingerprint: str, path: str | Path) -> N
     )
 ```
 
-- [ ] **Step 3: Write the final `src/xwalk/__init__.py`**
+- [x] **Step 3: Write the final `src/xwalk/__init__.py`**
 
 `Matcher` and `TemplateSet` are the two names the README quickstart imports from the package root, and neither has been exported yet. Write the whole file:
 
@@ -9414,14 +9414,14 @@ __all__ = [
 
 `run_batch` is deliberately **not** re-exported here. It lives at `xwalk.batch.run_batch`, and importing it from the package root would create exactly the cycle the comment above warns about. `Matcher` and `TemplateSet` are safe because neither module imports `xwalk` itself.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_batch.py -v`
 Expected: 25 passed.
 
 `test_completed_work_survives_a_crash_mid_run` is the important one: it asserts the whole reason for the ledger. If it fails because the crash aborts before the first result commits, check that `run_batch` awaits `ledger.put_result` *before* the next record starts — with `concurrency=1` the ordering must be strict.
 
-- [ ] **Step 5: Add the end-to-end fixture test**
+- [x] **Step 5: Add the end-to-end fixture test**
 
 Append to `tests/test_batch.py` — the phase's promise, exercised against the real CSV fixtures and the real BM25 retriever:
 
@@ -9477,14 +9477,14 @@ async def test_two_csvs_in_a_mapping_table_out(tmp_path, targets_csv, sources_cs
 
 Run: `python -m pytest tests/test_batch.py -v` — Expected: 26 passed. If `s2` does not resolve through the synonym field, the `doc` template is not indexing synonyms; fix the template in the test, not the assertion.
 
-- [ ] **Step 6: Run everything, lint, type-check**
+- [x] **Step 6: Run everything, lint, type-check**
 
 ```bash
 python -m pytest -q -m "not integration"
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
 ```
 
-- [ ] **Step 7: Write the README quickstart**
+- [x] **Step 7: Write the README quickstart**
 
 Replace `README.md` with a runnable example, so the phase's promise is documented where a new user will find it:
 
@@ -9576,7 +9576,7 @@ Review never overwrites model output; `export_mapping_csv(..., use_review=True)`
 the adjudicated view alongside it.
 ````
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/xwalk/batch.py src/xwalk/matcher.py src/xwalk/__init__.py README.md tests/test_batch.py
