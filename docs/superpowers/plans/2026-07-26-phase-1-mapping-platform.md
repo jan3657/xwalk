@@ -83,14 +83,14 @@ Files created in Phase 1. Line estimates are guidance, not targets.
 - Consumes: nothing.
 - Produces: `Record(id: str, fields: Mapping[str, Any])`; `RetrievalHit(record_id: str, retriever: str, raw_score: float | None, rank: int)`; `Candidate(record: Record, fused_score: float, evidence: tuple[RetrievalHit, ...])` with property `id -> str`; `Usage(prompt_tokens: int, completion_tokens: int, calls: int)` with `Usage.zero()`, `total_tokens` property, and `__add__`. Every later task imports from `xwalk.records`.
 
-- [ ] **Step 1: Create the repository skeleton**
+- [x] **Step 1: Create the repository skeleton**
 
 ```bash
 mkdir -p src/xwalk tests/fixtures docs/superpowers/plans docs/superpowers/specs
 touch src/xwalk/py.typed
 ```
 
-- [ ] **Step 2: Write `pyproject.toml`**
+- [x] **Step 2: Write `pyproject.toml`**
 
 `rank` is 1-based throughout the library. Note `asyncio_mode = "auto"` — tests do not need `@pytest.mark.asyncio`.
 
@@ -146,7 +146,7 @@ strict = true
 files = ["src/xwalk"]
 ```
 
-- [ ] **Step 3: Write `.gitignore`**
+- [x] **Step 3: Write `.gitignore`**
 
 The paper repo grew to 11 GB of history over 33 GB of data. That must not happen here — no run artefacts, no indexes, no data ever enters git.
 
@@ -175,7 +175,7 @@ index/
 data/
 ```
 
-- [ ] **Step 4: Write the failing test**
+- [x] **Step 4: Write the failing test**
 
 Create `tests/test_records.py`:
 
@@ -243,12 +243,12 @@ def test_usage_sum_starts_from_zero():
     assert sum(parts, Usage.zero()) == Usage(prompt_tokens=3, completion_tokens=3, calls=3)
 ```
 
-- [ ] **Step 5: Run the test to verify it fails**
+- [x] **Step 5: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_records.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk'`.
 
-- [ ] **Step 6: Write `src/xwalk/records.py`**
+- [x] **Step 6: Write `src/xwalk/records.py`**
 
 Only the four types the tests exercise. `Attempt` and `MatchResult` arrive in Task 14, once every field they reference exists.
 
@@ -344,7 +344,7 @@ class Usage:
         return self.__add__(other)
 ```
 
-- [ ] **Step 7: Write `src/xwalk/__init__.py`**
+- [x] **Step 7: Write `src/xwalk/__init__.py`**
 
 ```python
 """xwalk — LLM-RAG record matching between two collections."""
@@ -359,7 +359,7 @@ from xwalk.records import Candidate, Record, RetrievalHit, Usage
 __all__ = ["Candidate", "Record", "RetrievalHit", "Usage", "__version__"]
 ```
 
-- [ ] **Step 8: Install and run the tests**
+- [x] **Step 8: Install and run the tests**
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -368,7 +368,7 @@ python -m pytest tests/test_records.py -v
 
 Expected: 10 passed. If `tantivy` fails to install on this platform, stop and report it — the spec fixes a support matrix (manylinux x86-64/aarch64, macOS arm64, Windows x86-64) and a platform outside it is a decision for the user, never a silent fallback.
 
-- [ ] **Step 9: Lint and type-check**
+- [x] **Step 9: Lint and type-check**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
@@ -376,7 +376,7 @@ python -m ruff check src tests && python -m ruff format --check src tests && pyt
 
 Expected: clean. If `ruff format --check` complains, run `python -m ruff format src tests` and re-run.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add pyproject.toml .gitignore README.md src/xwalk tests/test_records.py
