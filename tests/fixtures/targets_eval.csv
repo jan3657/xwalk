@@ -1,0 +1,53 @@
+id,label,synonyms,definition
+CHEBI:17234,glucose,dextrose|grape sugar|blood sugar,A monosaccharide sugar with formula C6H12O6.
+CHEBI:15903,beta-D-glucose,beta-D-glucopyranose,The beta-anomer of D-glucose.
+CHEBI:17925,alpha-D-glucose,alpha-D-glucopyranose,The alpha-anomer of D-glucose.
+CHEBI:28757,fructose,fruit sugar|levulose,A ketohexose sugar found in fruit.
+CHEBI:17992,sucrose,table sugar|saccharose|cane sugar,A disaccharide of glucose and fructose.
+CHEBI:17716,lactose,milk sugar,A disaccharide found in milk.
+CHEBI:17306,maltose,malt sugar,A disaccharide of two glucose units.
+CHEBI:16551,trehalose,mycose,A disaccharide of two alpha-glucose units.
+CHEBI:17814,salicin,,A glucoside found in willow bark.
+CHEBI:16646,carbohydrate,saccharide,A generic class of sugars and their derivatives.
+CHEBI:33942,ribose,,An aldopentose sugar central to RNA.
+CHEBI:17924,sorbitol,glucitol|D-glucitol,A sugar alcohol derived from glucose.
+CHEBI:17151,xylitol,,A five-carbon sugar alcohol used as a sweetener.
+CHEBI:15963,ribitol,adonitol,A five-carbon sugar alcohol.
+CHEBI:16899,mannitol,,A six-carbon sugar alcohol.
+CHEBI:15756,palmitic acid,hexadecanoic acid,A saturated 16-carbon fatty acid.
+CHEBI:30823,oleic acid,cis-9-octadecenoic acid,A monounsaturated 18-carbon fatty acid.
+CHEBI:28875,linoleic acid,,A polyunsaturated omega-6 fatty acid.
+CHEBI:27432,alpha-linolenic acid,ALA,A polyunsaturated omega-3 fatty acid.
+CHEBI:28757a,stearic acid,octadecanoic acid,A saturated 18-carbon fatty acid.
+CHEBI:15377,water,dihydrogen oxide|H2O,The oxide of hydrogen.
+CHEBI:16236,ethanol,ethyl alcohol|drinking alcohol,A primary alcohol found in alcoholic beverages.
+CHEBI:17987,methanol,methyl alcohol|wood alcohol,The simplest aliphatic alcohol.
+CHEBI:16236a,propan-2-ol,isopropanol|rubbing alcohol,A secondary alcohol used as a solvent.
+CHEBI:30089,acetate,ethanoate,The conjugate base of acetic acid.
+CHEBI:15366,acetic acid,ethanoic acid|vinegar acid,A two-carbon carboxylic acid.
+CHEBI:24996,lactate,2-hydroxypropanoate,The conjugate base of lactic acid.
+CHEBI:28358,lactic acid,2-hydroxypropanoic acid,A three-carbon hydroxy acid.
+CHEBI:30769,citric acid,2-hydroxypropane-1;2;3-tricarboxylic acid,A tricarboxylic acid found in citrus fruit.
+CHEBI:16947,citrate,,The conjugate base of citric acid.
+CHEBI:15843,arachidonic acid,,A polyunsaturated omega-6 fatty acid precursor to eicosanoids.
+CHEBI:15756a,caffeine,1;3;7-trimethylxanthine|guaranine,A methylxanthine stimulant found in coffee and tea.
+CHEBI:27732,theobromine,3;7-dimethylxanthine,A methylxanthine found in cocoa.
+CHEBI:28177,theophylline,1;3-dimethylxanthine,A methylxanthine used as a bronchodilator.
+CHEBI:15365,acetylsalicylic acid,aspirin|ASA,A salicylate used as an analgesic and antipyretic.
+CHEBI:16068,salicylic acid,2-hydroxybenzoic acid,A beta hydroxy acid and aspirin precursor.
+CHEBI:46195,paracetamol,acetaminophen|APAP,An analgesic and antipyretic.
+CHEBI:5855,ibuprofen,,A non-steroidal anti-inflammatory drug.
+CHEBI:16737,creatinine,,A breakdown product of creatine phosphate in muscle.
+CHEBI:16919,creatine,,A nitrogenous organic acid found in muscle tissue.
+CHEBI:17234a,galactose,brain sugar,An aldohexose sugar and component of lactose.
+CHEBI:16113,cholesterol,,A sterol found in animal cell membranes.
+CHEBI:28689,cortisol,hydrocortisone,A glucocorticoid steroid hormone.
+CHEBI:16330,testosterone,,An androgenic steroid hormone.
+CHEBI:16469,estradiol,oestradiol|17-beta-estradiol,The principal oestrogen in humans.
+CHEBI:15354,choline,,An essential nutrient and precursor to acetylcholine.
+CHEBI:15355,acetylcholine,ACh,A neurotransmitter at the neuromuscular junction.
+CHEBI:18243,dopamine,,A catecholamine neurotransmitter.
+CHEBI:28790,serotonin,5-hydroxytryptamine|5-HT,A monoamine neurotransmitter.
+CHEBI:33569,noradrenaline,norepinephrine,A catecholamine neurotransmitter and hormone.
+CHEBI:15843a,ascorbic acid,vitamin C,A water-soluble vitamin and antioxidant.
+CHEBI:27300,cholecalciferol,vitamin D3,A form of vitamin D produced in skin.

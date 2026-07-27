@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 
@@ -134,10 +135,14 @@ class Matcher:
         `issued_keys`: `rendered` and `by_key` cannot be recovered from a key->id map,
         and the scorer needs both.
         """
+        started = time.perf_counter()
         usage = Usage.zero()
         notes: list[str] = []
         keyed: KeyedCandidates | None = None
         truncated = 0
+        # Overwritten by each stage that talks to the provider; the last one wins,
+        # which is the call that ended the attempt.
+        finish_reason: str | None = None
 
         if reuse is not None:
             keyed, candidates = reuse
@@ -181,6 +186,8 @@ class Matcher:
                 reason=reason,
                 error=error if error else joined,
                 usage=usage,
+                elapsed_seconds=time.perf_counter() - started,
+                finish_reason=finish_reason,
             )
 
         # Every retriever failed. A dead index is not evidence of a non-match.
@@ -212,6 +219,7 @@ class Matcher:
                     None,
                 )
             usage = usage + selection.usage
+            finish_reason = selection.finish_reason
             keyed = selection.keyed
             truncated = selection.truncated
             chosen_id = selection.choice.record_id
@@ -258,6 +266,7 @@ class Matcher:
                 keyed,
             )
         usage = usage + scored.usage
+        finish_reason = scored.finish_reason
 
         if scored.score is None:
             # The gate produced no usable number. Falling back to the selector's own
@@ -288,6 +297,7 @@ class Matcher:
             audited = True
         if verdict is not None:
             usage = usage + verdict.usage
+            finish_reason = verdict.finish_reason
 
         routed = route_proposals(scored.proposals, keyed.order, seen_queries)
 
@@ -344,9 +354,12 @@ class Matcher:
             reason=DecisionReason.PROVIDER_FAILURE,
             error=str(exc),
             usage=Usage.zero(),
+            elapsed_seconds=0.0,
+            finish_reason=None,
         )
 
     async def match(self, source: Record) -> MatchResult:
+        match_started = time.perf_counter()
         context = self._templates.render_context(source)
         first_query = self._templates.render_query(source)
 
@@ -449,6 +462,7 @@ class Matcher:
             candidates=tuple(all_candidates) if self._keep_candidates else (),
             attempts=tuple(attempts),
             usage=sum((a.usage for a in attempts), Usage.zero()),
+            elapsed_seconds=time.perf_counter() - match_started,
             run_fingerprint=self._run_fingerprint,
         )
 

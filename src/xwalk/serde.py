@@ -93,6 +93,8 @@ def _attempt_to_dict(attempt: Attempt) -> dict[str, Any]:
         "reason": None if attempt.reason is None else attempt.reason.value,
         "error": attempt.error,
         "usage": _usage_to_dict(attempt.usage),
+        "elapsed_seconds": attempt.elapsed_seconds,
+        "finish_reason": attempt.finish_reason,
     }
 
 
@@ -118,6 +120,8 @@ def _attempt_from_dict(data: Mapping[str, Any]) -> Attempt:
         reason=None if data["reason"] is None else DecisionReason(data["reason"]),
         error=data["error"],
         usage=Usage(**data["usage"]),
+        elapsed_seconds=data["elapsed_seconds"],
+        finish_reason=data["finish_reason"],
     )
 
 
@@ -137,6 +141,7 @@ def result_to_dict(result: MatchResult) -> dict[str, Any]:
         "candidates": [_candidate_to_dict(c) for c in result.candidates],
         "attempts": [_attempt_to_dict(a) for a in result.attempts],
         "usage": _usage_to_dict(result.usage),
+        "elapsed_seconds": result.elapsed_seconds,
         "run_fingerprint": result.run_fingerprint,
     }
 
@@ -157,5 +162,6 @@ def result_from_dict(data: Mapping[str, Any]) -> MatchResult:
         candidates=tuple(_candidate_from_dict(c) for c in data["candidates"]),
         attempts=tuple(_attempt_from_dict(a) for a in data["attempts"]),
         usage=Usage(**data["usage"]),
+        elapsed_seconds=data["elapsed_seconds"],
         run_fingerprint=data["run_fingerprint"],
     )

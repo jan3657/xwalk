@@ -37,6 +37,8 @@ def sample_result() -> MatchResult:
         reason=DecisionReason.ACCEPT_THRESHOLD,
         error=None,
         usage=Usage(prompt_tokens=100, completion_tokens=20, calls=2),
+        elapsed_seconds=1.25,
+        finish_reason="stop",
     )
     return MatchResult(
         result_key="rk1",
@@ -51,6 +53,7 @@ def sample_result() -> MatchResult:
         candidates=(candidate,),
         attempts=(attempt,),
         usage=Usage(prompt_tokens=100, completion_tokens=20, calls=2),
+        elapsed_seconds=1.25,
         run_fingerprint="fp1",
     )
 

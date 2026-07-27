@@ -982,9 +982,9 @@ def attempt(index, candidates, issued, truncated=0):
         index=index, query="q", proposal=None, candidates=tuple(candidates),
         candidate_count=len(candidates), candidates_truncated=truncated,
         issued_keys=issued, raw_selection=None, chosen_id=None, resolution="abstain",
-        primary_score=None, verifier_decision=None, verifier_score=None,
-        verifier_preferred_id=None, audited=False, reason=None, error=None,
-        usage=Usage.zero(), elapsed_seconds=0.0,
+        primary_score=None, explanation="", verifier_decision=None, verifier_score=None,
+        verifier_preferred_id=None, audited=False, dropped_proposals=(), reason=None,
+        error=None, usage=Usage.zero(), elapsed_seconds=0.0, finish_reason="stop",
     )
 
 

@@ -43,6 +43,7 @@ class SelectionOutcome:
     truncated: int
     usage: Usage
     error: str | None = None
+    finish_reason: str | None = None
 
 
 def apply_budget(
@@ -139,6 +140,7 @@ class Selector:
                 truncated=dropped,
                 usage=response.usage,
                 error=str(exc),
+                finish_reason=response.finish_reason,
             )
 
         raw_key = payload.get("chosen_key")
@@ -166,4 +168,5 @@ class Selector:
             truncated=dropped,
             usage=response.usage,
             error=error,
+            finish_reason=response.finish_reason,
         )

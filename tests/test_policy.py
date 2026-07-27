@@ -29,6 +29,8 @@ def attempt(**kwargs) -> Attempt:
         reason=None,
         error=None,
         usage=Usage.zero(),
+        elapsed_seconds=0.0,
+        finish_reason="stop",
     )
     base.update(kwargs)
     return Attempt(**base)

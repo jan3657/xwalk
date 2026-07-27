@@ -25,6 +25,7 @@ class ScoreOutcome:
     raw: str
     usage: Usage
     error: str | None = None
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class VerifierVerdict:
     raw: str
     usage: Usage
     error: str | None = None
+    finish_reason: str | None = None
 
 
 def _clamp(value: object) -> float | None:
@@ -123,6 +125,7 @@ class Scorer:
                 raw=response.text,
                 usage=response.usage,
                 error=str(exc),
+                finish_reason=response.finish_reason,
             )
 
         score = _clamp(payload.get("confidence_score"))
@@ -142,6 +145,7 @@ class Scorer:
             raw=response.text,
             usage=response.usage,
             error=None if score is not None else "confidence_score was missing or not a number",
+            finish_reason=response.finish_reason,
         )
 
 
@@ -197,6 +201,7 @@ class Verifier:
                 raw=response.text,
                 usage=response.usage,
                 error=str(exc),
+                finish_reason=response.finish_reason,
             )
 
         raw_decision = str(payload.get("decision", "")).strip().lower()
@@ -218,4 +223,5 @@ class Verifier:
             raw=response.text,
             usage=response.usage,
             error=error,
+            finish_reason=response.finish_reason,
         )

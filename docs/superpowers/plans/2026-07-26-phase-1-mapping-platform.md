@@ -9620,7 +9620,32 @@ deferred), duplicate-target reporting (Task 18 — reported, never resolved), an
 response cache with the spec's full key derivation (Task 15 — the ledger table alone is
 not enough; `CachingLLM` is what makes it a cache rather than an unused table).
 
-## Open spec disagreements — decide before Task 1
+## Spec disagreements — RESOLVED 2026-07-27
+
+All four were settled after Phase 1 shipped and ran against a live provider. Recorded
+here so they are not reopened without new evidence.
+
+| # | Decision | Rationale |
+|---|---|---|
+| 1 | **Fixture split, not grown.** `targets_tiny.csv` stays at 5 rows; a new `targets_eval.csv` (~50 rows) serves evaluation. | Phase 1's ranking assertions are verified against the 5-row set and churning them buys nothing. The spec's "~50 records" matters where a *population* is needed — the retrieval-ceiling decomposition — so that is where the larger fixture lives. It carries deliberate near-misses (alpha/beta anomers, the methylxanthine family, related sugar alcohols). |
+| 2 | **`resolve_key` keeps its tolerance.** | The key space is library-issued, so no tolerant path can reach a *wrong* record; all four spec-named adversarial cases still resolve to `UNRESOLVED`. Deviation noted in the module docstring. |
+| 3 | **`asyncio.Lock` stays.** | Same guarantee as a dedicated writer coroutine inside one event loop, with less machinery and no queue to drain on shutdown. `test_concurrent_writes_all_land` pins the behaviour the spec asks for. |
+| 4 | **`result_key` stays.** | Matches `MatchResult.result_key`, so the exported CSV column and the field it names agree. That column becomes public surface at release. |
+
+**Tie-break: keep "ties resolve to the earlier attempt".** A live run surfaced two
+attempts tied at 0.6 where the earlier one's verifier *disagreed* and the later one's
+*supported*, and the disagreement won. That looks backwards until you work it through:
+`accept_at` is 0.6, so preferring the supported attempt would have flipped the result
+from `NEEDS_REVIEW` to `MATCHED` — auto-accepting a target another attempt's verifier
+explicitly rejected. The current rule fails toward review, which is the safe direction.
+
+**`finish_reason` added to `Attempt`** (with `elapsed_seconds`). A live provider
+truncated a response after 20 completion tokens, mid-JSON. The library handled it
+correctly — `UNRESOLVED_OUTPUT`, no fabricated match — but diagnosing *why* required
+measuring the raw string by hand, because nothing recorded that the provider had cut us
+off. `"length"` now says so directly.
+
+## Superseded: open spec disagreements — decided before Task 1
 
 The spec wins over this plan. These four points are places where the plan still differs,
 each deliberate and each cheap to change if the ruling goes the other way.

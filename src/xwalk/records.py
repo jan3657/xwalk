@@ -147,6 +147,12 @@ class Attempt:
     reason: DecisionReason | None
     error: str | None
     usage: Usage
+    elapsed_seconds: float
+    # finish_reason of the LAST provider response in this attempt. "length" is the
+    # tell for a truncated answer -- the provider stopped mid-JSON, which surfaces as
+    # UNRESOLVED_OUTPUT and is otherwise indistinguishable from a model that simply
+    # answered badly.
+    finish_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -163,4 +169,5 @@ class MatchResult:
     candidates: tuple[Candidate, ...]
     attempts: tuple[Attempt, ...]
     usage: Usage
+    elapsed_seconds: float
     run_fingerprint: str

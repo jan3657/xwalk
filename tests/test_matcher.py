@@ -473,3 +473,22 @@ def test_match_sync_works_outside_an_event_loop():
     llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
     result = build(llm, ScriptedRetriever({"glucose": ["T1"]})).match_sync(SOURCE)
     assert result.status is MatchStatus.MATCHED
+
+
+# --- instrumentation --------------------------------------------------------
+
+
+async def test_attempts_and_results_record_elapsed_time():
+    """Latency is measured, not stubbed: Phase 2's cost-per-record metric reads it."""
+    llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
+    result = await build(llm, ScriptedRetriever({"glucose": ["T1"]})).match(SOURCE)
+    assert result.elapsed_seconds > 0.0
+    assert result.attempts[0].elapsed_seconds > 0.0
+    assert result.elapsed_seconds >= result.attempts[0].elapsed_seconds
+
+
+async def test_finish_reason_is_carried_from_the_provider():
+    """A truncated answer is indistinguishable from a badly-worded one without this."""
+    llm = FakeLLM([select_reply("C01"), score_reply(0.95)], finish_reason="length")
+    result = await build(llm, ScriptedRetriever({"glucose": ["T1"]})).match(SOURCE)
+    assert result.attempts[0].finish_reason == "length"

@@ -2404,7 +2404,11 @@ class JobSpec(BaseModel):
             target = index_dir / (spec.name or spec.kind)
             if spec.kind == "bm25":
                 built.append(
-                    BM25Retriever.build(records, templates, target, name=spec.name or "bm25")
+                    BM25Retriever.build(
+                        records, templates, target,
+                        name=spec.name or "bm25",
+                        exact_fields=spec.exact_fields or ("label", "synonyms"),
+                    )
                 )
             else:
                 from xwalk.retrieval.dense import DenseRetriever, SentenceTransformerEncoder
@@ -3365,7 +3369,9 @@ def test_bm25_indexes_the_sample_and_finds_something(example, tmp_path):
         pytest.importorskip("rdflib")
     templates = job.build_templates()
     targets = list(job.build_target_records())
-    retriever = BM25Retriever.build(targets, templates, tmp_path / "idx")
+    retriever = BM25Retriever.build(
+        targets, templates, tmp_path / "idx", exact_fields=("label", "synonyms")
+    )
     source = next(iter(job.build_source_records()))
     hits = asyncio.run(
         retriever.search(SearchRequest(text=templates.render_query(source), limit=5))

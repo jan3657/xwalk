@@ -301,6 +301,7 @@ async def test_mapping_csv_columns_are_the_documented_set(tmp_path):
         "prompt_tokens",
         "completion_tokens",
         "llm_calls",
+        "elapsed_seconds",
     ]
 
 

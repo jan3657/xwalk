@@ -39,6 +39,7 @@ MAPPING_COLUMNS = (
     "prompt_tokens",
     "completion_tokens",
     "llm_calls",
+    "elapsed_seconds",
 )
 
 
@@ -265,6 +266,7 @@ def export_mapping_csv(
                         "prompt_tokens": "",
                         "completion_tokens": "",
                         "llm_calls": "",
+                        "elapsed_seconds": "",
                     }
                 )
                 written += 1
@@ -283,6 +285,7 @@ def export_mapping_csv(
                     "prompt_tokens": result.usage.prompt_tokens,
                     "completion_tokens": result.usage.completion_tokens,
                     "llm_calls": result.usage.calls,
+                    "elapsed_seconds": round(result.elapsed_seconds, 3),
                 }
             )
             written += 1

@@ -28,6 +28,7 @@ class FakeLLM:
         model: str = "fake",
         prompt_tokens: int = 100,
         completion_tokens: int = 20,
+        finish_reason: str | None = "stop",
     ) -> None:
         if (script is None) == (handler is None):
             raise ValueError("provide exactly one of script or handler")
@@ -37,6 +38,7 @@ class FakeLLM:
         self._model = model
         self._prompt_tokens = prompt_tokens
         self._completion_tokens = completion_tokens
+        self._finish_reason = finish_reason
         self._index = 0
         self.requests: list[LLMRequest] = []
         self.total_usage = Usage.zero()
@@ -86,4 +88,5 @@ class FakeLLM:
             usage=usage,
             model=self._model,
             structured=bool(request.schema and self._capabilities.json_schema),
+            finish_reason=self._finish_reason,
         )
