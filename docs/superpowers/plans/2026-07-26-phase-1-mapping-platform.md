@@ -397,7 +397,7 @@ git commit -m "feat: project scaffolding and core record types"
 
 **Why this matters:** resume keyed on `source_id` alone is wrong. The same ID can carry changed field values, or have been processed under a different prompt, target snapshot, retriever set or model. Change any of those and prior results must *stop* matching, so you get a fresh run rather than a silently mixed one.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_fingerprint.py`:
 
@@ -485,12 +485,12 @@ def test_result_key_changes_with_source_hash():
     assert result_key("fp1", "s1", "h1") != result_key("fp1", "s1", "h2")
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_fingerprint.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.fingerprint'`.
 
-- [ ] **Step 3: Write `src/xwalk/fingerprint.py`**
+- [x] **Step 3: Write `src/xwalk/fingerprint.py`**
 
 ```python
 """Deterministic hashing of records and run configuration.
@@ -575,7 +575,7 @@ def result_key(run_fp: str, source_id: str, source_hash: str) -> str:
     return hash_value([run_fp, source_id, source_hash])
 ```
 
-- [ ] **Step 4: Simplify the set branch**
+- [x] **Step 4: Simplify the set branch**
 
 The `_normalise` set branch above is deliberately over-complicated so you notice it. Replace it with:
 
@@ -592,17 +592,17 @@ Sets have no order, so hashing their *rendered elements* sorted is both determin
         return sorted(normalised, key=lambda v: json.dumps(v, sort_keys=True, default=str))
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `python -m pytest tests/test_fingerprint.py -v`
 Expected: 16 passed.
 
-- [ ] **Step 6: Lint and type-check**
+- [x] **Step 6: Lint and type-check**
 
 Run: `python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
 Expected: clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/xwalk/fingerprint.py tests/test_fingerprint.py
