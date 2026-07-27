@@ -2614,7 +2614,7 @@ git commit -m "feat: LLM protocol, robust response parsing, and FakeLLM"
 
 **Design note:** tests inject an `httpx.MockTransport`, so this task is fully offline apart from one `@pytest.mark.integration` test that skips without `XWALK_TEST_API_KEY`. Never trust a capability claim: even `strict_schema=True` output goes through `parse_json_object` at the call sites.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_openai_compat.py`:
 
@@ -2902,12 +2902,12 @@ async def test_against_a_real_provider():
     assert parse_json_object(response.text)["a"] == "x"
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `python -m pytest tests/test_openai_compat.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.llm.openai_compat'`.
 
-- [ ] **Step 3: Write `src/xwalk/llm/openai_compat.py`**
+- [x] **Step 3: Write `src/xwalk/llm/openai_compat.py`**
 
 ```python
 """One well-built OpenAI-compatible client, with declared capabilities."""
@@ -3163,7 +3163,7 @@ class OpenAICompatClient:
         await self._client.aclose()
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_openai_compat.py -v -m "not integration"`
 Expected: 30 passed (20 test functions, two of which parametrise status codes); the integration test is deselected.
@@ -3172,14 +3172,14 @@ Then confirm the integration test skips cleanly rather than erroring:
 Run: `python -m pytest tests/test_openai_compat.py -v -m integration`
 Expected: 1 skipped.
 
-- [ ] **Step 5: Export it and re-run everything**
+- [x] **Step 5: Export it and re-run everything**
 
 Add `OpenAICompatClient` and `CAPABILITY_PROFILES` to `src/xwalk/llm/__init__.py`'s imports and `__all__`.
 
 Run: `python -m pytest -q -m "not integration" && python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
 Expected: all green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/xwalk/llm tests/test_openai_compat.py

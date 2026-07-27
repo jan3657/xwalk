@@ -9,9 +9,11 @@ from xwalk.llm.base import (
     ParseError,
 )
 from xwalk.llm.fake import FakeLLM
+from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
 from xwalk.llm.parsing import parse_json_object, strip_thinking
 
 __all__ = [
+    "CAPABILITY_PROFILES",
     "FakeLLM",
     "LLMCapabilities",
     "LLMClient",
@@ -20,6 +22,7 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "LLMRetryableError",
+    "OpenAICompatClient",
     "ParseError",
     "parse_json_object",
     "strip_thinking",
