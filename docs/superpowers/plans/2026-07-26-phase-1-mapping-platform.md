@@ -7105,7 +7105,7 @@ git commit -m "feat: SQLite WAL run ledger with results, cache, manifest, and re
 
 **The invariant this task exists to protect:** applying review never overwrites model output. Three layers are preserved — the original model result, the reviewer decision, and the adjudicated result derived from both. And **applying a review fails if its source or target snapshot no longer matches the originating run**: a decision made against different data is not a decision about *this* data, and silently applying it would corrupt the mapping in the least detectable way possible.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_review.py`:
 
@@ -7367,7 +7367,7 @@ async def test_unreviewed_rows_appear_with_their_model_status(ledger, tmp_path):
     assert row.reviewer is None and row.final_status is MatchStatus.NEEDS_REVIEW
 ```
 
-- [ ] **Step 2: Write `src/xwalk/review.py`**
+- [x] **Step 2: Write `src/xwalk/review.py`**
 
 ```python
 """Human review as an immutable overlay.
@@ -7620,12 +7620,12 @@ def adjudicated(ledger: Ledger, run_fingerprint: str) -> Iterator[AdjudicatedRes
         )
 ```
 
-- [ ] **Step 3: Run the tests**
+- [x] **Step 3: Run the tests**
 
 Run: `python -m pytest tests/test_review.py -v`
 Expected: 22 passed. `test_apply_accepts_a_decision` requires the manifest written by the `ledger` fixture — if it fails with a `SnapshotMismatch`, check that `put_manifest` stored `target_fingerprint`.
 
-- [ ] **Step 4: Lint, type-check, commit**
+- [x] **Step 4: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
