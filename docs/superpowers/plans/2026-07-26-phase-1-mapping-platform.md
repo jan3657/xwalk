@@ -24,6 +24,8 @@ Every task's requirements implicitly include this section.
 - **A provider's declared capability is never trusted.** `LLMCapabilities` decides what to *ask* for; output is parsed and validated regardless of what was claimed.
 - **A malformed model answer must never resolve to a real target record.** This is the single hardest invariant in the library. Any resolution path that is not an exact lookup against keys issued for *that attempt* yields `UNRESOLVED_OUTPUT`.
 - **`mypy --strict` must pass** on `src/xwalk/` at the end of every task. `ruff check` and `ruff format --check` likewise.
+- **Import ABCs from `collections.abc`, not `typing`.** `Mapping`, `Sequence`, `Iterable`, `Iterator`, `Callable`, and `Set` all live there; `typing` keeps only `Any`, `Protocol`, `Literal`, `TYPE_CHECKING`, and `runtime_checkable`. Ruff's `UP035` fails the lint gate otherwise, and this plan's `select = ["E", "F", "I", "UP", "B", "SIM"]` turns that into a hard error at the end of *every* task.
+- **Put `TMPDIR` on local disk or tmpfs before running the suite.** Several tests build real Tantivy indexes under `tmp_path`, which follows `TMPDIR`. On a network-mounted `TMPDIR` (NFS, Ceph, Lustre) the BM25 tests take minutes; on tmpfs they take under a second. `export TMPDIR=/dev/shm/xwalk-tmp && mkdir -p "$TMPDIR"` is enough. This is environmental, not a code problem — but without it you will misread slow tests as a bug.
 - **Commit at the end of every task**, with the test and implementation in the same commit.
 
 ---
@@ -36,7 +38,7 @@ Files created in Phase 1. Line estimates are guidance, not targets.
 |---|---|
 | `pyproject.toml` | Package metadata, deps, extras, ruff/mypy/pytest config |
 | `src/xwalk/__init__.py` | Public surface re-exports, `__version__` |
-| `src/xwalk/records.py` | `Record`, `RetrievalHit`, `Candidate`, `Usage`, `Attempt`, `MatchResult`, `MatchStatus`, `DecisionReason` |
+| `src/xwalk/records.py` | `Record`, `RetrievalHit`, `Candidate`, `Usage`, **`RetryProposal`**, `Attempt`, `MatchResult`, `MatchStatus`, `DecisionReason` |
 | `src/xwalk/fingerprint.py` | `canonical_json`, `hash_value`, `hash_record`, `run_fingerprint`, `result_key` |
 | `src/xwalk/templates.py` | `TemplateSet` — compiles and renders the four Jinja2 templates |
 | `src/xwalk/sources/base.py` | `RecordSource` protocol |
@@ -44,6 +46,7 @@ Files created in Phase 1. Line estimates are guidance, not targets.
 | `src/xwalk/stores/base.py` | `TargetStore` protocol |
 | `src/xwalk/stores/memory.py` | `MemoryStore` |
 | `src/xwalk/retrieval/base.py` | `SearchRequest`, `Retriever` protocol, `RetrieverError` |
+| `src/xwalk/llm/cache.py` | `CachingLLM` — ledger-backed response cache |
 | `src/xwalk/retrieval/bm25.py` | `BM25Retriever` — Tantivy index build + search |
 | `src/xwalk/retrieval/fusion.py` | `reciprocal_rank_fusion` |
 | `src/xwalk/llm/base.py` | `LLMClient` protocol, `LLMCapabilities`, `LLMRequest`, `LLMResponse`, error types |
@@ -51,17 +54,19 @@ Files created in Phase 1. Line estimates are guidance, not targets.
 | `src/xwalk/llm/fake.py` | `FakeLLM` — scripted offline client |
 | `src/xwalk/llm/openai_compat.py` | `OpenAICompatClient` — structured output, backoff, capability profiles |
 | `src/xwalk/stages/keying.py` | `assign_keys`, `resolve_key`, `Resolution` |
-| `src/xwalk/stages/proposals.py` | `RetryProposal`, `route_proposals` |
+| `src/xwalk/stages/proposals.py` | `route_proposals`, `normalise_query` (`RetryProposal` itself lives in `records.py`, so stages and serde share one definition) |
 | `src/xwalk/stages/select.py` | `Selector`, `SelectorPolicy`, `SelectionOutcome` |
 | `src/xwalk/stages/gate.py` | `Scorer`, `Verifier`, `ScoreOutcome`, `VerifierVerdict` |
 | `src/xwalk/stages/rewrite.py` | `QueryRewriter` |
-| `src/xwalk/policy.py` | `MatchPolicy`, `derive_status` |
+| `src/xwalk/policy.py` | `MatchPolicy`, `derive_status`, `should_verify`, `should_audit` |
+| `src/xwalk/serde.py` | `result_to_dict`, `result_from_dict` |
 | `src/xwalk/matcher.py` | `Matcher` — the attempt loop |
 | `src/xwalk/ledger.py` | SQLite WAL ledger: results, LLM cache, review overlay |
 | `src/xwalk/batch.py` | `run_batch`, `BatchReport`, exports |
 | `src/xwalk/review.py` | `export_review`, `apply_review` |
 | `src/xwalk/prompts/base/{select,score,verify,rewrite}.j2` | Contract-safe skeletons |
 | `src/xwalk/prompts/contract.py` | Slots model + skeleton contract validation |
+| `tests/__init__.py` | Makes `tests` a package so modules can share fixtures |
 | `tests/fixtures/targets_tiny.csv` | 5-row target collection |
 | `tests/fixtures/sources_tiny.csv` | 4-row source collection |
 
@@ -252,8 +257,9 @@ Only the four types the tests exercise. `Attempt` and `MatchResult` arrive in Ta
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -343,9 +349,12 @@ class Usage:
 ```python
 """xwalk — LLM-RAG record matching between two collections."""
 
-from xwalk.records import Candidate, Record, RetrievalHit, Usage
-
+# Defined before any submodule import and kept that way: `batch.py` (Task 18) does
+# `from xwalk import __version__`, which fails if a submodule import above this line
+# ever pulls `xwalk.batch` back in while __version__ is still unbound.
 __version__ = "0.1.0.dev0"
+
+from xwalk.records import Candidate, Record, RetrievalHit, Usage
 
 __all__ = ["Candidate", "Record", "RetrievalHit", "Usage", "__version__"]
 ```
@@ -456,9 +465,7 @@ def test_hash_record_ignores_field_insertion_order():
 def test_run_fingerprint_changes_when_any_component_changes():
     base = dict(model="gpt-4o", target="t1", policy={"accept_at": 0.6})
     assert run_fingerprint(**base) != run_fingerprint(**{**base, "model": "gpt-4o-mini"})
-    assert run_fingerprint(**base) != run_fingerprint(
-        **{**base, "policy": {"accept_at": 0.7}}
-    )
+    assert run_fingerprint(**base) != run_fingerprint(**{**base, "policy": {"accept_at": 0.7}})
 
 
 def test_run_fingerprint_ignores_keyword_order():
@@ -495,9 +502,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from xwalk.records import Record
@@ -627,7 +635,9 @@ from xwalk.templates import TemplateError, TemplateSet
 
 TINY = dict(
     query="{{ mention }}",
-    context="{% if context_left %}{{ context_left }} [{{ mention }}] {{ context_right }}{% endif %}",
+    context=(
+        "{% if context_left %}{{ context_left }} [{{ mention }}] {{ context_right }}{% endif %}"
+    ),
     doc="{{ label }} {{ synonyms | join(' ') }}",
     candidate="ID: {{ id }}\nLabel: {{ label }}",
 )
@@ -716,9 +726,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from jinja2 import Environment, Template
+from jinja2 import Environment, Template, Undefined
 from jinja2 import TemplateSyntaxError as JinjaSyntaxError
-from jinja2 import Undefined
 
 from xwalk.fingerprint import hash_value
 from xwalk.records import Record
@@ -776,9 +785,7 @@ class TemplateSet:
         try:
             return _tidy(self._compiled[name].render(**variables))
         except Exception as exc:  # noqa: BLE001 - any Jinja runtime error is a template error
-            raise TemplateError(
-                f"{name} template failed on record {record.id!r}: {exc}"
-            ) from exc
+            raise TemplateError(f"{name} template failed on record {record.id!r}: {exc}") from exc
 
     def render_query(self, record: Record) -> str:
         return self._render("query", record)
@@ -1044,7 +1051,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.sources'`.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from xwalk.records import Record
 
@@ -1075,8 +1082,9 @@ from __future__ import annotations
 import csv
 import json
 import sys
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any
 
 from xwalk.records import Record
 
@@ -1103,8 +1111,7 @@ def csv_source(
         reader = csv.DictReader(handle, delimiter=delimiter)
         if reader.fieldnames is None or id_column not in reader.fieldnames:
             raise ValueError(
-                f"id_column {id_column!r} not found in {path}; "
-                f"columns are {reader.fieldnames!r}"
+                f"id_column {id_column!r} not found in {path}; columns are {reader.fieldnames!r}"
             )
         for line_no, row in enumerate(reader, start=2):  # header is line 1
             raw_id = (row.pop(id_column) or "").strip()
@@ -1158,7 +1165,8 @@ the retriever still has to hold every target record in memory.
 
 from __future__ import annotations
 
-from typing import Protocol, Sequence, runtime_checkable
+from collections.abc import Sequence
+from typing import Protocol, runtime_checkable
 
 from xwalk.records import Record
 
@@ -1195,7 +1203,7 @@ __all__ = ["MemoryStore", "TargetStore"]
 
 from __future__ import annotations
 
-from typing import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 
 from xwalk.fingerprint import hash_record, hash_value
 from xwalk.records import Record
@@ -1282,9 +1290,13 @@ git commit -m "feat: record sources and in-memory target store"
 
 **Interfaces:**
 - Consumes: `Record` (Task 1), `hash_value` (Task 2), `TemplateSet` (Task 3), `TargetStore`/`MemoryStore` (Task 4).
-- Produces: `SearchRequest(text: str, limit: int, filters: Mapping[str, Any] | None = None, source_record: Record | None = None)`; `Retriever` protocol with `name: str`, `fingerprint: str`, `async search(request) -> Sequence[RetrievalHit]`; `RetrieverError`; `BM25Retriever.build(records, templates, index_dir, *, name="bm25") -> BM25Retriever` and `BM25Retriever.open(index_dir, *, name="bm25") -> BM25Retriever`. Tasks 6, 17 consume these.
+- Produces: `SearchRequest(text: str, limit: int, filters: Mapping[str, Any] | None = None, source_record: Record | None = None)`; `Retriever` protocol with `name: str`, `fingerprint: str`, `default_limit: int`, `async search(request) -> Sequence[RetrievalHit]`; `RetrieverError`; `sanitise_query(text) -> str`; `BM25Retriever.build(records, templates, index_dir, *, name="bm25", exact_fields=(), default_limit=20) -> BM25Retriever` and `BM25Retriever.open(index_dir, *, name=None) -> BM25Retriever`, with attribute `empty_doc_count: int`. Tasks 6, 17 consume these.
 
 **Why the first step is a scratch script:** this plan will not assert a third-party API it has not verified. Tantivy's Python bindings have changed shape across releases. Verify, then write.
+
+**Why there is an exact-match field.** `test_exact_label_match_ranks_first` is a *requirement*, and plain BM25 over one concatenated text field does not satisfy it. On this plan's own fixture, the query `glucose` ranks `CHEBI:15903` (*beta-D-glucose*) **above** `CHEBI:17234` (*glucose*): the former tokenises to `beta`/`d`/`glucose`, contains `glucose` twice counting `D-glucose` in its definition, and is the shorter document, so term frequency and length normalisation both favour it. Field boosting does not fix this — it scales both documents. The fix is a second field, `exact`, indexed with Tantivy's `raw` tokeniser holding the whole lower-cased value of each field named in `exact_fields` (label and synonyms), queried as a boosted term query and OR-ed with the ordinary BM25 text query. An exact whole-string hit then dominates, and everything else degrades to normal BM25. With `exact_fields=()` the retriever behaves exactly as a plain BM25 index.
+
+`default_limit` lives on the retriever because the spec is explicit that "retrieval depth `k` belongs to each retriever's own configuration — a BM25 and a dense retriever have no reason to share a depth." `Matcher.retriever_limit` is only the fallback for a retriever that does not declare one.
 
 - [ ] **Step 1: Verify the Tantivy API before writing any code against it**
 
@@ -1319,7 +1331,23 @@ print("doc:", doc, "record_id ->", doc["record_id"])
 PY
 ```
 
-Record the real names in a scratch note. If any of `SchemaBuilder`, `Index(schema, path=...)`, `index.writer()`, `writer.add_document(tantivy.Document(...))`, `writer.commit()`, `index.reload()`, `index.searcher()`, `index.parse_query(text, [field])`, `result.hits` as `(score, address)` pairs, or `searcher.doc(address)[field]` returning a **list** differ from the above, adapt Step 5's code to what you observed and note the deviation in the commit message. **Do not adapt the tests** — they are written against behaviour, not against Tantivy.
+Then probe the second group of names, which the exact-match field needs:
+
+```bash
+python - <<'PY'
+import tantivy, inspect
+print("exports:", sorted(n for n in dir(tantivy) if not n.startswith("_")))
+print("add_text_field:", inspect.signature(tantivy.SchemaBuilder.add_text_field))
+print("parse_query:", inspect.signature(tantivy.Index.parse_query))
+print("Occur:", [n for n in dir(tantivy.Occur) if not n.startswith("_")])
+for n in ("term_query", "boost_query", "boolean_query"):
+    print(n, "->", (getattr(tantivy.Query, n).__doc__ or "?").strip().splitlines()[0])
+PY
+```
+
+Record the real names in a scratch note. If any of `SchemaBuilder`, `add_text_field(..., tokenizer_name="raw")`, `Index(schema, path=...)`, `index.writer()`, `writer.add_document(tantivy.Document(...))`, `document.add_text(field, value)`, `writer.commit()`, `index.reload()`, `index.searcher()`, `index.parse_query(text, [field])`, `tantivy.Query.term_query(schema, field, value)`, `tantivy.Query.boost_query(query, boost)`, `tantivy.Query.boolean_query([(tantivy.Occur.Should, q), ...])`, `result.hits` as `(score, address)` pairs, or `searcher.doc(address)[field]` returning a **list** differ from the above, adapt Step 5's code to what you observed and note the deviation in the commit message. **Do not adapt the tests** — they are written against behaviour, not against Tantivy.
+
+Verified against `tantivy 0.26.0` (index format v7) at the time of writing: every name above exists with these shapes, and `searcher.doc(address)["record_id"]` returns a one-element list.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1341,15 +1369,38 @@ DOC_TEMPLATES = TemplateSet(
 )
 
 
+EXACT_FIELDS = ("label", "synonyms")
+
+
 @pytest.fixture
 def retriever(targets_csv, tmp_path):
     records = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
-    return BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "idx")
+    return BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "idx", exact_fields=EXACT_FIELDS)
 
 
 async def test_exact_label_match_ranks_first(retriever):
+    """Plain BM25 puts beta-D-glucose first here — it contains 'glucose' twice in a
+    shorter document. The exact field is what makes this assertion a requirement."""
     hits = await retriever.search(SearchRequest(text="glucose", limit=5))
     assert hits[0].record_id == "CHEBI:17234"
+
+
+async def test_an_exact_synonym_outranks_a_partial_label_match(retriever):
+    hits = await retriever.search(SearchRequest(text="table sugar", limit=5))
+    assert hits[0].record_id == "CHEBI:17992"
+
+
+async def test_without_exact_fields_it_is_a_plain_bm25_index(targets_csv, tmp_path):
+    """`exact_fields=()` must still build, search, and return hits — the exact field is
+    an opt-in ranking aid, never a requirement for the retriever to function."""
+    records = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
+    plain = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "plain")
+    hits = await plain.search(SearchRequest(text="glucose", limit=5))
+    assert [h.record_id for h in hits]
+
+
+async def test_default_limit_is_exposed_for_the_matcher(retriever):
+    assert retriever.default_limit == 20
 
 
 async def test_synonyms_are_searchable(retriever):
@@ -1389,11 +1440,28 @@ async def test_query_syntax_characters_are_treated_as_text(retriever):
 
 async def test_open_reuses_a_built_index(targets_csv, tmp_path):
     records = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
-    built = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "idx")
+    built = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "idx", exact_fields=EXACT_FIELDS)
     reopened = BM25Retriever.open(tmp_path / "idx")
     assert reopened.fingerprint == built.fingerprint
     hits = await reopened.search(SearchRequest(text="glucose", limit=5))
     assert hits[0].record_id == "CHEBI:17234"
+
+
+def test_open_restores_the_name_and_exact_fields_from_meta(targets_csv, tmp_path):
+    records = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
+    BM25Retriever.build(
+        records, DOC_TEMPLATES, tmp_path / "idx", name="lexical", exact_fields=EXACT_FIELDS
+    )
+    reopened = BM25Retriever.open(tmp_path / "idx")
+    assert reopened.name == "lexical"
+
+
+def test_fingerprint_changes_with_the_exact_fields(targets_csv, tmp_path):
+    """Exact fields change ranking, so they must change the index fingerprint."""
+    records = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
+    a = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "a", exact_fields=EXACT_FIELDS)
+    b = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "b")
+    assert a.fingerprint != b.fingerprint
 
 
 def test_fingerprint_changes_with_the_doc_template(targets_csv, tmp_path):
@@ -1441,8 +1509,9 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.retrieval'`.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from xwalk.records import Record, RetrievalHit
 
@@ -1475,6 +1544,14 @@ class Retriever(Protocol):
     def fingerprint(self) -> str:
         """Digest of index content and configuration. Feeds the run fingerprint."""
 
+    @property
+    def default_limit(self) -> int:
+        """This retriever's own retrieval depth.
+
+        Depth belongs here rather than on the matcher: a BM25 index and a dense index
+        have no reason to share a `k`. The matcher supplies a fallback only.
+        """
+
     async def search(self, request: SearchRequest) -> Sequence[RetrievalHit]:
         """Return hits ranked best-first with 1-based contiguous ranks."""
 
@@ -1482,23 +1559,19 @@ class Retriever(Protocol):
 __all__ = ["Retriever", "RetrieverError", "SearchRequest"]
 ```
 
-`src/xwalk/retrieval/__init__.py`:
+`src/xwalk/retrieval/__init__.py` — **note what is *not* here.** `fusion` does not exist until Task 6, and `__init__.py` runs before any submodule import, so naming it now would make `from xwalk.retrieval.base import SearchRequest` raise `ModuleNotFoundError` and fail all of this task's tests for the wrong reason. Task 6 Step 5 adds the fusion line.
 
 ```python
 from xwalk.retrieval.base import Retriever, RetrieverError, SearchRequest
 from xwalk.retrieval.bm25 import BM25Retriever
-from xwalk.retrieval.fusion import reciprocal_rank_fusion
 
 __all__ = [
     "BM25Retriever",
     "Retriever",
     "RetrieverError",
     "SearchRequest",
-    "reciprocal_rank_fusion",
 ]
 ```
-
-(`fusion` lands in Task 6; write this `__init__.py` at the end of Task 6, or import lazily until then.)
 
 - [ ] **Step 5: Write `src/xwalk/retrieval/bm25.py`**
 
@@ -1519,8 +1592,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import tantivy
 
@@ -1543,15 +1616,47 @@ def sanitise_query(text: str) -> str:
     return _WS.sub(" ", _QUERY_SYNTAX.sub(" ", text)).strip()
 
 
+# An exact whole-string hit on a label or synonym must outrank a document that merely
+# happens to contain the query term more often. 10.0 is comfortably above any BM25 score
+# the tokenised `text` field produces on a collection of this shape.
+_EXACT_BOOST = 10.0
+
+# Tantivy's `writer()` defaults are heap_size=128 MB and num_threads=0, where 0 means
+# "one indexing thread per core" — and the heap is allocated *per thread*. On a 64-core
+# machine that is an 8 GB arena, which costs ~7 s to set up whether the index holds five
+# documents or five million. These defaults are deliberately modest; raise them for large
+# collections. Tantivy's own floor is 15 MB.
+_WRITER_HEAP_BYTES = 50_000_000
+_WRITER_THREADS = 1
+
+
 def _build_schema() -> tantivy.Schema:
     builder = tantivy.SchemaBuilder()
     builder.add_text_field("record_id", stored=True)
+    # `raw` = no tokenisation: the whole field value is one term, so "glucose" matches
+    # the label "glucose" but not the label "beta-D-glucose".
+    builder.add_text_field("exact", stored=False, tokenizer_name="raw")
     builder.add_text_field("text", stored=False)
     return builder.build()
 
 
+def _exact_forms(record: Record, exact_fields: Sequence[str]) -> list[str]:
+    """Every whole-string form of a record that should count as an exact match."""
+    forms: list[str] = []
+    for field_name in exact_fields:
+        value = record.fields.get(field_name)
+        if value is None:
+            continue
+        candidates = [value] if isinstance(value, str) else list(value)
+        for candidate in candidates:
+            text = str(candidate).strip().lower()
+            if text and text not in forms:
+                forms.append(text)
+    return forms
+
+
 class BM25Retriever:
-    """Tantivy-backed BM25. Build once, reuse across runs via `open`."""
+    """Tantivy-backed BM25, with an opt-in exact-match field. Reuse via `open`."""
 
     def __init__(
         self,
@@ -1559,11 +1664,15 @@ class BM25Retriever:
         *,
         name: str,
         fingerprint: str,
+        exact_fields: Sequence[str] = (),
+        default_limit: int = 20,
         empty_doc_count: int = 0,
     ) -> None:
         self._index = index
         self._name = name
         self._fingerprint = fingerprint
+        self._exact_fields = tuple(exact_fields)
+        self._default_limit = default_limit
         self.empty_doc_count = empty_doc_count
 
     @property
@@ -1574,6 +1683,10 @@ class BM25Retriever:
     def fingerprint(self) -> str:
         return self._fingerprint
 
+    @property
+    def default_limit(self) -> int:
+        return self._default_limit
+
     @classmethod
     def build(
         cls,
@@ -1582,11 +1695,15 @@ class BM25Retriever:
         index_dir: str | Path,
         *,
         name: str = "bm25",
+        exact_fields: Sequence[str] = (),
+        default_limit: int = 20,
+        writer_heap_bytes: int = _WRITER_HEAP_BYTES,
+        writer_threads: int = _WRITER_THREADS,
     ) -> BM25Retriever:
         index_dir = Path(index_dir)
         index_dir.mkdir(parents=True, exist_ok=True)
         index = tantivy.Index(_build_schema(), path=str(index_dir))
-        writer = index.writer()
+        writer = index.writer(heap_size=writer_heap_bytes, num_threads=writer_threads)
 
         digests: list[str] = []
         empty = 0
@@ -1594,7 +1711,10 @@ class BM25Retriever:
             text = templates.render_doc(record)
             if not text:
                 empty += 1
-            writer.add_document(tantivy.Document(record_id=record.id, text=text))
+            document = tantivy.Document(record_id=record.id, text=text)
+            for form in _exact_forms(record, exact_fields):
+                document.add_text("exact", form)
+            writer.add_document(document)
             digests.append(hash_record(record))
         writer.commit()
         index.reload()
@@ -1603,6 +1723,7 @@ class BM25Retriever:
             {
                 "engine": "tantivy-bm25",
                 "doc_template": templates.doc,
+                "exact_fields": list(exact_fields),
                 "records": sorted(digests),
             }
         )
@@ -1612,6 +1733,8 @@ class BM25Retriever:
                     "engine": "tantivy-bm25",
                     "name": name,
                     "fingerprint": fingerprint,
+                    "exact_fields": list(exact_fields),
+                    "default_limit": default_limit,
                     "doc_count": len(digests),
                     "empty_doc_count": empty,
                 },
@@ -1619,10 +1742,18 @@ class BM25Retriever:
             ),
             encoding="utf-8",
         )
-        return cls(index, name=name, fingerprint=fingerprint, empty_doc_count=empty)
+        return cls(
+            index,
+            name=name,
+            fingerprint=fingerprint,
+            exact_fields=exact_fields,
+            default_limit=default_limit,
+            empty_doc_count=empty,
+        )
 
     @classmethod
     def open(cls, index_dir: str | Path, *, name: str | None = None) -> BM25Retriever:
+        """Reopen a built index. `name` overrides the one recorded at build time."""
         index_dir = Path(index_dir)
         meta_path = index_dir / _META_FILE
         if not meta_path.exists():
@@ -1636,6 +1767,8 @@ class BM25Retriever:
             index,
             name=name or meta["name"],
             fingerprint=meta["fingerprint"],
+            exact_fields=meta.get("exact_fields", ()),
+            default_limit=meta.get("default_limit", 20),
             empty_doc_count=meta.get("empty_doc_count", 0),
         )
 
@@ -1644,7 +1777,20 @@ class BM25Retriever:
         if not cleaned:
             return []
         searcher = self._index.searcher()
-        query = self._index.parse_query(cleaned, ["text"])
+        text_query = self._index.parse_query(cleaned, ["text"])
+        if self._exact_fields:
+            exact_query = tantivy.Query.boost_query(
+                tantivy.Query.term_query(self._index.schema, "exact", cleaned.lower()),
+                _EXACT_BOOST,
+            )
+            query = tantivy.Query.boolean_query(
+                [
+                    (tantivy.Occur.Should, exact_query),
+                    (tantivy.Occur.Should, text_query),
+                ]
+            )
+        else:
+            query = text_query
         result = searcher.search(query, limit)
         hits: list[RetrievalHit] = []
         for rank, (score, address) in enumerate(result.hits, start=1):
@@ -1669,7 +1815,7 @@ class BM25Retriever:
 - [ ] **Step 6: Run the tests**
 
 Run: `python -m pytest tests/test_bm25.py -v`
-Expected: 13 passed. If a ranking assertion fails because Tantivy's default tokeniser splits differently than expected, fix the *sanitiser or doc template*, not the assertion — "exact label match ranks first" is a requirement, not an observation.
+Expected: 18 passed, in well under a second with `TMPDIR` on tmpfs. If a ranking assertion fails, fix the *schema, sanitiser, or doc template* — never the assertion. "Exact label match ranks first" is a requirement, and the `exact` field is how it is met; see the note at the top of this task for why plain BM25 cannot meet it on this fixture.
 
 - [ ] **Step 7: Lint and type-check**
 
@@ -1813,7 +1959,7 @@ and a cosine similarity have no shared scale — by using rank position alone.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from xwalk.records import Candidate, RetrievalHit
 from xwalk.stores.base import TargetStore
@@ -1933,12 +2079,12 @@ def test_strips_thinking_and_reasoning_tags():
 
 
 def test_strips_a_multiline_think_block():
-    assert strip_thinking("<think>\nline1\nline2\n</think>\n{\"a\": 1}") == '{"a": 1}'
+    assert strip_thinking('<think>\nline1\nline2\n</think>\n{"a": 1}') == '{"a": 1}'
 
 
 def test_handles_a_dangling_closing_tag():
     """Some models emit reasoning with no opening tag. Everything before </think> is reasoning."""
-    assert strip_thinking("I should pick C01.\n</think>\n{\"chosen_key\": \"C01\"}") == (
+    assert strip_thinking('I should pick C01.\n</think>\n{"chosen_key": "C01"}') == (
         '{"chosen_key": "C01"}'
     )
 
@@ -2033,8 +2179,9 @@ declaration only decides what to **ask** for, never whether to **trust** the ans
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from xwalk.records import Usage
 
@@ -2142,9 +2289,7 @@ from typing import Any
 from xwalk.llm.base import ParseError
 
 _TAGS = ("think", "thinking", "reasoning")
-_PAIRED = re.compile(
-    r"<(" + "|".join(_TAGS) + r")\b[^>]*>.*?</\1\s*>", re.IGNORECASE | re.DOTALL
-)
+_PAIRED = re.compile(r"<(" + "|".join(_TAGS) + r")\b[^>]*>.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
 _DANGLING_CLOSE = re.compile(r"^.*?</(?:" + "|".join(_TAGS) + r")\s*>", re.IGNORECASE | re.DOTALL)
 _UNCLOSED_OPEN = re.compile(r"<(?:" + "|".join(_TAGS) + r")\b[^>]*>.*$", re.IGNORECASE | re.DOTALL)
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.IGNORECASE | re.DOTALL)
@@ -2185,11 +2330,10 @@ def extract_json_object(text: str) -> str | None:
             if depth == 0:
                 start = i
             depth += 1
-        elif ch == "}":
-            if depth > 0:
-                depth -= 1
-                if depth == 0:
-                    return haystack[start : i + 1]
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                return haystack[start : i + 1]
     return None
 
 
@@ -2215,19 +2359,18 @@ def parse_json_object(raw: str) -> dict[str, Any]:
     extracted = extract_json_object(cleaned)
     if extracted:
         try:
-            value = json.loads(repair_json(extracted))
+            repaired = json.loads(repair_json(extracted))
         except json.JSONDecodeError:
-            pass
-        else:
-            if isinstance(value, dict):
-                return value
+            repaired = None
+        if isinstance(repaired, dict):
+            return repaired
     raise ParseError("could not extract a JSON object from the response", raw=raw)
 ```
 
 - [ ] **Step 5: Run the parsing tests**
 
 Run: `python -m pytest tests/test_parsing.py -v`
-Expected: 21 passed.
+Expected: 20 passed.
 
 - [ ] **Step 6: Write the failing `FakeLLM` test**
 
@@ -2295,8 +2438,13 @@ async def test_default_capabilities_claim_nothing():
     llm = FakeLLM(["x"])
     caps = llm.capabilities
     assert not any(
-        [caps.json_schema, caps.strict_schema, caps.usage_reporting, caps.seed,
-         caps.native_retry_after]
+        [
+            caps.json_schema,
+            caps.strict_schema,
+            caps.usage_reporting,
+            caps.seed,
+            caps.native_retry_after,
+        ]
     )
 
 
@@ -2321,7 +2469,7 @@ async def test_fatal_errors_pass_through_unchanged():
 
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 from xwalk.fingerprint import hash_value
 from xwalk.llm.base import LLMCapabilities, LLMRequest, LLMResponse
@@ -2442,7 +2590,7 @@ __all__ = [
 - [ ] **Step 8: Run the tests, lint, type-check**
 
 Run: `python -m pytest tests/test_parsing.py tests/test_fake_llm.py -v && python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
-Expected: 32 passed, clean lint and types.
+Expected: 31 passed, clean lint and types.
 
 - [ ] **Step 9: Commit**
 
@@ -2462,7 +2610,7 @@ git commit -m "feat: LLM protocol, robust response parsing, and FakeLLM"
 
 **Interfaces:**
 - Consumes: everything from Task 7.
-- Produces: `OpenAICompatClient(base_url, model, *, api_key=None, capabilities=None, profile="unknown", temperature=0.0, max_tokens=1024, timeout=120.0, max_retries=5, transport=None)`; `CAPABILITY_PROFILES: Mapping[str, LLMCapabilities]`. Task 17 consumes it; Task 18 reads its `fingerprint`.
+- Produces: `OpenAICompatClient(base_url, model, *, api_key=None, capabilities=None, profile="unknown", temperature=0.0, max_tokens=1024, timeout=120.0, max_retries=5, backoff_base=1.0, backoff_cap=30.0, transport=None, extra_headers=None)`; `CAPABILITY_PROFILES: Mapping[str, LLMCapabilities]`. Task 17 consumes it; Task 18 reads its `fingerprint`.
 
 **Design note:** tests inject an `httpx.MockTransport`, so this task is fully offline apart from one `@pytest.mark.integration` test that skips without `XWALK_TEST_API_KEY`. Never trust a capability claim: even `strict_schema=True` output goes through `parse_json_object` at the call sites.
 
@@ -2483,7 +2631,7 @@ from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
 SCHEMA = {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"]}
 
 
-def ok_body(content: str = '{"a": "x"}") -> dict:
+def ok_body(content: str = '{"a": "x"}') -> dict:
     return {
         "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 11, "completion_tokens": 3},
@@ -2641,22 +2789,34 @@ async def test_non_retryable_statuses_raise_fatal_immediately(status):
     assert calls["n"] == 1
 
 
-async def test_honours_retry_after_only_when_declared():
-    seen = []
+def retry_after_handler(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(429, headers={"retry-after": "7"}, json={})
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(1)
-        return httpx.Response(429, headers={"retry-after": "7"}, json={})
 
+async def test_honours_retry_after_when_declared():
+    """`max_retries=0` so the header is read but never slept on — the test must not
+    actually wait 7 seconds to assert that it parsed 7 seconds."""
     declared = client(
-        handler,
+        retry_after_handler,
         capabilities=LLMCapabilities(native_retry_after=True),
-        max_retries=1,
+        max_retries=0,
         backoff_base=0.0,
     )
     with pytest.raises(LLMRetryableError) as exc:
         await declared.complete(LLMRequest(system="", user="u"))
     assert exc.value.retry_after == 7.0
+
+
+async def test_ignores_retry_after_when_not_declared():
+    undeclared = client(
+        retry_after_handler,
+        capabilities=LLMCapabilities(native_retry_after=False),
+        max_retries=0,
+        backoff_base=0.0,
+    )
+    with pytest.raises(LLMRetryableError) as exc:
+        await undeclared.complete(LLMRequest(system="", user="u"))
+    assert exc.value.retry_after is None
 
 
 async def test_a_connection_error_is_retryable():
@@ -2683,8 +2843,13 @@ def test_profiles_exist_for_the_endpoints_we_document():
 def test_the_unknown_profile_claims_nothing():
     caps = CAPABILITY_PROFILES["unknown"]
     assert not any(
-        [caps.json_schema, caps.strict_schema, caps.usage_reporting, caps.seed,
-         caps.native_retry_after]
+        [
+            caps.json_schema,
+            caps.strict_schema,
+            caps.usage_reporting,
+            caps.seed,
+            caps.native_retry_after,
+        ]
     )
 
 
@@ -2702,11 +2867,15 @@ def test_fingerprint_changes_with_the_model():
 def test_fingerprint_ignores_the_api_key():
     """Rotating a key must not invalidate a resumable run — and must not leak into it."""
     a = OpenAICompatClient(
-        base_url="https://example.invalid/v1", model="m", api_key="key-one",
+        base_url="https://example.invalid/v1",
+        model="m",
+        api_key="key-one",
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json=ok_body())),
     )
     b = OpenAICompatClient(
-        base_url="https://example.invalid/v1", model="m", api_key="key-two",
+        base_url="https://example.invalid/v1",
+        model="m",
+        api_key="key-two",
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json=ok_body())),
     )
     assert a.fingerprint == b.fingerprint
@@ -2733,8 +2902,6 @@ async def test_against_a_real_provider():
     assert parse_json_object(response.text)["a"] == "x"
 ```
 
-Note the deliberate typo guard: `ok_body`'s default argument in the snippet above uses mismatched quotes. Fix it to `def ok_body(content: str = '{"a": "x"}') -> dict:` when you paste it.
-
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `python -m pytest tests/test_openai_compat.py -v -m "not integration"`
@@ -2748,7 +2915,8 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.llm.openai_compa
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 import httpx
 
@@ -2998,7 +3166,7 @@ class OpenAICompatClient:
 - [ ] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_openai_compat.py -v -m "not integration"`
-Expected: all pass; the integration test is deselected.
+Expected: 30 passed (20 test functions, two of which parametrise status codes); the integration test is deselected.
 
 Then confirm the integration test skips cleanly rather than erroring:
 Run: `python -m pytest tests/test_openai_compat.py -v -m integration`
@@ -3043,9 +3211,7 @@ from xwalk.records import Candidate, Record, RetrievalHit
 from xwalk.stages.keying import Resolution, assign_keys, resolve_key
 from xwalk.templates import TemplateSet
 
-TEMPLATES = TemplateSet(
-    query="", context="", doc="", candidate="ID: {{ id }}\nLabel: {{ label }}"
-)
+TEMPLATES = TemplateSet(query="", context="", doc="", candidate="ID: {{ id }}\nLabel: {{ label }}")
 
 
 def candidate(record_id: str, label: str, score: float = 0.5) -> Candidate:
@@ -3092,6 +3258,7 @@ def test_empty_candidate_list_produces_no_keys():
 
 # --- resolution: the happy paths -------------------------------------------------
 
+
 def test_resolves_an_issued_key(keyed):
     choice = resolve_key("C01", keyed)
     assert choice.record_id == "NCBIGene:3"
@@ -3117,6 +3284,7 @@ def test_abstention_is_recognised(raw, keyed):
 
 
 # --- resolution: the adversarial cases opaque keys exist to prevent ---------------
+
 
 def test_a_hallucinated_numeric_id_never_becomes_a_rank(keyed):
     """The exact failure mode of the paper repo's resolver: '3' must not mean C03,
@@ -3144,6 +3312,33 @@ def test_a_prefix_stripped_id_does_not_resolve(keyed):
     assert resolve_key("3", keyed).record_id is None
 
 
+def test_an_id_from_another_namespace_does_not_resolve(keyed):
+    """The spec's third adversarial case. `CHEBI:3` shares its local part with the
+    candidate `NCBIGene:3`, which is exactly the collision CURIE-prefix stripping
+    creates. Strict mode must not see them as the same entity."""
+    choice = resolve_key("CHEBI:3", keyed)
+    assert choice.record_id is None
+    assert choice.resolution is Resolution.UNRESOLVED
+
+
+def test_legacy_mode_also_refuses_a_foreign_namespace_suffix_collision(keyed):
+    """Legacy mode keeps a suffix map for reproducing prior work. It must key on the
+    bare suffix only, never accept a *different* namespace that happens to end in it —
+    otherwise `CHEBI:3` silently becomes the real record `NCBIGene:3`."""
+    choice = resolve_key("CHEBI:3", keyed, legacy=True)
+    assert choice.record_id is None
+    assert choice.resolution is Resolution.UNRESOLVED
+
+
+def test_a_key_issued_by_a_previous_attempt_does_not_resolve():
+    """Keys are issued per attempt. A five-candidate attempt issues C05; if the next
+    attempt has two candidates, C05 must not resolve against it."""
+    wide = assign_keys([candidate(f"T{i}", f"L{i}") for i in range(5)], TEMPLATES)
+    narrow = assign_keys([candidate("T0", "L0"), candidate("T1", "L1")], TEMPLATES)
+    assert resolve_key("C05", wide).record_id == "T4"
+    assert resolve_key("C05", narrow).resolution is Resolution.UNRESOLVED
+
+
 def test_prose_does_not_resolve(keyed):
     assert resolve_key("I think it is C01, the first one", keyed).resolution is (
         Resolution.UNRESOLVED
@@ -3155,6 +3350,7 @@ def test_the_raw_answer_is_always_preserved_for_the_trace(keyed):
 
 
 # --- legacy mode -----------------------------------------------------------------
+
 
 def test_legacy_mode_accepts_an_exact_record_id(keyed):
     choice = resolve_key("NCBIGene:3", keyed, legacy=True)
@@ -3214,9 +3410,9 @@ muddle: `null` is unambiguous where "-1" and "0" are values some scheme legitima
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Mapping, Sequence
 
 from xwalk.records import Candidate
 from xwalk.templates import TemplateSet
@@ -3340,7 +3536,9 @@ Note the ordering inside legacy mode: exact ID, then case-insensitive, then suff
 - [ ] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_keying.py -v`
-Expected: 25 passed. The `test_legacy_rank_out_of_range_does_not_resolve` case with `"99"` and a suffix map containing `"3"` and `"7"` must reach the rank branch and fail on range — verify that.
+Expected: 34 passed (24 test functions, one of which parametrises 8 abstention tokens, plus the 3 adversarial cases below). The `test_legacy_rank_out_of_range_does_not_resolve` case with `"99"` and a suffix map containing `"3"` and `"7"` must reach the rank branch and fail on range — verify that.
+
+The spec names four adversarial resolution cases that opaque keys exist to prevent, and each must reach `UNRESOLVED`, never a real record: a numeric hallucinated ID, an ID differing only by case, **an ID valid in another namespace**, and a key not issued this attempt. All four are now covered, the third by `test_an_id_from_another_namespace_does_not_resolve` and its legacy-mode twin. The legacy suffix map keys on the bare local part, so `"CHEBI:3"` never matches `"3"` — verify that branch rather than assuming it.
 
 - [ ] **Step 5: Lint, type-check, commit**
 
@@ -3363,7 +3561,7 @@ git commit -m "feat: opaque candidate keys with exact-only resolution"
 
 **Interfaces:**
 - Consumes: `Record` (Task 1), `hash_value` (Task 2).
-- Produces: `RubricRow`; `PromptSlots` (pydantic model, with `load_slots(path) -> PromptSlots`); `PromptSet.from_slots(slots, *, base_dir=None) -> PromptSet` with `render_select(...)`, `render_score(...)`, `render_verify(...)`, `render_rewrite(...)`, `fingerprint`; `SELECT_SCHEMA`, `SCORE_SCHEMA`, `VERIFY_SCHEMA`, `REWRITE_SCHEMA`; `validate_contract(prompts) -> None` raising `ContractError`. Tasks 11, 12, 13 consume these; Phase 2's optimizer rewrites only the slots.
+- Produces: `RubricRow`; `PromptSlots` (pydantic model, with `load_slots(path) -> PromptSlots`); `PromptSet.from_slots(slots, *, base_dir=None) -> PromptSet` with `render_select(...)`, `render_score(...)`, `render_verify(...)`, `render_rewrite(...)`, `fingerprint`; `SELECT_SCHEMA`, `SCORE_SCHEMA`, `VERIFY_SCHEMA`, `REWRITE_SCHEMA`; `BASE_DIR` (the shipped skeleton directory); `validate_contract(prompts) -> None` raising `ContractError`. Tasks 11, 12, 13 consume these; Phase 2's optimizer rewrites only the slots.
 
 **Design note:** the skeleton owns the fixed structure — role line, input blocks, opaque-key candidate list, rubric table, hard rules, JSON output contract. Domain content lives only in the slots file. A bad draft can therefore produce a poor rubric but never a broken prompt.
 
@@ -3398,9 +3596,15 @@ Domain: {{ slots.domain_brief }}
 - Abstain when no candidate is the same entity as the source record.
 
 ## Output
-Return only this JSON object:
-{"chosen_key": "C01" or null, "confidence_score": 0.0 to 1.0, "explanation": "one sentence"}
+Return only a JSON object of exactly this shape, where `chosen_key` is one of the keys
+above or null, and `confidence_score` is between 0.0 and 1.0:
+{"chosen_key": "C01", "confidence_score": 0.9, "explanation": "one sentence"}
 ```
+
+The example must be **literal, parseable JSON**. `contract.py` parses whatever follows
+`## Output` and asserts it has the schema's required keys, so a pseudo-JSON sketch like
+`{"chosen_key": "C01" or null}` fails validation outright. The variability belongs in the
+prose above the example, never inside it.
 
 - [ ] **Step 2: Write `src/xwalk/prompts/base/score.j2`**
 
@@ -3440,9 +3644,9 @@ Domain: {{ slots.domain_brief }}
 - Propose a search query only for an entity that is not present in any listed candidate.
 
 ## Output
-Return only this JSON object:
-{"confidence_score": 0.0 to 1.0, "explanation": "one sentence",
- "better_candidate_keys": ["C03"], "better_queries": ["alternative search string"]}
+Return only a JSON object of exactly this shape. `confidence_score` is between 0.0 and
+1.0; both lists may be empty:
+{"confidence_score": 0.7, "explanation": "one sentence", "better_candidate_keys": ["C03"], "better_queries": ["alternative search string"]}
 ```
 
 - [ ] **Step 3: Write `src/xwalk/prompts/base/verify.j2`**
@@ -3477,9 +3681,9 @@ Domain: {{ slots.domain_brief }}
 - Answer "no_match" if no listed candidate is the correct match.
 
 ## Output
-Return only this JSON object:
-{"decision": "support" or "disagree" or "no_match", "preferred_key": "C03" or null,
- "confidence_score": 0.0 to 1.0, "explanation": "one sentence"}
+Return only a JSON object of exactly this shape. `decision` is one of support, disagree,
+or no_match; `preferred_key` is one of the keys above or null:
+{"decision": "support", "preferred_key": null, "confidence_score": 0.8, "explanation": "one sentence"}
 ```
 
 - [ ] **Step 4: Write `src/xwalk/prompts/base/rewrite.j2`**
@@ -3525,8 +3729,8 @@ import json
 import pytest
 import yaml
 
-from xwalk.llm.parsing import parse_json_object
 from xwalk.prompts.contract import (
+    BASE_DIR,
     ContractError,
     PromptSet,
     PromptSlots,
@@ -3534,19 +3738,46 @@ from xwalk.prompts.contract import (
     validate_contract,
 )
 
+
+def skeleton_dir(tmp_path, **overrides: str):
+    """Copy the shipped skeletons into a temp dir, replacing the named ones."""
+    base = tmp_path / "base"
+    base.mkdir()
+    for name in ("select", "score", "verify", "rewrite"):
+        text = overrides.get(name, (BASE_DIR / f"{name}.j2").read_text(encoding="utf-8"))
+        (base / f"{name}.j2").write_text(text, encoding="utf-8")
+    return base
+
+
 SLOTS = PromptSlots(
     entity_noun="chemical entity mention",
     target_noun="ChEBI ontology term",
     domain_brief="biomedical chemistry nomenclature",
     rubric=[
-        {"score": 1.0, "name": "Certain", "when": "exact match to label or synonym",
-         "example": "garlic -> Garlic"},
-        {"score": 0.9, "name": "High", "when": "normalized form or common abbreviation",
-         "example": "ASA -> aspirin"},
-        {"score": 0.6, "name": "Plausible", "when": "a specific instance of the candidate",
-         "example": "Fuji apple -> apple"},
-        {"score": 0.4, "name": "Speculative", "when": "related by broad category only",
-         "example": "sugar -> carbohydrate"},
+        {
+            "score": 1.0,
+            "name": "Certain",
+            "when": "exact match to label or synonym",
+            "example": "garlic -> Garlic",
+        },
+        {
+            "score": 0.9,
+            "name": "High",
+            "when": "normalized form or common abbreviation",
+            "example": "ASA -> aspirin",
+        },
+        {
+            "score": 0.6,
+            "name": "Plausible",
+            "when": "a specific instance of the candidate",
+            "example": "Fuji apple -> apple",
+        },
+        {
+            "score": 0.4,
+            "name": "Speculative",
+            "when": "related by broad category only",
+            "example": "sugar -> carbohydrate",
+        },
     ],
     hard_rules=["Any difference in a regulated substance's name or number means a distinct entity"],
 )
@@ -3560,25 +3791,35 @@ def test_slots_reject_an_empty_rubric():
 def test_slots_reject_a_score_outside_zero_to_one():
     with pytest.raises(ValueError, match="between 0 and 1"):
         PromptSlots(
-            entity_noun="a", target_noun="b", domain_brief="c",
-            rubric=[{"score": 1.5, "name": "x", "when": "y"},
-                    {"score": 0.5, "name": "z", "when": "w"}],
+            entity_noun="a",
+            target_noun="b",
+            domain_brief="c",
+            rubric=[
+                {"score": 1.5, "name": "x", "when": "y"},
+                {"score": 0.5, "name": "z", "when": "w"},
+            ],
         )
 
 
 def test_slots_require_strictly_decreasing_scores():
     with pytest.raises(ValueError, match="decreasing"):
         PromptSlots(
-            entity_noun="a", target_noun="b", domain_brief="c",
-            rubric=[{"score": 0.5, "name": "x", "when": "y"},
-                    {"score": 0.9, "name": "z", "when": "w"}],
+            entity_noun="a",
+            target_noun="b",
+            domain_brief="c",
+            rubric=[
+                {"score": 0.5, "name": "x", "when": "y"},
+                {"score": 0.9, "name": "z", "when": "w"},
+            ],
         )
 
 
 def test_slots_require_at_least_two_rubric_rows():
     with pytest.raises(ValueError, match="at least 2"):
         PromptSlots(
-            entity_noun="a", target_noun="b", domain_brief="c",
+            entity_noun="a",
+            target_noun="b",
+            domain_brief="c",
             rubric=[{"score": 0.9, "name": "x", "when": "y"}],
         )
 
@@ -3626,8 +3867,11 @@ def test_score_prompt_shows_the_whole_source_record_not_a_query():
 
 def test_score_prompt_renders_every_rubric_row():
     rendered = PromptSet.from_slots(SLOTS).render_score(
-        source_fields={"a": "b"}, context="", chosen_block="x",
-        other_candidates="", review_floor=0.4,
+        source_fields={"a": "b"},
+        context="",
+        chosen_block="x",
+        other_candidates="",
+        review_floor=0.4,
     )
     for row in SLOTS.rubric:
         assert row.name in rendered
@@ -3643,8 +3887,11 @@ def test_verify_prompt_offers_all_three_decisions():
 
 def test_rewrite_prompt_lists_previous_queries():
     rendered = PromptSet.from_slots(SLOTS).render_rewrite(
-        source_fields={"a": "b"}, context="", previous_queries=["glucose", "dextrose"],
-        best_candidates="", max_queries=2,
+        source_fields={"a": "b"},
+        context="",
+        previous_queries=["glucose", "dextrose"],
+        best_candidates="",
+        max_queries=2,
     )
     assert "- glucose" in rendered and "- dextrose" in rendered
 
@@ -3666,14 +3913,30 @@ def test_the_declared_output_examples_parse_as_their_schemas():
 
 
 def test_contract_validation_rejects_a_skeleton_missing_the_candidate_block(tmp_path):
-    base = tmp_path / "base"
-    base.mkdir()
-    from xwalk.prompts.contract import BASE_DIR
-
-    for name in ("select.j2", "score.j2", "verify.j2", "rewrite.j2"):
-        (base / name).write_text((BASE_DIR / name).read_text(encoding="utf-8"), encoding="utf-8")
-    (base / "select.j2").write_text("no blocks here\n", encoding="utf-8")
+    base = skeleton_dir(tmp_path, select="no blocks here\n")
     with pytest.raises(ContractError, match="candidate_block"):
+        validate_contract(PromptSet.from_slots(SLOTS, base_dir=base))
+
+
+def test_contract_validation_rejects_a_duplicated_input_block(tmp_path):
+    """The spec requires every input block to appear *exactly once*. Rendering the
+    candidate list twice would show the model two lists and is not merely untidy."""
+    original = (BASE_DIR / "select.j2").read_text(encoding="utf-8")
+    base = skeleton_dir(tmp_path, select=original + "\n## Candidates\n{{ candidate_block }}\n")
+    with pytest.raises(ContractError, match="exactly once"):
+        validate_contract(PromptSet.from_slots(SLOTS, base_dir=base))
+
+
+def test_contract_validation_rejects_a_skeleton_that_lost_the_key_instruction(tmp_path):
+    """Without 'Never answer with an identifier' the model may answer with a target ID,
+    which resolves to UNRESOLVED_OUTPUT every time. An optimizer must not be able to
+    delete it while leaving a prompt that still looks valid."""
+    original = (BASE_DIR / "select.j2").read_text(encoding="utf-8")
+    stripped = "\n".join(
+        line for line in original.splitlines() if "Never answer with an identifier" not in line
+    )
+    base = skeleton_dir(tmp_path, select=stripped + "\n")
+    with pytest.raises(ContractError, match="key instruction"):
         validate_contract(PromptSet.from_slots(SLOTS, base_dir=base))
 
 
@@ -3701,7 +3964,8 @@ def test_fingerprint_covers_the_skeleton_text_too(tmp_path):
 def test_the_shipped_chemistry_example_validates():
     from pathlib import Path
 
-    path = Path("examples/chemistry/slots.yaml")
+    # Anchored to this file, not to the working directory the suite happens to run in.
+    path = Path(__file__).resolve().parent.parent / "examples" / "chemistry" / "slots.yaml"
     validate_contract(PromptSet.from_slots(load_slots(path)))
 ```
 
@@ -3718,9 +3982,10 @@ optimizer-mutated slots file can produce a poor rubric but never a broken prompt
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
@@ -3805,7 +4070,8 @@ class PromptSlots(BaseModel):
             if not 0.0 <= row.score <= 1.0:
                 raise ValueError(f"rubric score {row.score} must be between 0 and 1")
         scores = [row.score for row in rows]
-        if any(b >= a for a, b in zip(scores, scores[1:])):
+        # Lengths differ by one on purpose: each row is compared with its successor.
+        if any(b >= a for a, b in zip(scores, scores[1:], strict=False)):
             raise ValueError("rubric scores must be strictly decreasing as declared")
         return rows
 
@@ -3923,26 +4189,40 @@ class PromptSet:
         )
 
 
-_REQUIRED_MARKERS: Mapping[str, tuple[str, ...]] = {
-    "select": ("## Candidates", "## Source record", "## Output", "chosen_key"),
-    "score": ("## Source record", "## Rubric", "## Output", "confidence_score"),
-    "verify": ("## Source record", "## Proposed match", "## Output", "decision"),
-    "rewrite": ("## Source record", "## Output", "queries"),
+# Section headings that must be present, and present exactly once. A skeleton that
+# renders "## Candidates" twice would show the model two candidate lists.
+_REQUIRED_SECTIONS: Mapping[str, tuple[str, ...]] = {
+    "select": ("## Source record", "## Candidates", "## Output"),
+    "score": ("## Source record", "## Rubric", "## Output"),
+    "verify": ("## Source record", "## Proposed match", "## Output"),
+    "rewrite": ("## Source record", "## Output"),
 }
 
-_SYNTHETIC = dict(
-    source_fields={"mention": "glucose", "organism": "Homo sapiens"},
-    context="blood [glucose] levels were elevated",
-    candidate_block="[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose",
-    chosen_block="[C01] ID: T1 Label: glucose",
-    other_candidates="[C02] ID: T2 Label: fructose",
-    review_floor=0.4,
-    previous_queries=["glucose"],
-    best_candidates="[C01] ID: T1",
-    max_queries=2,
-)
+# The instruction that makes opaque keys safe. If an optimizer deletes it, the model is
+# free to answer with an identifier and every answer becomes UNRESOLVED_OUTPUT.
+_KEY_INSTRUCTION = "Never answer with an identifier"
 
-_SCHEMAS = {
+# Typed individually rather than as one heterogeneous dict: `dict(a="s", b=0.4, c=2)`
+# infers `dict[str, object]`, and every use site then fails `mypy --strict` on arg-type.
+_SOURCE_FIELDS: Mapping[str, Any] = {"mention": "glucose", "organism": "Homo sapiens"}
+_CONTEXT = "blood [glucose] levels were elevated"
+_CANDIDATE_BLOCK = "[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose"
+_CHOSEN_BLOCK = "[C01] ID: T1 Label: glucose"
+_OTHER_CANDIDATES = "[C02] ID: T2 Label: fructose"
+_REVIEW_FLOOR = 0.4
+_PREVIOUS_QUERIES: Sequence[str] = ("glucose",)
+_BEST_CANDIDATES = "[C01] ID: T1"
+_MAX_QUERIES = 2
+
+# Rendered inputs that must survive into each prompt, exactly once.
+_REQUIRED_INPUTS: Mapping[str, tuple[tuple[str, str], ...]] = {
+    "select": (("candidate_block", _CANDIDATE_BLOCK), ("context", _CONTEXT)),
+    "score": (("chosen_block", _CHOSEN_BLOCK), ("context", _CONTEXT)),
+    "verify": (("chosen_block", _CHOSEN_BLOCK), ("context", _CONTEXT)),
+    "rewrite": (("context", _CONTEXT),),
+}
+
+_SCHEMAS: Mapping[str, Mapping[str, Any]] = {
     "select": SELECT_SCHEMA,
     "score": SCORE_SCHEMA,
     "verify": VERIFY_SCHEMA,
@@ -3954,43 +4234,61 @@ def validate_contract(prompts: PromptSet) -> None:
     """Render every skeleton and assert the machine-readable contract survived.
 
     Run this before anything is saved — a drafting model or an optimizer must not be
-    able to ship a prompt whose output cannot be parsed.
+    able to ship a prompt whose output cannot be parsed, whose input blocks went
+    missing or got duplicated, or whose key instruction was edited away.
+
+    Order matters: the rendered-input check runs first so that a skeleton which dropped
+    a block reports *that*, rather than a downstream missing-heading error.
     """
     rendered = {
         "select": prompts.render_select(
-            source_fields=_SYNTHETIC["source_fields"],
-            context=_SYNTHETIC["context"],
-            candidate_block=_SYNTHETIC["candidate_block"],
+            source_fields=_SOURCE_FIELDS,
+            context=_CONTEXT,
+            candidate_block=_CANDIDATE_BLOCK,
         ),
         "score": prompts.render_score(
-            source_fields=_SYNTHETIC["source_fields"],
-            context=_SYNTHETIC["context"],
-            chosen_block=_SYNTHETIC["chosen_block"],
-            other_candidates=_SYNTHETIC["other_candidates"],
-            review_floor=_SYNTHETIC["review_floor"],
+            source_fields=_SOURCE_FIELDS,
+            context=_CONTEXT,
+            chosen_block=_CHOSEN_BLOCK,
+            other_candidates=_OTHER_CANDIDATES,
+            review_floor=_REVIEW_FLOOR,
         ),
         "verify": prompts.render_verify(
-            source_fields=_SYNTHETIC["source_fields"],
-            context=_SYNTHETIC["context"],
-            chosen_block=_SYNTHETIC["chosen_block"],
-            other_candidates=_SYNTHETIC["other_candidates"],
+            source_fields=_SOURCE_FIELDS,
+            context=_CONTEXT,
+            chosen_block=_CHOSEN_BLOCK,
+            other_candidates=_OTHER_CANDIDATES,
         ),
         "rewrite": prompts.render_rewrite(
-            source_fields=_SYNTHETIC["source_fields"],
-            context=_SYNTHETIC["context"],
-            previous_queries=_SYNTHETIC["previous_queries"],
-            best_candidates=_SYNTHETIC["best_candidates"],
-            max_queries=_SYNTHETIC["max_queries"],
+            source_fields=_SOURCE_FIELDS,
+            context=_CONTEXT,
+            previous_queries=_PREVIOUS_QUERIES,
+            best_candidates=_BEST_CANDIDATES,
+            max_queries=_MAX_QUERIES,
         ),
     }
 
     for name, text in rendered.items():
-        for marker in _REQUIRED_MARKERS[name]:
-            if marker not in text:
-                raise ContractError(f"{name} prompt is missing required marker {marker!r}")
+        for label, block in _REQUIRED_INPUTS[name]:
+            count = text.count(block)
+            if count != 1:
+                raise ContractError(
+                    f"{name} prompt rendered {label} {count} times; it must appear exactly once"
+                )
 
-        if name == "select" and _SYNTHETIC["candidate_block"] not in text:
-            raise ContractError("select prompt did not render candidate_block")
+        for section in _REQUIRED_SECTIONS[name]:
+            count = text.count(section)
+            if count != 1:
+                raise ContractError(
+                    f"{name} prompt contains section {section!r} {count} times; "
+                    f"it must appear exactly once"
+                )
+
+        if name == "select" and _KEY_INSTRUCTION not in text:
+            raise ContractError(
+                "select prompt lost the key instruction "
+                f"({_KEY_INSTRUCTION!r}); without it the model may answer with an identifier"
+            )
 
         tail = text.split("## Output", 1)[1]
         try:
@@ -4076,7 +4374,7 @@ If hatchling already includes package data under `src/xwalk`, verify with `pytho
 - [ ] **Step 9: Run the tests**
 
 Run: `python -m pytest tests/test_prompt_contract.py -v`
-Expected: 18 passed.
+Expected: 20 passed.
 
 - [ ] **Step 10: Lint, type-check, commit**
 
@@ -4121,9 +4419,13 @@ TEMPLATES = TemplateSet(
     query="{{ mention }}", context="", doc="", candidate="ID: {{ id }} Label: {{ label }}"
 )
 SLOTS = PromptSlots(
-    entity_noun="mention", target_noun="term", domain_brief="test domain",
-    rubric=[{"score": 1.0, "name": "Certain", "when": "exact"},
-            {"score": 0.4, "name": "Weak", "when": "vague"}],
+    entity_noun="mention",
+    target_noun="term",
+    domain_brief="test domain",
+    rubric=[
+        {"score": 1.0, "name": "Certain", "when": "exact"},
+        {"score": 0.4, "name": "Weak", "when": "vague"},
+    ],
 )
 PROMPTS = PromptSet.from_slots(SLOTS)
 SOURCE = Record(id="s1", fields={"mention": "glucose"})
@@ -4148,6 +4450,7 @@ def reply(**kwargs) -> str:
 
 # --- budget ---------------------------------------------------------------------
 
+
 def test_budget_keeps_everything_when_under_the_cap():
     kept, dropped = apply_budget(CANDIDATES, SelectorPolicy())
     assert len(kept) == 2 and dropped == 0
@@ -4161,8 +4464,9 @@ def test_budget_truncates_to_max_candidates_and_reports_the_count():
 
 def test_budget_keeps_the_highest_scoring_candidates():
     many = [cand(f"T{i}", f"L{i}", i / 100) for i in range(10)]
-    kept, _ = apply_budget(sorted(many, key=lambda c: -c.fused_score),
-                           SelectorPolicy(max_candidates=3))
+    kept, _ = apply_budget(
+        sorted(many, key=lambda c: -c.fused_score), SelectorPolicy(max_candidates=3)
+    )
     assert [c.id for c in kept] == ["T9", "T8", "T7"]
 
 
@@ -4176,9 +4480,7 @@ def test_budget_truncation_is_deterministic_across_runs():
 def test_token_budget_trims_further_than_the_count_budget():
     long_label = "x" * 4000
     many = [cand(f"T{i}", long_label, 1.0 - i / 100) for i in range(20)]
-    kept, dropped = apply_budget(
-        many, SelectorPolicy(max_candidates=20, max_candidate_tokens=2000)
-    )
+    kept, dropped = apply_budget(many, SelectorPolicy(max_candidates=20, max_candidate_tokens=2000))
     assert len(kept) < 20 and dropped == 20 - len(kept)
 
 
@@ -4189,6 +4491,7 @@ def test_token_budget_always_keeps_at_least_one_candidate():
 
 
 # --- selection ------------------------------------------------------------------
+
 
 async def test_resolves_a_chosen_key_to_a_record_id():
     llm = FakeLLM([reply(chosen_key="C01", confidence_score=0.95, explanation="exact")])
@@ -4283,9 +4586,9 @@ async def test_truncation_count_is_reported_on_the_outcome():
 
 async def test_legacy_mode_accepts_a_raw_id_and_flags_it():
     llm = FakeLLM([reply(chosen_key="T1", confidence_score=0.9)])
-    outcome = await Selector(
-        llm, PROMPTS, TEMPLATES, legacy_id_resolution=True
-    ).select(SOURCE, "", CANDIDATES)
+    outcome = await Selector(llm, PROMPTS, TEMPLATES, legacy_id_resolution=True).select(
+        SOURCE, "", CANDIDATES
+    )
     assert outcome.choice.record_id == "T1"
     assert outcome.choice.resolution is Resolution.LEGACY_EXACT_ID
 
@@ -4308,14 +4611,20 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.stages.select'`.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from xwalk.llm.base import LLMClient, LLMRequest, ParseError
 from xwalk.llm.parsing import parse_json_object
 from xwalk.prompts.contract import SELECT_SCHEMA, PromptSet
 from xwalk.records import Candidate, Record, Usage
-from xwalk.stages.keying import KeyedCandidates, Resolution, ResolvedChoice, assign_keys, resolve_key
+from xwalk.stages.keying import (
+    KeyedCandidates,
+    Resolution,
+    ResolvedChoice,
+    assign_keys,
+    resolve_key,
+)
 from xwalk.templates import TemplateSet
 
 _CHARS_PER_TOKEN = 4  # a deliberately crude estimate; the budget is a guard rail, not a meter
@@ -4472,7 +4781,7 @@ class Selector:
 - [ ] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_select.py -v`
-Expected: 20 passed.
+Expected: 21 passed.
 
 - [ ] **Step 5: Lint, type-check, commit**
 
@@ -4519,9 +4828,13 @@ TEMPLATES = TemplateSet(
     query="{{ symbol }}", context="", doc="", candidate="ID: {{ id }} Label: {{ label }}"
 )
 SLOTS = PromptSlots(
-    entity_noun="gene mention", target_noun="NCBI gene", domain_brief="gene nomenclature",
-    rubric=[{"score": 1.0, "name": "Certain", "when": "exact symbol and organism match"},
-            {"score": 0.4, "name": "Weak", "when": "symbol matches, organism unknown"}],
+    entity_noun="gene mention",
+    target_noun="NCBI gene",
+    domain_brief="gene nomenclature",
+    rubric=[
+        {"score": 1.0, "name": "Certain", "when": "exact symbol and organism match"},
+        {"score": 0.4, "name": "Weak", "when": "symbol matches, organism unknown"},
+    ],
 )
 PROMPTS = PromptSet.from_slots(SLOTS)
 SOURCE = Record(id="s1", fields={"symbol": "TP53", "organism": "Homo sapiens"})
@@ -4551,6 +4864,7 @@ def verify_reply(**kwargs) -> str:
 
 
 # --- scorer ----------------------------------------------------------------------
+
 
 async def test_scorer_returns_the_confidence():
     llm = FakeLLM([score_reply(confidence_score=0.83, explanation="symbol and organism agree")])
@@ -4585,17 +4899,14 @@ async def test_scorer_emits_candidate_proposals_for_issued_keys():
 async def test_scorer_emits_query_proposals_separately():
     llm = FakeLLM([score_reply(confidence_score=0.3, better_queries=["tumour protein p53"])])
     outcome = await Scorer(llm, PROMPTS, TEMPLATES).score(SOURCE, "", KEYED, "C01")
-    assert [(p.kind, p.value) for p in outcome.proposals] == [
-        ("query", "tumour protein p53")
-    ]
+    assert [(p.kind, p.value) for p in outcome.proposals] == [("query", "tumour protein p53")]
 
 
 async def test_scorer_keeps_candidate_and_query_proposals_distinct():
     """The paper repo funnels both into one query queue and re-runs full retrieval on
     records it already has in hand. They are different objects."""
     llm = FakeLLM(
-        [score_reply(confidence_score=0.3, better_candidate_keys=["C02"],
-                     better_queries=["p53"])]
+        [score_reply(confidence_score=0.3, better_candidate_keys=["C02"], better_queries=["p53"])]
     )
     outcome = await Scorer(llm, PROMPTS, TEMPLATES).score(SOURCE, "", KEYED, "C01")
     kinds = {p.kind for p in outcome.proposals}
@@ -4603,9 +4914,7 @@ async def test_scorer_keeps_candidate_and_query_proposals_distinct():
 
 
 async def test_scorer_drops_blank_and_duplicate_proposals():
-    llm = FakeLLM(
-        [score_reply(confidence_score=0.3, better_queries=["p53", "  ", "p53", ""])]
-    )
+    llm = FakeLLM([score_reply(confidence_score=0.3, better_queries=["p53", "  ", "p53", ""])])
     outcome = await Scorer(llm, PROMPTS, TEMPLATES).score(SOURCE, "", KEYED, "C01")
     assert [p.value for p in outcome.proposals] == ["p53"]
 
@@ -4629,6 +4938,7 @@ async def test_scorer_rejects_an_unissued_chosen_key():
 
 
 # --- verifier --------------------------------------------------------------------
+
 
 async def test_verifier_supports():
     llm = FakeLLM([verify_reply(decision="support", confidence_score=0.9)])
@@ -4685,6 +4995,8 @@ async def test_verifier_prompt_is_not_the_scorer_prompt():
 
 - [ ] **Step 2: Add `RetryProposal` to `src/xwalk/records.py`**
 
+Merge the import into the existing block at the top of the file rather than pasting it here — a mid-file `import` is `E402` and fails the lint gate.
+
 ```python
 from typing import Literal
 
@@ -4717,8 +5029,9 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.stages.gate'`.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 from xwalk.llm.base import LLMClient, LLMRequest, ParseError
 from xwalk.llm.parsing import parse_json_object
@@ -5066,9 +5379,13 @@ TEMPLATES = TemplateSet(
 )
 PROMPTS = PromptSet.from_slots(
     PromptSlots(
-        entity_noun="mention", target_noun="term", domain_brief="test",
-        rubric=[{"score": 1.0, "name": "Certain", "when": "exact"},
-                {"score": 0.4, "name": "Weak", "when": "vague"}],
+        entity_noun="mention",
+        target_noun="term",
+        domain_brief="test",
+        rubric=[
+            {"score": 1.0, "name": "Certain", "when": "exact"},
+            {"score": 0.4, "name": "Weak", "when": "vague"},
+        ],
     )
 )
 SOURCE = Record(id="s1", fields={"mention": "ASA"})
@@ -5154,8 +5471,8 @@ records it already has in hand.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence, Set
 from dataclasses import dataclass
-from typing import AbstractSet, Sequence
 
 from xwalk.records import RetryProposal
 
@@ -5177,7 +5494,7 @@ class RoutedProposals:
 def route_proposals(
     proposals: Sequence[RetryProposal],
     issued_keys: Sequence[str],
-    seen_queries: AbstractSet[str],
+    seen_queries: Set[str],
 ) -> RoutedProposals:
     """Split proposals into re-examinations and new searches, dropping the rest.
 
@@ -5225,8 +5542,8 @@ def route_proposals(
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from xwalk.llm.base import LLMClient, LLMRequest, ParseError
 from xwalk.llm.parsing import parse_json_object
@@ -5324,7 +5641,7 @@ class QueryRewriter:
 - [ ] **Step 5: Run the tests**
 
 Run: `python -m pytest tests/test_proposals.py tests/test_rewrite.py -v`
-Expected: 20 passed.
+Expected: 20 passed (13 + 7).
 
 - [ ] **Step 6: Lint, type-check, commit**
 
@@ -5388,10 +5705,12 @@ def attempt(**kwargs) -> Attempt:
         chosen_id=None,
         resolution=Resolution.ABSTAIN.value,
         primary_score=None,
+        explanation="",
         verifier_decision=None,
         verifier_score=None,
         verifier_preferred_id=None,
         audited=False,
+        dropped_proposals=(),
         reason=None,
         error=None,
         usage=Usage.zero(),
@@ -5401,16 +5720,20 @@ def attempt(**kwargs) -> Attempt:
 
 
 def matched(score: float, **kwargs) -> Attempt:
-    return attempt(
+    # Defaults merged rather than passed through, so a caller may override `resolution`
+    # (which `test_a_legacy_resolution_forces_review_even_at_a_high_score` does).
+    base = dict(
         chosen_id="T1",
         resolution=Resolution.EXACT_KEY.value,
         primary_score=score,
         candidate_count=3,
-        **kwargs,
     )
+    base.update(kwargs)
+    return attempt(**base)
 
 
 # --- classification --------------------------------------------------------------
+
 
 def test_a_high_score_is_matched():
     status, reason, best = derive_status([matched(0.9)], POLICY)
@@ -5443,6 +5766,7 @@ def test_the_review_floor_is_inclusive():
 
 # --- abstention, no candidates, unresolved ---------------------------------------
 
+
 def test_an_explicit_abstention_is_unmatched():
     status, reason, _ = derive_status([attempt(candidate_count=3)], POLICY)
     assert status is MatchStatus.UNMATCHED
@@ -5465,11 +5789,10 @@ def test_unresolved_output_routes_to_review_not_to_silence():
 
 # --- precedence ------------------------------------------------------------------
 
+
 def test_a_weak_pick_outranks_an_earlier_abstention():
     """The model found something worth surfacing; that beats an earlier shrug."""
-    status, reason, best = derive_status(
-        [attempt(candidate_count=3), matched(0.45)], POLICY
-    )
+    status, reason, best = derive_status([attempt(candidate_count=3), matched(0.45)], POLICY)
     assert reason is DecisionReason.BELOW_ACCEPT_THRESHOLD
     assert best is not None and best.primary_score == 0.45
 
@@ -5480,16 +5803,12 @@ def test_the_highest_scoring_attempt_wins():
 
 
 def test_ties_resolve_to_the_earlier_attempt():
-    _, _, best = derive_status(
-        [matched(0.8, index=0), matched(0.8, index=1)], POLICY
-    )
+    _, _, best = derive_status([matched(0.8, index=0), matched(0.8, index=1)], POLICY)
     assert best is not None and best.index == 0
 
 
 def test_verifier_disagreement_overrides_a_passing_score():
-    status, reason, _ = derive_status(
-        [matched(0.95, verifier_decision="disagree")], POLICY
-    )
+    status, reason, _ = derive_status([matched(0.95, verifier_decision="disagree")], POLICY)
     assert status is MatchStatus.NEEDS_REVIEW
     assert reason is DecisionReason.VERIFIER_DISAGREEMENT
 
@@ -5513,6 +5832,7 @@ def test_a_legacy_resolution_forces_review_even_at_a_high_score():
 
 
 # --- failure ---------------------------------------------------------------------
+
 
 def test_all_attempts_erroring_is_failed_not_unmatched():
     """A provider 500 is not evidence of a non-match."""
@@ -5543,6 +5863,7 @@ def test_no_attempts_at_all_is_failed():
 
 
 # --- verify band and audit -------------------------------------------------------
+
 
 def test_verify_band_is_inclusive_at_both_ends():
     policy = MatchPolicy(verify_band=(0.6, 0.8))
@@ -5589,6 +5910,7 @@ def test_audit_rate_is_approximately_honoured():
 
 # --- policy validation -----------------------------------------------------------
 
+
 def test_review_floor_above_accept_at_is_rejected():
     with pytest.raises(ValueError, match="review_floor"):
         MatchPolicy(accept_at=0.5, review_floor=0.7)
@@ -5610,6 +5932,8 @@ def test_max_attempts_below_one_is_rejected():
 ```
 
 - [ ] **Step 2: Add the result types to `src/xwalk/records.py`**
+
+As in Task 12, the import belongs in the block at the top of the file, not where it appears below.
 
 ```python
 from enum import Enum
@@ -5649,10 +5973,12 @@ class Attempt:
     chosen_id: str | None
     resolution: str
     primary_score: float | None
+    explanation: str
     verifier_decision: str | None
     verifier_score: float | None
     verifier_preferred_id: str | None
     audited: bool
+    dropped_proposals: tuple[tuple[str, str], ...]
     reason: DecisionReason | None
     error: str | None
     usage: Usage
@@ -5677,6 +6003,13 @@ class MatchResult:
 
 `candidates` on `Attempt` may be stored empty when a run is configured for compact traces; `candidate_count` always holds the true number, so the ceiling diagnostic and `NO_CANDIDATES` derivation never depend on trace verbosity.
 
+Two fields are worth their own justification, because both exist to keep a spec promise:
+
+- **`explanation`** carries the selector's own words for choosing this candidate. `MatchResult.explanation` is derived from it. Without this field the only string available to the result is `Attempt.error`, and a `MatchResult.explanation` that always holds an error message is a lie — it would read as an explanation of the match to every consumer of `mapping.csv`.
+- **`dropped_proposals`** is a tuple of `(value, reason)` pairs. The spec says a candidate proposal naming something outside the current set "is dropped and recorded on the attempt rather than silently promoted to a query." `route_proposals` already computes the reasons; without somewhere to put them the recording half of that sentence is unimplemented, and a run gives no signal that a model kept inventing keys.
+
+`Attempt` has no field defaults on purpose — every construction site must state every field, so adding one later cannot silently leave a stale value behind. That also means these two fields must be present from *this* task: retrofitting them in Task 17 would break `serde.py`, both test fixtures, and two construction sites inside `matcher.py`.
+
 - [ ] **Step 3: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_policy.py -v`
@@ -5695,16 +6028,14 @@ these; separating them lets each be tuned without disturbing the other.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from xwalk.records import Attempt, DecisionReason, MatchStatus
 from xwalk.stages.keying import Resolution
 
 _EXACT_RESOLUTIONS = frozenset({Resolution.EXACT_KEY.value})
-_FAILURE_REASONS = frozenset(
-    {DecisionReason.RETRIEVER_FAILURE, DecisionReason.PROVIDER_FAILURE}
-)
+_FAILURE_REASONS = frozenset({DecisionReason.RETRIEVER_FAILURE, DecisionReason.PROVIDER_FAILURE})
 
 
 @dataclass(frozen=True)
@@ -5723,15 +6054,16 @@ class MatchPolicy:
             raise ValueError(f"max_attempts must be at least 1, got {self.max_attempts}")
         if not 0.0 <= self.review_floor <= self.accept_at <= 1.0:
             raise ValueError(
-                f"need 0 <= review_floor ({self.review_floor}) "
-                f"<= accept_at ({self.accept_at}) <= 1"
+                f"need 0 <= review_floor ({self.review_floor}) <= accept_at ({self.accept_at}) <= 1"
             )
         if not 0.0 <= self.audit_rate <= 1.0:
             raise ValueError(f"audit_rate must be in [0, 1], got {self.audit_rate}")
         if self.verify_band is not None:
             low, high = self.verify_band
             if not 0.0 <= low <= high <= 1.0:
-                raise ValueError(f"verify_band must be an ordered pair in [0, 1], got {self.verify_band}")
+                raise ValueError(
+                    f"verify_band must be an ordered pair in [0, 1], got {self.verify_band}"
+                )
         if self.concurrency < 1:
             raise ValueError(f"concurrency must be at least 1, got {self.concurrency}")
 
@@ -5763,7 +6095,7 @@ def should_audit(
         return False
     if policy.verify_band is not None and score <= policy.verify_band[1]:
         return False  # already covered by verification
-    digest = hashlib.sha256(f"{run_fingerprint}\x00{source_id}".encode("utf-8")).digest()
+    digest = hashlib.sha256(f"{run_fingerprint}\x00{source_id}".encode()).digest()
     draw = int.from_bytes(digest[:8], "big") / float(1 << 64)
     return draw < policy.audit_rate
 
@@ -5825,7 +6157,7 @@ Expected: 31 passed. `test_a_weak_pick_outranks_an_earlier_abstention` is the on
 
 - [ ] **Step 6: Export the new names**
 
-Add `Attempt`, `DecisionReason`, `MatchResult`, `MatchStatus`, `MatchPolicy` to `src/xwalk/__init__.py`.
+Add `Attempt`, `DecisionReason`, `MatchResult`, `MatchStatus`, `MatchPolicy` to `src/xwalk/__init__.py`, keeping `__version__` above the import block. Task 18 Step 3 writes the final version of this file.
 
 - [ ] **Step 7: Lint, type-check, commit**
 
@@ -5841,12 +6173,13 @@ git commit -m "feat: result types, match policy, and deterministic status deriva
 ## Task 15: The SQLite run ledger
 
 **Files:**
-- Create: `src/xwalk/ledger.py`, `src/xwalk/serde.py`
-- Test: `tests/test_serde.py`, `tests/test_ledger.py`
+- Create: `src/xwalk/ledger.py`, `src/xwalk/serde.py`, `src/xwalk/llm/cache.py`, `tests/__init__.py`
+- Modify: `src/xwalk/llm/__init__.py`
+- Test: `tests/test_serde.py`, `tests/test_ledger.py`, `tests/test_llm_cache.py`
 
 **Interfaces:**
 - Consumes: `MatchResult`, `Attempt`, `Candidate`, `Record`, `RetrievalHit`, `Usage`, `MatchStatus`, `DecisionReason`, `RetryProposal` (Tasks 1, 12, 14), `hash_value` (Task 2).
-- Produces: `result_to_dict(result) -> dict`, `result_from_dict(data) -> MatchResult` in `serde.py`; `Ledger.open(path) -> Ledger` with `async put_result(result)`, `get_result(result_key) -> MatchResult | None`, `has_result(result_key) -> bool`, `iter_results(run_fingerprint) -> Iterator[MatchResult]`, `count(run_fingerprint) -> int`, `get_cached(cache_key) -> str | None`, `async put_cached(cache_key, text)`, `put_manifest(run_fingerprint, manifest)`, `get_manifest(run_fingerprint) -> dict | None`, `put_review(row)`, `iter_reviews(run_fingerprint)`, `close()`. Tasks 16 and 18 consume it.
+- Produces: `result_to_dict(result) -> dict`, `result_from_dict(data) -> MatchResult` in `serde.py`; `Ledger.open(path) -> Ledger` with `async put_result(result)`, `get_result(result_key) -> MatchResult | None`, `has_result(result_key) -> bool`, `iter_results(run_fingerprint) -> Iterator[MatchResult]`, `count(run_fingerprint) -> int`, `count_by_status(run_fingerprint) -> dict[MatchStatus, int]`, `duplicate_targets(run_fingerprint) -> dict[str, list[str]]`, `get_cached(cache_key) -> str | None`, `async put_cached(cache_key, text)`, `put_manifest(run_fingerprint, manifest)`, `get_manifest(run_fingerprint) -> dict | None`, `put_review(row)`, `iter_reviews(run_fingerprint)`, `close()`; `llm_cache_key(client, request) -> str` and `CachingLLM(inner, ledger, *, read=True, write=True)` in `llm/cache.py`. Tasks 16 and 18 consume the ledger; `CachingLLM` wraps any client the user passes to `Matcher`.
 
 **Why SQLite and not JSONL:** concurrent append to JSONL invites partial final lines and duplicate records, which complicates exactly the resume logic that has to be trustworthy. `results.jsonl`, `mapping.csv` and `manifest.json` become **exports**, regenerated from the ledger on demand. Writes go through a single writer coroutine; WAL keeps concurrent readers working.
 
@@ -5885,10 +6218,12 @@ def sample_result() -> MatchResult:
         chosen_id="T1",
         resolution="exact_key",
         primary_score=0.91,
+        explanation="exact synonym match",
         verifier_decision="support",
         verifier_score=0.88,
         verifier_preferred_id=None,
         audited=True,
+        dropped_proposals=(("C99", "candidate key 'C99' was not issued this attempt"),),
         reason=DecisionReason.ACCEPT_THRESHOLD,
         error=None,
         usage=Usage(prompt_tokens=100, completion_tokens=20, calls=2),
@@ -5929,8 +6264,13 @@ def test_evidence_survives_the_round_trip():
 def test_a_none_matched_record_round_trips():
     original = sample_result()
     unmatched = MatchResult(
-        **{**original.__dict__, "matched_id": None, "matched_record": None,
-           "status": MatchStatus.UNMATCHED, "reason": DecisionReason.NO_CANDIDATES}
+        **{
+            **original.__dict__,
+            "matched_id": None,
+            "matched_record": None,
+            "status": MatchStatus.UNMATCHED,
+            "reason": DecisionReason.NO_CANDIDATES,
+        }
     )
     assert result_from_dict(result_to_dict(unmatched)).matched_record is None
 
@@ -5959,7 +6299,8 @@ storage layer never has to know the shape of a MatchResult.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from xwalk.records import (
     Attempt,
@@ -6035,10 +6376,13 @@ def _attempt_to_dict(attempt: Attempt) -> dict[str, Any]:
         "chosen_id": attempt.chosen_id,
         "resolution": attempt.resolution,
         "primary_score": attempt.primary_score,
+        "explanation": attempt.explanation,
         "verifier_decision": attempt.verifier_decision,
         "verifier_score": attempt.verifier_score,
         "verifier_preferred_id": attempt.verifier_preferred_id,
         "audited": attempt.audited,
+        # JSON has no tuples; restored as tuple-of-tuples on the way back in.
+        "dropped_proposals": [list(pair) for pair in attempt.dropped_proposals],
         "reason": None if attempt.reason is None else attempt.reason.value,
         "error": attempt.error,
         "usage": _usage_to_dict(attempt.usage),
@@ -6058,10 +6402,12 @@ def _attempt_from_dict(data: Mapping[str, Any]) -> Attempt:
         chosen_id=data["chosen_id"],
         resolution=data["resolution"],
         primary_score=data["primary_score"],
+        explanation=data["explanation"],
         verifier_decision=data["verifier_decision"],
         verifier_score=data["verifier_score"],
         verifier_preferred_id=data["verifier_preferred_id"],
         audited=data["audited"],
+        dropped_proposals=tuple((str(pair[0]), str(pair[1])) for pair in data["dropped_proposals"]),
         reason=None if data["reason"] is None else DecisionReason(data["reason"]),
         error=data["error"],
         usage=Usage(**data["usage"]),
@@ -6113,7 +6459,15 @@ def result_from_dict(data: Mapping[str, Any]) -> MatchResult:
 Run: `python -m pytest tests/test_serde.py -v`
 Expected: 6 passed. `Record.fields` restores as a plain dict, so equality holds against the original `Mapping`.
 
-- [ ] **Step 4: Write the failing ledger test**
+- [ ] **Step 4: Create `tests/__init__.py`**
+
+From here on, `tests/test_ledger.py`, `tests/test_review.py` and `tests/test_batch.py` import shared fixtures from sibling test modules (`from tests.test_serde import sample_result`). That only works if `tests/` is a package.
+
+```bash
+touch tests/__init__.py
+```
+
+- [ ] **Step 5: Write the failing ledger test**
 
 Create `tests/test_ledger.py`:
 
@@ -6187,6 +6541,7 @@ async def test_status_is_queryable_without_deserialising_every_blob(ledger):
 
 # --- cache ----------------------------------------------------------------------
 
+
 async def test_cache_round_trips(ledger):
     await ledger.put_cached("ck1", '{"a": 1}')
     assert ledger.get_cached("ck1") == '{"a": 1}'
@@ -6198,6 +6553,7 @@ def test_cache_miss_returns_none(ledger):
 
 # --- manifest -------------------------------------------------------------------
 
+
 async def test_manifest_round_trips(ledger):
     ledger.put_manifest("fp1", {"model": "gpt-4o", "target": "t1"})
     assert ledger.get_manifest("fp1") == {"model": "gpt-4o", "target": "t1"}
@@ -6208,6 +6564,7 @@ def test_manifest_miss_returns_none(ledger):
 
 
 # --- durability -----------------------------------------------------------------
+
 
 async def test_results_survive_reopening_the_file(tmp_path):
     path = tmp_path / "run.sqlite"
@@ -6254,7 +6611,7 @@ async def test_a_crash_mid_run_leaves_completed_results_readable(tmp_path):
     reopened.close()
 ```
 
-- [ ] **Step 5: Write `src/xwalk/ledger.py`**
+- [ ] **Step 6: Write `src/xwalk/ledger.py`**
 
 ```python
 """The run ledger: transactional, resumable execution state.
@@ -6268,8 +6625,9 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any
 
 from xwalk.records import MatchResult, MatchStatus
 from xwalk.serde import result_from_dict, result_to_dict
@@ -6480,16 +6838,256 @@ class Ledger:
 
 `isolation_level=None` puts the connection in autocommit, so every statement is its own durable transaction — that is what makes the crash-mid-run test pass without an explicit flush.
 
-- [ ] **Step 6: Run the ledger tests**
+- [ ] **Step 7: Run the ledger tests**
 
 Run: `python -m pytest tests/test_ledger.py -v`
-Expected: 14 passed. If `from tests.test_serde import sample_result` fails to import, add an empty `tests/__init__.py`.
+Expected: 15 passed.
 
-- [ ] **Step 7: Lint, type-check, commit**
+- [ ] **Step 8: Write the failing cache test**
+
+The `llm_cache` table now exists but nothing writes to it. The spec is explicit that the cache is part of the ledger *and* explicit about the key: "`(model, rendered_prompt)` is not a sufficient LLM cache key. The key covers the complete request body, the schema, provider identity, model parameters, and adapter version." A cache keyed on less than that returns a stale answer when the schema or temperature changes — the answer to a question that was not asked.
+
+Create `tests/test_llm_cache.py`:
+
+```python
+import pytest
+
+from xwalk.ledger import Ledger
+from xwalk.llm.base import LLMCapabilities, LLMClient, LLMRequest
+from xwalk.llm.cache import CachingLLM, llm_cache_key
+from xwalk.llm.fake import FakeLLM
+
+SCHEMA = {"type": "object", "properties": {"a": {"type": "string"}}}
+
+
+@pytest.fixture
+def ledger(tmp_path):
+    led = Ledger.open(tmp_path / "run.sqlite")
+    yield led
+    led.close()
+
+
+def wrap(ledger, script):
+    inner = FakeLLM(script)
+    return inner, CachingLLM(inner, ledger)
+
+
+async def test_a_repeated_request_is_served_from_the_cache(ledger):
+    inner, cached = wrap(ledger, ["first"])
+    request = LLMRequest(system="s", user="u")
+    assert (await cached.complete(request)).text == "first"
+    assert (await cached.complete(request)).text == "first"
+    assert len(inner.requests) == 1  # the script would have raised on a second call
+
+
+async def test_a_different_user_prompt_misses(ledger):
+    inner, cached = wrap(ledger, ["a", "b"])
+    assert (await cached.complete(LLMRequest(system="s", user="one"))).text == "a"
+    assert (await cached.complete(LLMRequest(system="s", user="two"))).text == "b"
+
+
+async def test_a_different_system_prompt_misses(ledger):
+    inner, cached = wrap(ledger, ["a", "b"])
+    await cached.complete(LLMRequest(system="one", user="u"))
+    await cached.complete(LLMRequest(system="two", user="u"))
+    assert len(inner.requests) == 2
+
+
+def test_the_key_is_not_vulnerable_to_prompt_boundary_collisions(ledger):
+    """system='ab', user='c' and system='a', user='bc' are different requests."""
+    llm = FakeLLM(["x"])
+    assert llm_cache_key(llm, LLMRequest(system="ab", user="c")) != llm_cache_key(
+        llm, LLMRequest(system="a", user="bc")
+    )
+
+
+def test_the_key_covers_the_schema(ledger):
+    llm = FakeLLM(["x"])
+    assert llm_cache_key(llm, LLMRequest(system="", user="u")) != llm_cache_key(
+        llm, LLMRequest(system="", user="u", schema=SCHEMA)
+    )
+
+
+def test_the_key_covers_generation_parameters(ledger):
+    llm = FakeLLM(["x"])
+    assert llm_cache_key(llm, LLMRequest(system="", user="u", temperature=0.0)) != llm_cache_key(
+        llm, LLMRequest(system="", user="u", temperature=0.7)
+    )
+
+
+def test_the_key_covers_provider_identity(ledger):
+    """Same prompt, different client — never the same cache entry."""
+    request = LLMRequest(system="", user="u")
+    assert llm_cache_key(FakeLLM(["x"]), request) != llm_cache_key(FakeLLM(["y"]), request)
+
+
+async def test_a_cache_hit_reports_no_token_spend(ledger):
+    inner, cached = wrap(ledger, ["first"])
+    request = LLMRequest(system="s", user="u")
+    await cached.complete(request)
+    second = await cached.complete(request)
+    assert second.usage.calls == 0
+    assert second.usage.total_tokens == 0
+
+
+async def test_hit_and_miss_counts_are_tracked(ledger):
+    inner, cached = wrap(ledger, ["first"])
+    request = LLMRequest(system="s", user="u")
+    await cached.complete(request)
+    await cached.complete(request)
+    assert (cached.hits, cached.misses) == (1, 1)
+
+
+async def test_write_can_be_disabled(ledger):
+    inner = FakeLLM(["a", "b"])
+    cached = CachingLLM(inner, ledger, write=False)
+    request = LLMRequest(system="s", user="u")
+    await cached.complete(request)
+    await cached.complete(request)
+    assert len(inner.requests) == 2
+
+
+async def test_the_cache_survives_reopening_the_ledger(tmp_path):
+    led = Ledger.open(tmp_path / "run.sqlite")
+    await CachingLLM(FakeLLM(["first"]), led).complete(LLMRequest(system="s", user="u"))
+    led.close()
+
+    reopened = Ledger.open(tmp_path / "run.sqlite")
+    # The same script gives the same client fingerprint, hence the same cache key. A
+    # client scripted differently is a *different* provider identity and must miss —
+    # that is the point of putting `client.fingerprint` in the key.
+    fresh = FakeLLM(["first"])
+    response = await CachingLLM(fresh, reopened).complete(LLMRequest(system="s", user="u"))
+    reopened.close()
+    assert response.text == "first"
+    assert fresh.requests == []  # answered from disk, never delegated
+
+
+def test_identity_delegates_to_the_inner_client(ledger):
+    inner = FakeLLM(["x"], capabilities=LLMCapabilities(json_schema=True), model="m1")
+    cached = CachingLLM(inner, ledger)
+    assert cached.model == "m1"
+    assert cached.capabilities.json_schema is True
+    # The wrapper must be invisible to run fingerprinting: caching changes how an
+    # answer was obtained, never what the answer means.
+    assert cached.fingerprint == inner.fingerprint
+
+
+def test_caching_llm_satisfies_the_llm_client_protocol(ledger):
+    assert isinstance(CachingLLM(FakeLLM(["x"]), ledger), LLMClient)
+```
+
+- [ ] **Step 9: Write `src/xwalk/llm/cache.py`**
+
+```python
+"""Ledger-backed LLM response caching.
+
+Wraps any `LLMClient`. Identity (`model`, `capabilities`, `fingerprint`) delegates to
+the inner client, so wrapping a client never changes a run fingerprint — caching changes
+how an answer was obtained, never what it means.
+"""
+
+from __future__ import annotations
+
+from xwalk.fingerprint import hash_value
+from xwalk.ledger import Ledger
+from xwalk.llm.base import LLMCapabilities, LLMClient, LLMRequest, LLMResponse
+from xwalk.records import Usage
+
+# Bump when the stored representation changes, to invalidate old entries rather than
+# misread them.
+CACHE_VERSION = 1
+
+
+def llm_cache_key(client: LLMClient, request: LLMRequest) -> str:
+    """Everything the provider actually sees, plus who it was sent to.
+
+    The parts go in as a mapping rather than a concatenated string: `system="ab"` with
+    `user="c"` must not key the same as `system="a"` with `user="bc"`.
+    """
+    return hash_value(
+        {
+            "cache_version": CACHE_VERSION,
+            # Covers adapter version, endpoint, model, and default generation params.
+            "client": client.fingerprint,
+            "system": request.system,
+            "user": request.user,
+            "schema": dict(request.schema) if request.schema is not None else None,
+            "schema_name": request.schema_name,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "seed": request.seed,
+            "extra": dict(request.extra),
+        }
+    )
+
+
+class CachingLLM:
+    """An `LLMClient` that serves repeats of an identical request from the ledger."""
+
+    def __init__(
+        self,
+        inner: LLMClient,
+        ledger: Ledger,
+        *,
+        read: bool = True,
+        write: bool = True,
+    ) -> None:
+        self._inner = inner
+        self._ledger = ledger
+        self._read = read
+        self._write = write
+        self.hits = 0
+        self.misses = 0
+
+    @property
+    def model(self) -> str:
+        return self._inner.model
+
+    @property
+    def capabilities(self) -> LLMCapabilities:
+        return self._inner.capabilities
+
+    @property
+    def fingerprint(self) -> str:
+        return self._inner.fingerprint
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        key = llm_cache_key(self._inner, request)
+
+        if self._read:
+            cached = self._ledger.get_cached(key)
+            if cached is not None:
+                self.hits += 1
+                # Zero usage is the honest number: a cache hit spends no tokens, so a
+                # resumed run's reported cost stays a cost, not a replayed estimate.
+                return LLMResponse(
+                    text=cached,
+                    usage=Usage.zero(),
+                    model=self._inner.model,
+                    structured=False,
+                    finish_reason="cached",
+                )
+
+        response = await self._inner.complete(request)
+        self.misses += 1
+        if self._write:
+            await self._ledger.put_cached(key, response.text)
+        return response
+```
+
+Add `CachingLLM` and `llm_cache_key` to `src/xwalk/llm/__init__.py`.
+
+- [ ] **Step 10: Run the cache tests**
+
+Run: `python -m pytest tests/test_llm_cache.py -v`
+Expected: 13 passed.
+
+- [ ] **Step 11: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
-git add src/xwalk/ledger.py src/xwalk/serde.py tests/test_serde.py tests/test_ledger.py
+git add src/xwalk/ledger.py src/xwalk/serde.py src/xwalk/llm/cache.py src/xwalk/llm/__init__.py tests/__init__.py tests/test_serde.py tests/test_ledger.py tests/test_llm_cache.py
 git commit -m "feat: SQLite WAL run ledger with results, cache, manifest, and reviews"
 ```
 
@@ -6503,7 +7101,7 @@ git commit -m "feat: SQLite WAL run ledger with results, cache, manifest, and re
 
 **Interfaces:**
 - Consumes: `Ledger` (Task 15), `MatchResult`/`MatchStatus`/`DecisionReason` (Task 14).
-- Produces: `ReviewDecision` enum (`accept`, `reject`, `replace`, `no_match`, `defer`); `ReviewRow` dataclass; `SnapshotMismatch` exception; `export_review(ledger, run_fingerprint, out_path, *, statuses=(NEEDS_REVIEW,)) -> int`; `read_review(path) -> list[ReviewRow]`; `apply_review(ledger, rows, *, target_store_fingerprint) -> ApplyReport`; `adjudicated(ledger, run_fingerprint) -> Iterator[AdjudicatedResult]`. Task 18 exports adjudicated rows.
+- Produces: `ReviewDecision` enum (`accept`, `reject`, `replace`, `no_match`, `defer`); `ReviewRow` dataclass; `SnapshotMismatch` exception; `export_review(ledger, run_fingerprint, out_path, *, statuses=(NEEDS_REVIEW,)) -> int`; `read_review(path) -> list[ReviewRow]`; `ApplyReport(applied, rejected)`; `AdjudicatedResult(result_key, source_id, model_target_id, model_status, confidence, final_target_id, final_status, reviewer, review_note, reviewed_at)`; `apply_review(ledger, rows, *, target_store_fingerprint) -> ApplyReport`; `adjudicated(ledger, run_fingerprint) -> Iterator[AdjudicatedResult]`. Task 18 exports adjudicated rows.
 
 **The invariant this task exists to protect:** applying review never overwrites model output. Three layers are preserved — the original model result, the reviewer decision, and the adjudicated result derived from both. And **applying a review fails if its source or target snapshot no longer matches the originating run**: a decision made against different data is not a decision about *this* data, and silently applying it would corrupt the mapping in the least detectable way possible.
 
@@ -6520,7 +7118,6 @@ from tests.test_serde import sample_result
 from xwalk.ledger import Ledger
 from xwalk.records import DecisionReason, MatchResult, MatchStatus
 from xwalk.review import (
-    ReviewDecision,
     SnapshotMismatch,
     adjudicated,
     apply_review,
@@ -6552,6 +7149,7 @@ async def ledger(tmp_path):
 
 # --- export ---------------------------------------------------------------------
 
+
 async def test_export_writes_one_row_per_reviewable_result(ledger, tmp_path):
     out = tmp_path / "review.csv"
     assert export_review(ledger, "fp1", out) == 1
@@ -6564,9 +7162,16 @@ async def test_export_carries_the_identity_columns(ledger, tmp_path):
     export_review(ledger, "fp1", out)
     row = next(iter(csv.DictReader(out.open(encoding="utf-8"))))
     for column in (
-        "result_key", "run_fingerprint", "source_id", "source_hash",
-        "proposed_target_id", "decision", "corrected_target_id", "reviewer",
-        "review_note", "reviewed_at",
+        "result_key",
+        "run_fingerprint",
+        "source_id",
+        "source_hash",
+        "proposed_target_id",
+        "decision",
+        "corrected_target_id",
+        "reviewer",
+        "review_note",
+        "reviewed_at",
     ):
         assert column in row
 
@@ -6580,8 +7185,12 @@ async def test_export_leaves_the_decision_columns_blank_for_the_reviewer(ledger,
 
 async def test_export_only_includes_the_requested_statuses(ledger, tmp_path):
     await ledger.put_result(
-        needs_review(result_key="rk2", source_id="s2", status=MatchStatus.MATCHED,
-                     reason=DecisionReason.ACCEPT_THRESHOLD)
+        needs_review(
+            result_key="rk2",
+            source_id="s2",
+            status=MatchStatus.MATCHED,
+            reason=DecisionReason.ACCEPT_THRESHOLD,
+        )
     )
     out = tmp_path / "review.csv"
     assert export_review(ledger, "fp1", out) == 1
@@ -6589,8 +7198,12 @@ async def test_export_only_includes_the_requested_statuses(ledger, tmp_path):
 
 async def test_export_can_include_matched_rows_for_spot_checking(ledger, tmp_path):
     await ledger.put_result(
-        needs_review(result_key="rk2", source_id="s2", status=MatchStatus.MATCHED,
-                     reason=DecisionReason.ACCEPT_THRESHOLD)
+        needs_review(
+            result_key="rk2",
+            source_id="s2",
+            status=MatchStatus.MATCHED,
+            reason=DecisionReason.ACCEPT_THRESHOLD,
+        )
     )
     out = tmp_path / "review.csv"
     count = export_review(
@@ -6600,6 +7213,7 @@ async def test_export_can_include_matched_rows_for_spot_checking(ledger, tmp_pat
 
 
 # --- apply ----------------------------------------------------------------------
+
 
 def write_review(path, **overrides) -> None:
     row = {
@@ -6696,6 +7310,7 @@ async def test_apply_requires_a_reviewer(ledger, tmp_path):
 
 # --- adjudicated view -----------------------------------------------------------
 
+
 async def test_adjudicated_accept_keeps_the_model_target(ledger, tmp_path):
     path = tmp_path / "r.csv"
     write_review(path, decision="accept")
@@ -6764,10 +7379,10 @@ reviewer decision (in `reviews`), and the adjudicated view derived from both.
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Iterator, Sequence
 
 from xwalk.ledger import Ledger
 from xwalk.records import MatchStatus
@@ -6962,8 +7577,10 @@ def adjudicated(ledger: Ledger, run_fingerprint: str) -> Iterator[AdjudicatedRes
         latest[str(review["result_key"])] = review  # later rows overwrite earlier ones
 
     for result in ledger.iter_results(run_fingerprint):
-        review = latest.get(result.result_key)
-        if review is None:
+        # A distinct name from the loop variable above: that one is a row, this one is
+        # an optional lookup, and mypy --strict will not let one binding be both.
+        decision_row = latest.get(result.result_key)
+        if decision_row is None:
             yield AdjudicatedResult(
                 result_key=result.result_key,
                 source_id=result.source_id,
@@ -6978,11 +7595,11 @@ def adjudicated(ledger: Ledger, run_fingerprint: str) -> Iterator[AdjudicatedRes
             )
             continue
 
-        decision = ReviewDecision(str(review["decision"]))
+        decision = ReviewDecision(str(decision_row["decision"]))
         if decision is ReviewDecision.ACCEPT:
             final_id, final_status = result.matched_id, MatchStatus.MATCHED
         elif decision is ReviewDecision.REPLACE:
-            final_id = str(review["corrected_target_id"])
+            final_id = str(decision_row["corrected_target_id"])
             final_status = MatchStatus.MATCHED
         elif decision in (ReviewDecision.REJECT, ReviewDecision.NO_MATCH):
             final_id, final_status = None, MatchStatus.UNMATCHED
@@ -6997,16 +7614,16 @@ def adjudicated(ledger: Ledger, run_fingerprint: str) -> Iterator[AdjudicatedRes
             confidence=result.confidence,
             final_target_id=final_id,
             final_status=final_status,
-            reviewer=str(review["reviewer"]),
-            review_note=str(review["review_note"]),
-            reviewed_at=str(review["reviewed_at"]),
+            reviewer=str(decision_row["reviewer"]),
+            review_note=str(decision_row["review_note"]),
+            reviewed_at=str(decision_row["reviewed_at"]),
         )
 ```
 
 - [ ] **Step 3: Run the tests**
 
 Run: `python -m pytest tests/test_review.py -v`
-Expected: 21 passed. `test_apply_accepts_a_decision` requires the manifest written by the `ledger` fixture — if it fails with a `SnapshotMismatch`, check that `put_manifest` stored `target_fingerprint`.
+Expected: 22 passed. `test_apply_accepts_a_decision` requires the manifest written by the `ledger` fixture — if it fails with a `SnapshotMismatch`, check that `put_manifest` stored `target_fingerprint`.
 
 - [ ] **Step 4: Lint, type-check, commit**
 
@@ -7026,7 +7643,7 @@ git commit -m "feat: immutable review overlay with snapshot-mismatch refusal"
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–14.
-- Produces: `Matcher(templates, retrievers, store, selector, scorer, verifier, rewriter, *, policy=None, run_fingerprint="", retriever_limit=20)` with `async match(record) -> MatchResult` and `match_sync(record) -> MatchResult`; `build_matcher(...)` convenience constructor. Task 18 drives it.
+- Produces: `Matcher(*, templates, retrievers, store, selector, scorer, verifier, rewriter, policy=None, run_fingerprint="", retriever_limit=20, rrf_k=60, keep_candidates_in_trace=True)` — **every argument is keyword-only** — with `async match(record) -> MatchResult`, `match_sync(record) -> MatchResult`, and read-only properties `run_fingerprint`, `policy`, `store_fingerprint` (Task 18 reads all three). Task 18 drives it.
 
 **The loop, per attempt:**
 
@@ -7049,9 +7666,7 @@ Create `tests/test_matcher.py`:
 import asyncio
 import json
 
-import pytest
-
-from xwalk.llm.base import LLMFatalError, LLMRequest, LLMRetryableError
+from xwalk.llm.base import LLMFatalError, LLMRetryableError
 from xwalk.llm.fake import FakeLLM
 from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
@@ -7066,15 +7681,21 @@ from xwalk.templates import TemplateSet
 
 TEMPLATES = TemplateSet(
     query="{{ mention }}",
-    context="{% if context_left %}{{ context_left }} [{{ mention }}] {{ context_right }}{% endif %}",
+    context=(
+        "{% if context_left %}{{ context_left }} [{{ mention }}] {{ context_right }}{% endif %}"
+    ),
     doc="{{ label }}",
     candidate="ID: {{ id }} Label: {{ label }}",
 )
 PROMPTS = PromptSet.from_slots(
     PromptSlots(
-        entity_noun="mention", target_noun="term", domain_brief="test",
-        rubric=[{"score": 1.0, "name": "Certain", "when": "exact"},
-                {"score": 0.4, "name": "Weak", "when": "vague"}],
+        entity_noun="mention",
+        target_noun="term",
+        domain_brief="test",
+        rubric=[
+            {"score": 1.0, "name": "Certain", "when": "exact"},
+            {"score": 0.4, "name": "Weak", "when": "vague"},
+        ],
     )
 )
 STORE = MemoryStore.from_source(
@@ -7084,18 +7705,20 @@ STORE = MemoryStore.from_source(
         Record(id="T3", fields={"label": "sucrose"}),
     ]
 )
-SOURCE = Record(id="s1", fields={"mention": "glucose", "context_left": "blood",
-                                 "context_right": "levels"})
+SOURCE = Record(
+    id="s1", fields={"mention": "glucose", "context_left": "blood", "context_right": "levels"}
+)
 
 
 class ScriptedRetriever:
     """Returns a fixed hit list per query text; unknown queries return nothing."""
 
-    def __init__(self, by_query, *, name="bm25", fail=False, hang=False):
+    def __init__(self, by_query, *, name="bm25", fail=False, hang=False, default_limit=20):
         self._by_query = by_query
         self._name = name
         self._fail = fail
         self._hang = hang
+        self._default_limit = default_limit
         self.queries: list[str] = []
 
     @property
@@ -7105,6 +7728,10 @@ class ScriptedRetriever:
     @property
     def fingerprint(self) -> str:
         return f"scripted-{self._name}"
+
+    @property
+    def default_limit(self) -> int:
+        return self._default_limit
 
     async def search(self, request: SearchRequest):
         self.queries.append(request.text)
@@ -7120,9 +7747,7 @@ class ScriptedRetriever:
 
 
 def select_reply(key, score=0.9, explanation="ok"):
-    return json.dumps(
-        {"chosen_key": key, "confidence_score": score, "explanation": explanation}
-    )
+    return json.dumps({"chosen_key": key, "confidence_score": score, "explanation": explanation})
 
 
 def score_reply(score, **extra):
@@ -7143,8 +7768,9 @@ def build(llm, retriever, *, policy=None):
         templates=TEMPLATES,
         retrievers=[retriever],
         store=STORE,
-        selector=Selector(llm, PROMPTS, TEMPLATES,
-                          legacy_id_resolution=policy.legacy_id_resolution),
+        selector=Selector(
+            llm, PROMPTS, TEMPLATES, legacy_id_resolution=policy.legacy_id_resolution
+        ),
         scorer=Scorer(llm, PROMPTS, TEMPLATES, review_floor=policy.review_floor),
         verifier=Verifier(llm, PROMPTS, TEMPLATES),
         rewriter=QueryRewriter(llm, PROMPTS, TEMPLATES),
@@ -7154,6 +7780,7 @@ def build(llm, retriever, *, policy=None):
 
 
 # --- happy path -----------------------------------------------------------------
+
 
 async def test_a_confident_match_returns_immediately():
     llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
@@ -7213,6 +7840,7 @@ async def test_the_result_key_changes_when_a_field_value_changes():
 
 
 # --- retry paths ----------------------------------------------------------------
+
 
 async def test_a_low_score_triggers_a_rewrite_and_a_second_attempt():
     llm = FakeLLM(
@@ -7305,8 +7933,11 @@ async def test_a_query_is_never_searched_twice():
 async def test_the_best_attempt_wins_on_exhaustion():
     llm = FakeLLM(
         [
-            select_reply("C01", 0.5), score_reply(0.5), rewrite_reply("q2"),
-            select_reply("C01", 0.2), score_reply(0.2),
+            select_reply("C01", 0.5),
+            score_reply(0.5),
+            rewrite_reply("q2"),
+            select_reply("C01", 0.2),
+            score_reply(0.2),
         ]
     )
     retriever = ScriptedRetriever({"glucose": ["T1"], "q2": ["T2"]})
@@ -7316,6 +7947,7 @@ async def test_the_best_attempt_wins_on_exhaustion():
 
 
 # --- abstention and no candidates -----------------------------------------------
+
 
 async def test_no_candidates_anywhere_is_unmatched_with_that_reason():
     llm = FakeLLM([rewrite_reply()])
@@ -7333,26 +7965,33 @@ async def test_an_explicit_abstention_is_unmatched_with_its_own_reason():
 
 
 async def test_the_scorer_is_not_called_after_an_abstention():
-    llm = FakeLLM([select_reply(None), rewrite_reply()])
-    await build(llm, ScriptedRetriever({"glucose": ["T1"]}),
-                policy=MatchPolicy(max_attempts=1)).match(SOURCE)
-    assert len(llm.requests) == 2  # select + rewrite, no score
+    """With max_attempts=1 the loop stops after the single attempt, so the only call is
+    the selector's. What this pins is that no scoring prompt was ever sent."""
+    llm = FakeLLM([select_reply(None)])
+    await build(
+        llm, ScriptedRetriever({"glucose": ["T1"]}), policy=MatchPolicy(max_attempts=1)
+    ).match(SOURCE)
+    assert len(llm.requests) == 1
+    assert all("## Rubric" not in r.user for r in llm.requests)
 
 
 async def test_unresolvable_output_routes_to_review():
     llm = FakeLLM([select_reply("T1"), rewrite_reply()])  # an id, not a key
-    result = await build(llm, ScriptedRetriever({"glucose": ["T1"]}),
-                         policy=MatchPolicy(max_attempts=1)).match(SOURCE)
+    result = await build(
+        llm, ScriptedRetriever({"glucose": ["T1"]}), policy=MatchPolicy(max_attempts=1)
+    ).match(SOURCE)
     assert result.status is MatchStatus.NEEDS_REVIEW
     assert result.reason is DecisionReason.UNRESOLVED_OUTPUT
 
 
 # --- verification ---------------------------------------------------------------
 
+
 async def test_a_score_in_the_verify_band_triggers_verification():
     llm = FakeLLM([select_reply("C01"), score_reply(0.7), verify_reply("support")])
-    result = await build(llm, ScriptedRetriever({"glucose": ["T1"]}),
-                         policy=MatchPolicy(verify_band=(0.6, 0.8))).match(SOURCE)
+    result = await build(
+        llm, ScriptedRetriever({"glucose": ["T1"]}), policy=MatchPolicy(verify_band=(0.6, 0.8))
+    ).match(SOURCE)
     assert result.attempts[0].verifier_decision == "support"
     assert result.status is MatchStatus.MATCHED
 
@@ -7364,10 +8003,14 @@ async def test_a_score_above_the_band_is_not_verified():
 
 
 async def test_verifier_disagreement_forces_review():
-    llm = FakeLLM([select_reply("C01"), score_reply(0.7), verify_reply("disagree",
-                                                                      preferred_key="C02")])
-    result = await build(llm, ScriptedRetriever({"glucose": ["T1", "T2"]}),
-                         policy=MatchPolicy(verify_band=(0.6, 0.8), max_attempts=1)).match(SOURCE)
+    llm = FakeLLM(
+        [select_reply("C01"), score_reply(0.7), verify_reply("disagree", preferred_key="C02")]
+    )
+    result = await build(
+        llm,
+        ScriptedRetriever({"glucose": ["T1", "T2"]}),
+        policy=MatchPolicy(verify_band=(0.6, 0.8), max_attempts=1),
+    ).match(SOURCE)
     assert result.status is MatchStatus.NEEDS_REVIEW
     assert result.reason is DecisionReason.VERIFIER_DISAGREEMENT
 
@@ -7375,10 +8018,14 @@ async def test_verifier_disagreement_forces_review():
 async def test_the_verifiers_preferred_key_is_recorded_but_not_chased():
     """Re-entering selection on the verifier's preference would make termination depend
     on two models negotiating. Bounded loop, honest flag, human decides."""
-    llm = FakeLLM([select_reply("C01"), score_reply(0.7), verify_reply("disagree",
-                                                                      preferred_key="C02")])
-    result = await build(llm, ScriptedRetriever({"glucose": ["T1", "T2"]}),
-                         policy=MatchPolicy(verify_band=(0.6, 0.8), max_attempts=1)).match(SOURCE)
+    llm = FakeLLM(
+        [select_reply("C01"), score_reply(0.7), verify_reply("disagree", preferred_key="C02")]
+    )
+    result = await build(
+        llm,
+        ScriptedRetriever({"glucose": ["T1", "T2"]}),
+        policy=MatchPolicy(verify_band=(0.6, 0.8), max_attempts=1),
+    ).match(SOURCE)
     assert result.attempts[0].verifier_preferred_id == "T2"
     assert result.matched_id == "T1"  # unchanged
 
@@ -7386,7 +8033,8 @@ async def test_the_verifiers_preferred_key_is_recorded_but_not_chased():
 async def test_an_audit_verdict_is_honoured_not_merely_counted():
     llm = FakeLLM([select_reply("C01"), score_reply(0.99), verify_reply("no_match")])
     result = await build(
-        llm, ScriptedRetriever({"glucose": ["T1"]}),
+        llm,
+        ScriptedRetriever({"glucose": ["T1"]}),
         policy=MatchPolicy(audit_rate=1.0, verify_band=(0.6, 0.8), max_attempts=1),
     ).match(SOURCE)
     assert result.status is MatchStatus.NEEDS_REVIEW
@@ -7401,17 +8049,21 @@ async def test_audit_is_off_by_default():
 
 # --- error handling -------------------------------------------------------------
 
+
 async def test_one_retriever_failing_degrades_to_the_others():
     llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
     good = ScriptedRetriever({"glucose": ["T1"]}, name="bm25")
     bad = ScriptedRetriever({}, name="dense", fail=True)
     matcher = Matcher(
-        templates=TEMPLATES, retrievers=[good, bad], store=STORE,
+        templates=TEMPLATES,
+        retrievers=[good, bad],
+        store=STORE,
         selector=Selector(llm, PROMPTS, TEMPLATES),
         scorer=Scorer(llm, PROMPTS, TEMPLATES),
         verifier=Verifier(llm, PROMPTS, TEMPLATES),
         rewriter=QueryRewriter(llm, PROMPTS, TEMPLATES),
-        policy=MatchPolicy(), run_fingerprint="fp1",
+        policy=MatchPolicy(),
+        run_fingerprint="fp1",
     )
     result = await matcher.match(SOURCE)
     assert result.status is MatchStatus.MATCHED
@@ -7423,12 +8075,15 @@ async def test_a_retriever_timeout_degrades_rather_than_failing_the_match():
     good = ScriptedRetriever({"glucose": ["T1"]}, name="bm25")
     slow = ScriptedRetriever({}, name="slow", hang=True)
     matcher = Matcher(
-        templates=TEMPLATES, retrievers=[good, slow], store=STORE,
+        templates=TEMPLATES,
+        retrievers=[good, slow],
+        store=STORE,
         selector=Selector(llm, PROMPTS, TEMPLATES),
         scorer=Scorer(llm, PROMPTS, TEMPLATES),
         verifier=Verifier(llm, PROMPTS, TEMPLATES),
         rewriter=QueryRewriter(llm, PROMPTS, TEMPLATES),
-        policy=MatchPolicy(retriever_timeout=0.05), run_fingerprint="fp1",
+        policy=MatchPolicy(retriever_timeout=0.05),
+        run_fingerprint="fp1",
     )
     result = await matcher.match(SOURCE)
     assert result.status is MatchStatus.MATCHED
@@ -7438,12 +8093,15 @@ async def test_every_retriever_failing_is_a_retriever_failure_not_a_non_match():
     llm = FakeLLM([])
     bad = ScriptedRetriever({}, name="bm25", fail=True)
     matcher = Matcher(
-        templates=TEMPLATES, retrievers=[bad], store=STORE,
+        templates=TEMPLATES,
+        retrievers=[bad],
+        store=STORE,
         selector=Selector(llm, PROMPTS, TEMPLATES),
         scorer=Scorer(llm, PROMPTS, TEMPLATES),
         verifier=Verifier(llm, PROMPTS, TEMPLATES),
         rewriter=QueryRewriter(llm, PROMPTS, TEMPLATES),
-        policy=MatchPolicy(max_attempts=1), run_fingerprint="fp1",
+        policy=MatchPolicy(max_attempts=1),
+        run_fingerprint="fp1",
     )
     result = await matcher.match(SOURCE)
     assert result.status is MatchStatus.FAILED
@@ -7452,8 +8110,9 @@ async def test_every_retriever_failing_is_a_retriever_failure_not_a_non_match():
 
 async def test_a_provider_failure_is_failed_not_unmatched():
     llm = FakeLLM([LLMRetryableError("429 exhausted")])
-    result = await build(llm, ScriptedRetriever({"glucose": ["T1"]}),
-                         policy=MatchPolicy(max_attempts=1)).match(SOURCE)
+    result = await build(
+        llm, ScriptedRetriever({"glucose": ["T1"]}), policy=MatchPolicy(max_attempts=1)
+    ).match(SOURCE)
     assert result.status is MatchStatus.FAILED
     assert result.reason is DecisionReason.PROVIDER_FAILURE
 
@@ -7466,15 +8125,14 @@ async def test_a_fatal_provider_error_stops_the_loop_immediately():
 
 
 async def test_one_failed_attempt_does_not_sink_a_later_good_one():
-    llm = FakeLLM(
-        [LLMRetryableError("429"), select_reply("C01", 0.95), score_reply(0.95)]
-    )
+    llm = FakeLLM([LLMRetryableError("429"), select_reply("C01", 0.95), score_reply(0.95)])
     retriever = ScriptedRetriever({"glucose": ["T1"]})
     result = await build(llm, retriever, policy=MatchPolicy(max_attempts=2)).match(SOURCE)
     assert result.status is MatchStatus.MATCHED
 
 
 # --- sync facade ----------------------------------------------------------------
+
 
 def test_match_sync_works_outside_an_event_loop():
     llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
@@ -7495,7 +8153,8 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.matcher'`.
 from __future__ import annotations
 
 import asyncio
-from typing import Sequence
+from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
 
 from xwalk.fingerprint import hash_record, result_key
 from xwalk.llm.base import LLMError, LLMFatalError
@@ -7505,20 +8164,26 @@ from xwalk.records import (
     Candidate,
     DecisionReason,
     MatchResult,
+    MatchStatus,
     Record,
     RetrievalHit,
     RetryProposal,
     Usage,
 )
-from xwalk.retrieval.base import Retriever, RetrieverError, SearchRequest
+from xwalk.retrieval.base import Retriever, SearchRequest
 from xwalk.retrieval.fusion import reciprocal_rank_fusion
 from xwalk.stages.gate import Scorer, Verifier
 from xwalk.stages.keying import KeyedCandidates, Resolution
-from xwalk.stages.proposals import normalise_query, route_proposals
+from xwalk.stages.proposals import RoutedProposals, normalise_query, route_proposals
 from xwalk.stages.rewrite import QueryRewriter
 from xwalk.stages.select import Selector
 from xwalk.stores.base import TargetStore
 from xwalk.templates import TemplateSet
+
+_NO_PROPOSALS = RoutedProposals(candidate_keys=(), queries=(), dropped=())
+_INFRASTRUCTURE_FAILURES = frozenset(
+    {DecisionReason.RETRIEVER_FAILURE, DecisionReason.PROVIDER_FAILURE}
+)
 
 
 class Matcher:
@@ -7553,29 +8218,43 @@ class Matcher:
         self._rrf_k = rrf_k
         self._keep_candidates = keep_candidates_in_trace
 
+    @property
+    def run_fingerprint(self) -> str:
+        return self._run_fingerprint
+
+    @property
+    def policy(self) -> MatchPolicy:
+        return self._policy
+
+    @property
+    def store_fingerprint(self) -> str:
+        return self._store.fingerprint
+
     # --- retrieval -------------------------------------------------------------
 
     async def _retrieve(self, query: str, source: Record) -> tuple[list[Candidate], list[str]]:
-        """Search every retriever concurrently. Returns (candidates, degradation notes)."""
-        request = SearchRequest(text=query, limit=self._retriever_limit, source_record=source)
+        """Search every retriever concurrently. Returns (candidates, degradation notes).
+
+        Depth comes from each retriever's own `default_limit`; `retriever_limit` is only
+        the fallback for a backend that does not declare one.
+        """
 
         async def one(retriever: Retriever) -> Sequence[RetrievalHit]:
+            limit = getattr(retriever, "default_limit", None) or self._retriever_limit
+            request = SearchRequest(text=query, limit=limit, source_record=source)
             return await asyncio.wait_for(
                 retriever.search(request), timeout=self._policy.retriever_timeout
             )
 
-        outcomes = await asyncio.gather(
-            *(one(r) for r in self._retrievers), return_exceptions=True
-        )
+        outcomes = await asyncio.gather(*(one(r) for r in self._retrievers), return_exceptions=True)
 
         groups: list[Sequence[RetrievalHit]] = []
         notes: list[str] = []
-        for retriever, outcome in zip(self._retrievers, outcomes):
+        for retriever, outcome in zip(self._retrievers, outcomes, strict=True):
+            # Order matters: TimeoutError is an Exception, so it must be tested first.
             if isinstance(outcome, asyncio.TimeoutError):
                 notes.append(f"{retriever.name}: timed out after {self._policy.retriever_timeout}s")
-            elif isinstance(outcome, (RetrieverError, Exception)) and isinstance(
-                outcome, BaseException
-            ):
+            elif isinstance(outcome, BaseException):
                 notes.append(f"{retriever.name}: {outcome}")
             else:
                 groups.append(outcome)
@@ -7595,17 +8274,25 @@ class Matcher:
         index: int,
         reuse: tuple[KeyedCandidates, list[Candidate]] | None,
         forced_key: str | None,
-    ) -> tuple[Attempt, list[RetryProposal]]:
+        seen_queries: AbstractSet[str],
+    ) -> tuple[Attempt, RoutedProposals, KeyedCandidates | None]:
+        """Run one retrieve -> select -> score -> verify pass.
+
+        Returns the attempt, its *already routed* proposals, and the `KeyedCandidates`
+        actually issued — the caller keeps that object so a candidate proposal can be
+        re-examined without re-running retrieval. It is never reconstructed from
+        `issued_keys`: `rendered` and `by_key` cannot be recovered from a key->id map,
+        and the scorer needs both.
+        """
         usage = Usage.zero()
         notes: list[str] = []
+        keyed: KeyedCandidates | None = None
+        truncated = 0
 
         if reuse is not None:
             keyed, candidates = reuse
-            truncated = 0
         else:
             candidates, notes = await self._retrieve(query, source)
-            keyed = None  # assigned by the selector
-            truncated = 0
 
         def build(
             *,
@@ -7613,14 +8300,14 @@ class Matcher:
             resolution: str = Resolution.ABSTAIN.value,
             raw: str | None = None,
             score: float | None = None,
+            explanation: str = "",
             verifier_decision: str | None = None,
             verifier_score: float | None = None,
             verifier_preferred_id: str | None = None,
             audited: bool = False,
+            dropped: tuple[tuple[str, str], ...] = (),
             reason: DecisionReason | None = None,
             error: str | None = None,
-            issued: dict[str, str] | None = None,
-            truncated_count: int = 0,
         ) -> Attempt:
             joined = "; ".join(notes) if notes else None
             return Attempt(
@@ -7629,83 +8316,119 @@ class Matcher:
                 proposal=proposal,
                 candidates=tuple(candidates) if self._keep_candidates else (),
                 candidate_count=len(candidates),
-                candidates_truncated=truncated_count,
-                issued_keys=issued or {},
+                candidates_truncated=truncated,
+                issued_keys=dict(keyed.issued) if keyed is not None else {},
                 raw_selection=raw,
                 chosen_id=chosen_id,
                 resolution=resolution,
                 primary_score=score,
+                explanation=explanation,
                 verifier_decision=verifier_decision,
                 verifier_score=verifier_score,
                 verifier_preferred_id=verifier_preferred_id,
                 audited=audited,
+                dropped_proposals=dropped,
                 reason=reason,
                 error=error if error else joined,
                 usage=usage,
             )
 
-        # every retriever failed -> not evidence of a non-match
+        # Every retriever failed. A dead index is not evidence of a non-match.
         if not candidates and notes and len(notes) == len(self._retrievers):
-            return build(reason=DecisionReason.RETRIEVER_FAILURE), []
+            return build(reason=DecisionReason.RETRIEVER_FAILURE), _NO_PROPOSALS, None
 
         if not candidates:
-            return build(reason=DecisionReason.NO_CANDIDATES), []
+            return build(reason=DecisionReason.NO_CANDIDATES), _NO_PROPOSALS, None
 
         # --- selection ---
-        if forced_key is not None and reuse is not None:
-            assert keyed is not None
-            chosen_key: str | None = forced_key
-            selection_confidence: float | None = None
-            selection_raw = f"(reused candidate proposal {forced_key})"
+        if forced_key is not None and keyed is not None:
+            # A candidate proposal: the record is already in hand, so no new retrieval
+            # and no second selector call. Go straight to scoring it.
+            chosen_key: str = forced_key
+            # Annotated because the selector branch below assigns `str | None` here.
+            chosen_id: str | None = keyed.issued[forced_key]
             resolution = Resolution.EXACT_KEY.value
-            chosen_id = keyed.issued[forced_key]
+            selection_raw = f"(reused candidate proposal {forced_key})"
+            selection_explanation = ""
         else:
             try:
                 selection = await self._selector.select(source, context, candidates)
+            except LLMFatalError:
+                raise  # a bad key or unknown model will not fix itself; let match() stop
             except LLMError as exc:
-                usage = usage + Usage.zero()
-                return build(
-                    reason=DecisionReason.PROVIDER_FAILURE, error=f"selector: {exc}"
-                ), []
+                return (
+                    build(reason=DecisionReason.PROVIDER_FAILURE, error=f"selector: {exc}"),
+                    _NO_PROPOSALS,
+                    None,
+                )
             usage = usage + selection.usage
             keyed = selection.keyed
             truncated = selection.truncated
             chosen_id = selection.choice.record_id
             resolution = selection.choice.resolution.value
             selection_raw = selection.raw
-            selection_confidence = selection.confidence
-            chosen_key = next(
-                (k for k, rid in keyed.issued.items() if rid == chosen_id), None
-            )
+            selection_explanation = selection.explanation
+            resolved_key = next((k for k, rid in keyed.issued.items() if rid == chosen_id), None)
 
-            if chosen_id is None:
-                return build(
-                    resolution=resolution,
-                    raw=selection_raw,
-                    issued=dict(keyed.issued),
-                    truncated_count=truncated,
-                    error=selection.error,
-                ), []
+            if chosen_id is None or resolved_key is None:
+                # Abstention or unresolvable output. Both are terminal for this attempt;
+                # neither is worth a scorer call.
+                return (
+                    build(
+                        resolution=resolution,
+                        raw=selection_raw,
+                        explanation=selection_explanation,
+                        error=selection.error,
+                    ),
+                    _NO_PROPOSALS,
+                    keyed,
+                )
+            # Bound to a narrowed local so `chosen_key` is `str`, not `str | None`, in
+            # both branches — the scorer and verifier both require `str`.
+            chosen_key = resolved_key
 
-        assert keyed is not None and chosen_key is not None
+        assert keyed is not None
 
-        # --- scoring, against the full source record, never the query ---
+        # --- scoring, against the full source record, never the retrieval query ---
         try:
             scored = await self._scorer.score(source, context, keyed, chosen_key)
+        except LLMFatalError:
+            raise
         except LLMError as exc:
-            return build(
-                chosen_id=chosen_id,
-                resolution=resolution,
-                raw=selection_raw,
-                issued=dict(keyed.issued),
-                truncated_count=truncated,
-                reason=DecisionReason.PROVIDER_FAILURE,
-                error=f"scorer: {exc}",
-            ), []
+            return (
+                build(
+                    chosen_id=chosen_id,
+                    resolution=resolution,
+                    raw=selection_raw,
+                    explanation=selection_explanation,
+                    reason=DecisionReason.PROVIDER_FAILURE,
+                    error=f"scorer: {exc}",
+                ),
+                _NO_PROPOSALS,
+                keyed,
+            )
         usage = usage + scored.usage
-        score = scored.score if scored.score is not None else selection_confidence
 
-        # --- verification, as a cost control ---
+        if scored.score is None:
+            # The gate produced no usable number. Falling back to the selector's own
+            # self-reported confidence would let a malformed answer become an automatic
+            # MATCH on a score the gate never gave; the spec routes malformed output to
+            # review instead.
+            return (
+                build(
+                    chosen_id=chosen_id,
+                    resolution=Resolution.UNRESOLVED.value,
+                    raw=selection_raw,
+                    explanation=selection_explanation,
+                    error=f"scorer: {scored.error}",
+                ),
+                _NO_PROPOSALS,
+                keyed,
+            )
+
+        score = scored.score
+
+        # --- verification, as a cost control; audit, as a sample of the invisible ---
         verdict = None
         audited = False
         if should_verify(score, self._policy):
@@ -7716,11 +8439,14 @@ class Matcher:
         if verdict is not None:
             usage = usage + verdict.usage
 
+        routed = route_proposals(scored.proposals, keyed.order, seen_queries)
+
         attempt = build(
             chosen_id=chosen_id,
             resolution=resolution,
             raw=selection_raw,
             score=score,
+            explanation=scored.explanation or selection_explanation,
             verifier_decision=None if verdict is None else verdict.decision,
             verifier_score=None if verdict is None else verdict.confidence,
             verifier_preferred_id=(
@@ -7729,12 +8455,46 @@ class Matcher:
                 else keyed.issued.get(verdict.preferred_key)
             ),
             audited=audited,
-            issued=dict(keyed.issued),
-            truncated_count=truncated,
+            dropped=tuple((p.value, why) for p, why in routed.dropped),
         )
-        return attempt, list(scored.proposals)
+        return attempt, routed, keyed
 
     # --- the loop --------------------------------------------------------------
+
+    def _is_acceptable(self, attempt: Attempt) -> bool:
+        """Good enough to stop early: a scored, exactly-resolved, unchallenged match."""
+        return (
+            attempt.primary_score is not None
+            and attempt.primary_score >= self._policy.accept_at
+            and attempt.resolution == Resolution.EXACT_KEY.value
+            and attempt.verifier_decision not in ("disagree", "no_match")
+        )
+
+    def _fatal_attempt(
+        self, index: int, query: str, proposal: RetryProposal | None, exc: Exception
+    ) -> Attempt:
+        return Attempt(
+            index=index,
+            query=query,
+            proposal=proposal,
+            candidates=(),
+            candidate_count=0,
+            candidates_truncated=0,
+            issued_keys={},
+            raw_selection=None,
+            chosen_id=None,
+            resolution=Resolution.ABSTAIN.value,
+            primary_score=None,
+            explanation="",
+            verifier_decision=None,
+            verifier_score=None,
+            verifier_preferred_id=None,
+            audited=False,
+            dropped_proposals=(),
+            reason=DecisionReason.PROVIDER_FAILURE,
+            error=str(exc),
+            usage=Usage.zero(),
+        )
 
     async def match(self, source: Record) -> MatchResult:
         context = self._templates.render_context(source)
@@ -7742,98 +8502,80 @@ class Matcher:
 
         queue: list[tuple[str, RetryProposal | None]] = [(first_query, None)]
         seen_queries = {normalise_query(first_query)}
-        candidate_queue: list[tuple[str, RetryProposal]] = []
+        tried_queries: list[str] = []  # original casing, for the rewriter's prompt
+        candidate_queue: list[str] = []
         attempts: list[Attempt] = []
         all_candidates: list[Candidate] = []
         last_keyed: KeyedCandidates | None = None
         last_candidates: list[Candidate] = []
+        last_query = first_query
 
         for index in range(self._policy.max_attempts):
-            reuse = None
-            forced_key = None
+            reuse: tuple[KeyedCandidates, list[Candidate]] | None = None
+            forced_key: str | None = None
+            proposal: RetryProposal | None = None
+
             if candidate_queue and last_keyed is not None:
-                forced_key, proposal = candidate_queue.pop(0)
+                forced_key = candidate_queue.pop(0)
+                proposal = RetryProposal(kind="candidate", value=forced_key, source="scorer")
                 reuse = (last_keyed, last_candidates)
-                query = attempts[-1].query if attempts else first_query
+                query = last_query
             elif queue:
                 query, proposal = queue.pop(0)
+                last_query = query
+                if query not in tried_queries:
+                    tried_queries.append(query)
             else:
                 break
 
             try:
-                attempt, proposals = await self._attempt(
-                    source, context, query, proposal, index, reuse, forced_key
+                attempt, routed, keyed = await self._attempt(
+                    source, context, query, proposal, index, reuse, forced_key, seen_queries
                 )
             except LLMFatalError as exc:
-                attempts.append(
-                    Attempt(
-                        index=index, query=query, proposal=proposal, candidates=(),
-                        candidate_count=0, candidates_truncated=0, issued_keys={},
-                        raw_selection=None, chosen_id=None,
-                        resolution=Resolution.ABSTAIN.value, primary_score=None,
-                        verifier_decision=None, verifier_score=None,
-                        verifier_preferred_id=None, audited=False,
-                        reason=DecisionReason.PROVIDER_FAILURE, error=str(exc),
-                        usage=Usage.zero(),
-                    )
-                )
-                break  # a bad key or unknown model will not fix itself on retry
+                attempts.append(self._fatal_attempt(index, query, proposal, exc))
+                break
 
             attempts.append(attempt)
             if attempt.candidates:
                 all_candidates = list(attempt.candidates)
-                last_candidates = list(attempt.candidates)
-            if attempt.issued_keys:
-                last_keyed = KeyedCandidates(
-                    order=tuple(attempt.issued_keys),
-                    by_key={
-                        key: c
-                        for key, rid in attempt.issued_keys.items()
-                        for c in last_candidates
-                        if c.id == rid
-                    },
-                    issued=dict(attempt.issued_keys),
-                    rendered="",
-                ) if not last_keyed or reuse is None else last_keyed
+            if keyed is not None and keyed.order:
+                last_keyed = keyed
+                last_candidates = list(attempt.candidates) or last_candidates
 
-            score = attempt.primary_score
-            if (
-                score is not None
-                and score >= self._policy.accept_at
-                and attempt.verifier_decision not in ("disagree", "no_match")
-                and attempt.resolution == Resolution.EXACT_KEY.value
-            ):
+            if self._is_acceptable(attempt):
                 break
-
             if index + 1 >= self._policy.max_attempts:
                 break
 
-            routed = route_proposals(proposals, tuple(attempt.issued_keys), seen_queries)
-            for key in routed.candidate_keys:
-                candidate_queue.append(
-                    (key, RetryProposal(kind="candidate", value=key, source="scorer"))
-                )
+            if attempt.reason in _INFRASTRUCTURE_FAILURES:
+                # Not evidence about this record. Retry the same query rather than
+                # asking the rewriter to invent a new one for a provider outage.
+                queue.insert(0, (query, proposal))
+                continue
+
+            candidate_queue.extend(routed.candidate_keys)
             for text in routed.queries:
                 seen_queries.add(normalise_query(text))
-                queue.append(
-                    (text, RetryProposal(kind="query", value=text, source="scorer"))
-                )
+                queue.append((text, RetryProposal(kind="query", value=text, source="scorer")))
 
             if not queue and not candidate_queue:
                 rewritten = await self._rewriter.rewrite(
-                    source, context, sorted(seen_queries), last_keyed or _empty_keyed()
+                    source, context, tried_queries, last_keyed or _empty_keyed()
                 )
-                for proposal_out in rewritten.proposals:
-                    if normalise_query(proposal_out.value) in seen_queries:
+                for out in rewritten.proposals:
+                    normalised = normalise_query(out.value)
+                    if normalised in seen_queries:
                         continue
-                    seen_queries.add(normalise_query(proposal_out.value))
-                    queue.append((proposal_out.value, proposal_out))
+                    seen_queries.add(normalised)
+                    queue.append((out.value, out))
                 if not queue:
                     break
 
         status, reason, best = derive_status(attempts, self._policy)
-        matched_id = best.chosen_id if best is not None and status is not None else None
-        if status.name in ("UNMATCHED", "FAILED"):
+
+        matched_id = None if best is None else best.chosen_id
+        if status in (MatchStatus.UNMATCHED, MatchStatus.FAILED):
             matched_id = None
 
         record = None
@@ -7853,7 +8595,7 @@ class Matcher:
             confidence=None if best is None else best.primary_score,
             status=status,
             reason=reason,
-            explanation="" if best is None else (best.error or ""),
+            explanation="" if best is None else best.explanation,
             candidates=tuple(all_candidates) if self._keep_candidates else (),
             attempts=tuple(attempts),
             usage=sum((a.usage for a in attempts), Usage.zero()),
@@ -7868,36 +8610,23 @@ def _empty_keyed() -> KeyedCandidates:
     return KeyedCandidates(order=(), by_key={}, issued={}, rendered="")
 ```
 
-- [ ] **Step 4: Run the tests and simplify what the tests reveal**
+- [ ] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_matcher.py -v`
+Expected: 31 passed.
 
-The `last_keyed` reconstruction in the loop above is convoluted and will likely fail `test_a_candidate_proposal_is_rescored_without_new_retrieval`. **Fix it properly rather than patching around it:** have `_attempt` return the `KeyedCandidates` object it actually built as a third element of its tuple, and store that directly:
+Five decisions in the code above are load-bearing. If a test fails, check these before changing anything:
 
-```python
-    ) -> tuple[Attempt, list[RetryProposal], KeyedCandidates | None]:
-```
-
-and in the loop:
-
-```python
-            attempt, proposals, keyed = await self._attempt(...)
-            attempts.append(attempt)
-            if keyed is not None and keyed.order:
-                last_keyed = keyed
-                last_candidates = list(attempt.candidates) or last_candidates
-```
-
-Delete the `KeyedCandidates(...)` reconstruction block entirely. Re-run until green — 30 passed.
-
-Two more expected fixes:
-- `_retrieve`'s exception branch conflates `RetrieverError` with `TimeoutError`; use `isinstance(outcome, BaseException)` first, then check `asyncio.TimeoutError` for the message.
-- `explanation` should carry the *selector's* explanation, not `best.error`. Thread `explanation` through `Attempt` if a test requires it, or take it from `scored.explanation` — the simplest correct choice is to add an `explanation: str` field to `Attempt` and update `serde.py` and Task 14's test fixture accordingly. Do that; a `MatchResult.explanation` that always holds an error string is a lie.
+1. **`_attempt` returns the `KeyedCandidates` it built.** A candidate proposal is re-scored against that same object. It cannot be rebuilt from `Attempt.issued_keys`, because a key→id map carries neither `rendered` nor `by_key`, and the scorer's `_blocks()` needs both — it would raise `StopIteration` on an empty `rendered`.
+2. **`LLMFatalError` is re-raised, not absorbed.** `LLMFatalError` subclasses `LLMError`, so a bare `except LLMError` around the selector call would swallow it and make the `except LLMFatalError` in `match()` unreachable. An invalid API key would then burn every remaining attempt.
+3. **An infrastructure failure re-queues the same query.** A provider 500 says nothing about this record, so the next attempt retries the same search rather than asking the rewriter for a new one. Without this, `test_one_failed_attempt_does_not_sink_a_later_good_one` cannot pass: the rewriter would consume the next scripted response and the loop would exit with every attempt failed.
+4. **A scorer that returns no usable score does not fall back to the selector's confidence.** That fallback would let malformed gate output become `MATCHED / ACCEPT_THRESHOLD` on a number the gate never produced. The attempt is marked `UNRESOLVED` and routes to review, which is what the spec's error-handling contract requires.
+5. **`TimeoutError` is tested before `BaseException`** in `_retrieve`, because it is one.
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `python -m pytest -q -m "not integration"`
-Expected: all green. If `serde.py` round-trip fails after adding `explanation`, update `_attempt_to_dict`/`_attempt_from_dict` and `tests/test_serde.py`'s fixture.
+Expected: all green.
 
 - [ ] **Step 6: Lint, type-check, commit**
 
@@ -7934,20 +8663,13 @@ import pytest
 
 from tests.test_matcher import (
     PROMPTS,
-    SOURCE,
     STORE,
     TEMPLATES,
     ScriptedRetriever,
     score_reply,
     select_reply,
 )
-from xwalk.batch import (
-    build_run_fingerprint,
-    export_mapping_csv,
-    export_manifest,
-    export_results_jsonl,
-    run_batch,
-)
+from xwalk.batch import build_run_fingerprint, export_mapping_csv, run_batch
 from xwalk.llm.fake import FakeLLM
 from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
@@ -7965,12 +8687,15 @@ SOURCES = [
 def make_matcher(llm, retriever, *, run_fp="fp1", policy=None):
     policy = policy or MatchPolicy()
     return Matcher(
-        templates=TEMPLATES, retrievers=[retriever], store=STORE,
+        templates=TEMPLATES,
+        retrievers=[retriever],
+        store=STORE,
         selector=Selector(llm, PROMPTS, TEMPLATES),
         scorer=Scorer(llm, PROMPTS, TEMPLATES),
         verifier=Verifier(llm, PROMPTS, TEMPLATES),
         rewriter=QueryRewriter(llm, PROMPTS, TEMPLATES),
-        policy=policy, run_fingerprint=run_fp,
+        policy=policy,
+        run_fingerprint=run_fp,
     )
 
 
@@ -7988,10 +8713,14 @@ RETRIEVER = {"glucose": ["T1"], "fructose": ["T2"]}
 
 # --- fingerprint -----------------------------------------------------------------
 
+
 def test_fingerprint_changes_with_the_policy():
     kwargs = dict(
-        templates=TEMPLATES, prompts=PROMPTS, store=STORE,
-        retrievers=[ScriptedRetriever(RETRIEVER)], llm=FakeLLM(["x"]),
+        templates=TEMPLATES,
+        prompts=PROMPTS,
+        store=STORE,
+        retrievers=[ScriptedRetriever(RETRIEVER)],
+        llm=FakeLLM(["x"]),
         selector_policy=SelectorPolicy(),
     )
     a = build_run_fingerprint(policy=MatchPolicy(accept_at=0.6), **kwargs)
@@ -8001,8 +8730,11 @@ def test_fingerprint_changes_with_the_policy():
 
 def test_fingerprint_changes_with_the_selector_budget():
     kwargs = dict(
-        templates=TEMPLATES, prompts=PROMPTS, store=STORE,
-        retrievers=[ScriptedRetriever(RETRIEVER)], llm=FakeLLM(["x"]),
+        templates=TEMPLATES,
+        prompts=PROMPTS,
+        store=STORE,
+        retrievers=[ScriptedRetriever(RETRIEVER)],
+        llm=FakeLLM(["x"]),
         policy=MatchPolicy(),
     )
     a = build_run_fingerprint(selector_policy=SelectorPolicy(max_candidates=30), **kwargs)
@@ -8014,8 +8746,12 @@ def test_fingerprint_changes_with_the_target_snapshot():
     from xwalk.stores.memory import MemoryStore
 
     kwargs = dict(
-        templates=TEMPLATES, prompts=PROMPTS, retrievers=[ScriptedRetriever(RETRIEVER)],
-        llm=FakeLLM(["x"]), policy=MatchPolicy(), selector_policy=SelectorPolicy(),
+        templates=TEMPLATES,
+        prompts=PROMPTS,
+        retrievers=[ScriptedRetriever(RETRIEVER)],
+        llm=FakeLLM(["x"]),
+        policy=MatchPolicy(),
+        selector_policy=SelectorPolicy(),
     )
     other = MemoryStore.from_source([Record(id="T1", fields={"label": "changed"})])
     assert build_run_fingerprint(store=STORE, **kwargs) != build_run_fingerprint(
@@ -8025,14 +8761,19 @@ def test_fingerprint_changes_with_the_target_snapshot():
 
 def test_fingerprint_is_stable_across_identical_configurations():
     kwargs = dict(
-        templates=TEMPLATES, prompts=PROMPTS, store=STORE,
-        retrievers=[ScriptedRetriever(RETRIEVER)], llm=FakeLLM(["x"]),
-        policy=MatchPolicy(), selector_policy=SelectorPolicy(),
+        templates=TEMPLATES,
+        prompts=PROMPTS,
+        store=STORE,
+        retrievers=[ScriptedRetriever(RETRIEVER)],
+        llm=FakeLLM(["x"]),
+        policy=MatchPolicy(),
+        selector_policy=SelectorPolicy(),
     )
     assert build_run_fingerprint(**kwargs) == build_run_fingerprint(**kwargs)
 
 
 # --- running ----------------------------------------------------------------------
+
 
 async def test_every_source_record_produces_a_result(tmp_path):
     matcher = make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER))
@@ -8090,22 +8831,25 @@ async def test_concurrency_is_bounded_by_the_policy(tmp_path):
 
 # --- resume -----------------------------------------------------------------------
 
+
 async def test_resume_skips_records_already_completed(tmp_path):
     out = tmp_path / "run"
     first = ScriptedRetriever(RETRIEVER)
     await run_batch(make_matcher(two_good_matches(), first), SOURCES, out=out)
 
     second = ScriptedRetriever(RETRIEVER)
-    report = await run_batch(make_matcher(two_good_matches(), second), SOURCES, out=out,
-                             resume=True)
+    report = await run_batch(
+        make_matcher(two_good_matches(), second), SOURCES, out=out, resume=True
+    )
     assert second.queries == []  # nothing re-run
     assert report.total == 2
 
 
 async def test_resume_false_reruns_everything(tmp_path):
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
     second = ScriptedRetriever(RETRIEVER)
     await run_batch(make_matcher(two_good_matches(), second), SOURCES, out=out, resume=False)
     assert len(second.queries) == 2
@@ -8114,8 +8858,9 @@ async def test_resume_false_reruns_everything(tmp_path):
 async def test_a_changed_source_record_is_reprocessed_on_resume(tmp_path):
     """Same id, different content — the prior result is not about this record."""
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
     changed = [Record(id="s1", fields={"mention": "glucose", "note": "new"}), SOURCES[1]]
     second = ScriptedRetriever(RETRIEVER)
     await run_batch(make_matcher(two_good_matches(), second), changed, out=out, resume=True)
@@ -8124,11 +8869,15 @@ async def test_a_changed_source_record_is_reprocessed_on_resume(tmp_path):
 
 async def test_a_changed_run_fingerprint_forces_a_fresh_run(tmp_path):
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER),
-                                 run_fp="fp1"), SOURCES, out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER), run_fp="fp1"),
+        SOURCES,
+        out=out,
+    )
     second = ScriptedRetriever(RETRIEVER)
-    await run_batch(make_matcher(two_good_matches(), second, run_fp="fp2"), SOURCES, out=out,
-                    resume=True)
+    await run_batch(
+        make_matcher(two_good_matches(), second, run_fp="fp2"), SOURCES, out=out, resume=True
+    )
     assert len(second.queries) == 2
 
 
@@ -8143,19 +8892,22 @@ async def test_completed_work_survives_a_crash_mid_run(tmp_path):
             raise RuntimeError("simulated crash")
         return select_reply("C01") if "## Candidates" in request.user else score_reply(0.95)
 
-    matcher = make_matcher(FakeLLM(handler=handler), ScriptedRetriever(RETRIEVER),
-                           policy=MatchPolicy(concurrency=1))
+    matcher = make_matcher(
+        FakeLLM(handler=handler), ScriptedRetriever(RETRIEVER), policy=MatchPolicy(concurrency=1)
+    )
     with pytest.raises(RuntimeError):
         await run_batch(matcher, SOURCES, out=out)
 
     resumed = ScriptedRetriever(RETRIEVER)
-    report = await run_batch(make_matcher(two_good_matches(), resumed), SOURCES, out=out,
-                             resume=True)
+    report = await run_batch(
+        make_matcher(two_good_matches(), resumed), SOURCES, out=out, resume=True
+    )
     assert report.total == 2
     assert len(resumed.queries) == 1  # only the unfinished record re-ran
 
 
 # --- reporting --------------------------------------------------------------------
+
 
 async def test_duplicate_targets_are_reported_not_resolved(tmp_path):
     """Reporting is not solving. The library surfaces the conflict and does nothing."""
@@ -8180,29 +8932,41 @@ async def test_needs_review_lists_the_review_bucket(tmp_path):
 
 # --- exports ----------------------------------------------------------------------
 
+
 async def test_mapping_csv_has_one_row_per_source_record(tmp_path):
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
     rows = list(csv.DictReader((out / "mapping.csv").open(encoding="utf-8")))
     assert len(rows) == 2
 
 
 async def test_mapping_csv_columns_are_the_documented_set(tmp_path):
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
     row = next(iter(csv.DictReader((out / "mapping.csv").open(encoding="utf-8"))))
     assert list(row) == [
-        "source_id", "matched_id", "confidence", "status", "reason", "explanation",
-        "attempts", "prompt_tokens", "completion_tokens", "llm_calls",
+        "source_id",
+        "matched_id",
+        "confidence",
+        "status",
+        "reason",
+        "explanation",
+        "attempts",
+        "prompt_tokens",
+        "completion_tokens",
+        "llm_calls",
     ]
 
 
 async def test_results_jsonl_has_one_object_per_line(tmp_path):
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
     lines = (out / "results.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 2
     assert json.loads(lines[0])["source_id"] == "s1"
@@ -8210,8 +8974,9 @@ async def test_results_jsonl_has_one_object_per_line(tmp_path):
 
 async def test_the_manifest_records_the_run_fingerprint_and_components(tmp_path):
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["run_fingerprint"] == "fp1"
     assert "target_fingerprint" in manifest
@@ -8220,8 +8985,12 @@ async def test_the_manifest_records_the_run_fingerprint_and_components(tmp_path)
 
 async def test_the_manifest_never_contains_an_api_key(tmp_path):
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out, manifest_extra={"model": "fake"})
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)),
+        SOURCES,
+        out=out,
+        manifest_extra={"model": "fake"},
+    )
     text = (out / "manifest.json").read_text(encoding="utf-8").lower()
     assert "api_key" not in text and "authorization" not in text
 
@@ -8230,8 +8999,9 @@ async def test_exports_are_regenerable_from_the_ledger_alone(tmp_path):
     from xwalk.ledger import Ledger
 
     out = tmp_path / "run"
-    await run_batch(make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES,
-                    out=out)
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
     (out / "mapping.csv").unlink()
     ledger = Ledger.open(out / "ledger.sqlite")
     export_mapping_csv(ledger, "fp1", out / "mapping.csv")
@@ -8248,8 +9018,9 @@ async def test_mapping_csv_can_be_written_from_the_adjudicated_view(tmp_path):
     def handler(request):
         return select_reply("C01") if "## Candidates" in request.user else score_reply(0.5)
 
-    await run_batch(make_matcher(FakeLLM(handler=handler), ScriptedRetriever(RETRIEVER)),
-                    SOURCES, out=out)
+    await run_batch(
+        make_matcher(FakeLLM(handler=handler), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
 
     ledger = Ledger.open(out / "ledger.sqlite")
     result = next(iter(ledger.iter_results("fp1")))
@@ -8257,10 +9028,15 @@ async def test_mapping_csv_can_be_written_from_the_adjudicated_view(tmp_path):
         ledger,
         [
             ReviewRow(
-                result_key=result.result_key, run_fingerprint="fp1",
-                source_id=result.source_id, source_hash=result.source_hash,
-                proposed_target_id=result.matched_id, decision=ReviewDecision.ACCEPT,
-                corrected_target_id=None, reviewer="jan", review_note="",
+                result_key=result.result_key,
+                run_fingerprint="fp1",
+                source_id=result.source_id,
+                source_hash=result.source_hash,
+                proposed_target_id=result.matched_id,
+                decision=ReviewDecision.ACCEPT,
+                corrected_target_id=None,
+                reviewer="jan",
+                review_note="",
                 reviewed_at="2026-07-26T10:00:00Z",
             )
         ],
@@ -8269,13 +9045,14 @@ async def test_mapping_csv_can_be_written_from_the_adjudicated_view(tmp_path):
     export_mapping_csv(ledger, "fp1", out / "adjudicated.csv", use_review=True)
     ledger.close()
 
-    rows = {r["source_id"]: r for r in csv.DictReader(
-        (out / "adjudicated.csv").open(encoding="utf-8")
-    )}
+    rows = {
+        r["source_id"]: r for r in csv.DictReader((out / "adjudicated.csv").open(encoding="utf-8"))
+    }
     assert rows[result.source_id]["status"] == "matched"
 
 
 # --- sync facade ------------------------------------------------------------------
+
 
 def test_run_batch_sync_works_outside_an_event_loop(tmp_path):
     from xwalk.batch import run_batch_sync
@@ -8298,9 +9075,10 @@ from __future__ import annotations
 import asyncio
 import csv
 import json
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any
 
 from xwalk import __version__
 from xwalk.fingerprint import hash_record, hash_value, result_key
@@ -8340,11 +9118,14 @@ def build_run_fingerprint(
     llm: LLMClient,
     policy: MatchPolicy,
     selector_policy: SelectorPolicy,
+    retriever_limit: int = 20,
+    rrf_k: int = 60,
 ) -> str:
     """Everything whose change should invalidate prior results.
 
     Deliberately excludes credentials, output paths, and concurrency — none of them
-    change what a result means.
+    change what a result means. `retriever_limit` and `rrf_k` must match the values
+    handed to `Matcher`, or a resumed run will reuse results produced at another depth.
     """
     return hash_value(
         {
@@ -8353,6 +9134,16 @@ def build_run_fingerprint(
             "prompts": prompts.fingerprint,
             "target": store.fingerprint,
             "retrievers": sorted(f"{r.name}:{r.fingerprint}" for r in retrievers),
+            # Depth and fusion constant change which candidates exist at all, so they
+            # belong here: raising k from 20 to 100 must not silently reuse old results.
+            "retrieval": {
+                "depths": sorted(
+                    f"{r.name}:{getattr(r, 'default_limit', retriever_limit)}" for r in retrievers
+                ),
+                "retriever_limit": retriever_limit,
+                "rrf_k": rrf_k,
+                "retriever_timeout": policy.retriever_timeout,
+            },
             "llm": llm.fingerprint,
             "policy": {
                 "max_attempts": policy.max_attempts,
@@ -8444,7 +9235,10 @@ async def run_batch(
             return
         async with semaphore:
             result = await matcher.match(record)
-        await ledger.put_result(result)
+            # Commit inside the slot. If the write happened after release, a crash in
+            # the next record could interleave ahead of this one's commit, and the
+            # resume guarantee this whole module exists for would be probabilistic.
+            await ledger.put_result(result)
         total_usage = total_usage + result.usage
         completed += 1
         if progress is not None:
@@ -8573,28 +9367,57 @@ def export_manifest(ledger: Ledger, run_fingerprint: str, path: str | Path) -> N
     )
 ```
 
-- [ ] **Step 3: Expose `run_fingerprint`, `policy`, and `store_fingerprint` on `Matcher`**
+- [ ] **Step 3: Write the final `src/xwalk/__init__.py`**
 
-`batch.py` reads three attributes the matcher does not yet publish. Add to `Matcher`:
+`Matcher` and `TemplateSet` are the two names the README quickstart imports from the package root, and neither has been exported yet. Write the whole file:
 
 ```python
-    @property
-    def run_fingerprint(self) -> str:
-        return self._run_fingerprint
+"""xwalk — LLM-RAG record matching between two collections."""
 
-    @property
-    def policy(self) -> MatchPolicy:
-        return self._policy
+# __version__ is defined FIRST, before any submodule import. `batch.py` does
+# `from xwalk import __version__`, so if a batch name were re-exported below while
+# __version__ was still unbound, importing xwalk would raise
+# "cannot import name '__version__' from partially initialized module".
+__version__ = "0.1.0.dev0"
 
-    @property
-    def store_fingerprint(self) -> str:
-        return self._store.fingerprint
+from xwalk.matcher import Matcher
+from xwalk.policy import MatchPolicy
+from xwalk.records import (
+    Attempt,
+    Candidate,
+    DecisionReason,
+    MatchResult,
+    MatchStatus,
+    Record,
+    RetrievalHit,
+    RetryProposal,
+    Usage,
+)
+from xwalk.templates import TemplateSet
+
+__all__ = [
+    "Attempt",
+    "Candidate",
+    "DecisionReason",
+    "MatchPolicy",
+    "MatchResult",
+    "MatchStatus",
+    "Matcher",
+    "Record",
+    "RetrievalHit",
+    "RetryProposal",
+    "TemplateSet",
+    "Usage",
+    "__version__",
+]
 ```
+
+`run_batch` is deliberately **not** re-exported here. It lives at `xwalk.batch.run_batch`, and importing it from the package root would create exactly the cycle the comment above warns about. `Matcher` and `TemplateSet` are safe because neither module imports `xwalk` itself.
 
 - [ ] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_batch.py -v`
-Expected: 24 passed.
+Expected: 25 passed.
 
 `test_completed_work_survives_a_crash_mid_run` is the important one: it asserts the whole reason for the ledger. If it fails because the crash aborts before the first result commits, check that `run_batch` awaits `ledger.put_result` *before* the next record starts — with `concurrency=1` the ordering must be strict.
 
@@ -8607,6 +9430,7 @@ async def test_two_csvs_in_a_mapping_table_out(tmp_path, targets_csv, sources_cs
     from xwalk.retrieval.bm25 import BM25Retriever
     from xwalk.sources.tabular import csv_source
     from xwalk.stores.memory import MemoryStore
+    from xwalk.templates import TemplateSet
 
     templates = TemplateSet(
         query="{{ mention }}",
@@ -8616,7 +9440,9 @@ async def test_two_csvs_in_a_mapping_table_out(tmp_path, targets_csv, sources_cs
     )
     targets = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
     store = MemoryStore.from_source(targets)
-    retriever = BM25Retriever.build(targets, templates, tmp_path / "idx")
+    retriever = BM25Retriever.build(
+        targets, templates, tmp_path / "idx", exact_fields=("label", "synonyms")
+    )
 
     def handler(request):
         if "## Candidates" in request.user:
@@ -8625,27 +9451,31 @@ async def test_two_csvs_in_a_mapping_table_out(tmp_path, targets_csv, sources_cs
 
     llm = FakeLLM(handler=handler)
     matcher = Matcher(
-        templates=templates, retrievers=[retriever], store=store,
+        templates=templates,
+        retrievers=[retriever],
+        store=store,
         selector=Selector(llm, PROMPTS, templates),
         scorer=Scorer(llm, PROMPTS, templates),
         verifier=Verifier(llm, PROMPTS, templates),
         rewriter=QueryRewriter(llm, PROMPTS, templates),
-        policy=MatchPolicy(max_attempts=1), run_fingerprint="e2e",
+        policy=MatchPolicy(max_attempts=1),
+        run_fingerprint="e2e",
     )
     report = await run_batch(
         matcher, csv_source(sources_csv, id_column="mention_id"), out=tmp_path / "run"
     )
 
     assert report.total == 4
-    rows = {r["source_id"]: r for r in csv.DictReader(
-        (tmp_path / "run" / "mapping.csv").open(encoding="utf-8")
-    )}
-    assert rows["s1"]["matched_id"] == "CHEBI:17234"          # glucose
-    assert rows["s2"]["matched_id"] == "CHEBI:17234"          # dextrose, via synonym
+    rows = {
+        r["source_id"]: r
+        for r in csv.DictReader((tmp_path / "run" / "mapping.csv").open(encoding="utf-8"))
+    }
+    assert rows["s1"]["matched_id"] == "CHEBI:17234"  # glucose
+    assert rows["s2"]["matched_id"] == "CHEBI:17234"  # dextrose, via synonym
     assert rows["s4"]["status"] in ("unmatched", "needs_review")  # unobtainium
 ```
 
-Run: `python -m pytest tests/test_batch.py -v` — Expected: 25 passed. If `s2` does not resolve through the synonym field, the `doc` template is not indexing synonyms; fix the template in the test, not the assertion.
+Run: `python -m pytest tests/test_batch.py -v` — Expected: 26 passed. If `s2` does not resolve through the synonym field, the `doc` template is not indexing synonyms; fix the template in the test, not the assertion.
 
 - [ ] **Step 6: Run everything, lint, type-check**
 
@@ -8664,7 +9494,9 @@ Replace `README.md` with a runnable example, so the phase's promise is documente
 Match records from any collection to any other, using retrieval plus an LLM.
 
 ```python
-from xwalk import MatchPolicy, Matcher, TemplateSet
+import os
+
+from xwalk import Matcher, MatchPolicy, TemplateSet
 from xwalk.batch import build_run_fingerprint, run_batch_sync
 from xwalk.llm.openai_compat import OpenAICompatClient
 from xwalk.prompts.contract import PromptSet, load_slots
@@ -8684,31 +9516,42 @@ templates = TemplateSet(
 
 targets = list(csv_source("targets.csv", id_column="id", multivalue_columns=["synonyms"]))
 store = MemoryStore.from_source(targets)
-retriever = BM25Retriever.build(targets, templates, "index/")
+# exact_fields makes a whole-string hit on a label or synonym outrank a document that
+# merely contains the query term more often. Omit it for plain BM25.
+retriever = BM25Retriever.build(
+    targets, templates, "index/", exact_fields=("label", "synonyms")
+)
 
 llm = OpenAICompatClient(
-    base_url="https://api.openai.com/v1", model="gpt-4o-mini",
-    api_key=os.environ["OPENAI_API_KEY"], profile="openai",
+    base_url="https://api.openai.com/v1",
+    model="gpt-4o-mini",
+    api_key=os.environ["OPENAI_API_KEY"],
+    profile="openai",
 )
 prompts = PromptSet.from_slots(load_slots("slots.yaml"))
 policy, selector_policy = MatchPolicy(), SelectorPolicy()
 
 matcher = Matcher(
-    templates=templates, retrievers=[retriever], store=store,
+    templates=templates,
+    retrievers=[retriever],
+    store=store,
     selector=Selector(llm, prompts, templates, policy=selector_policy),
     scorer=Scorer(llm, prompts, templates, review_floor=policy.review_floor),
     verifier=Verifier(llm, prompts, templates),
     rewriter=QueryRewriter(llm, prompts, templates),
     policy=policy,
     run_fingerprint=build_run_fingerprint(
-        templates=templates, prompts=prompts, store=store, retrievers=[retriever],
-        llm=llm, policy=policy, selector_policy=selector_policy,
+        templates=templates,
+        prompts=prompts,
+        store=store,
+        retrievers=[retriever],
+        llm=llm,
+        policy=policy,
+        selector_policy=selector_policy,
     ),
 )
 
-report = run_batch_sync(
-    matcher, csv_source("sources.csv", id_column="mention_id"), out="run/"
-)
+report = run_batch_sync(matcher, csv_source("sources.csv", id_column="mention_id"), out="run/")
 print(report.by_status())
 print(report.duplicate_targets())
 ```
@@ -8744,7 +9587,7 @@ git commit -m "feat: batch runner with resume, reporting, and exports"
 
 ## Definition of done for Phase 1
 
-- [ ] `python -m pytest -q -m "not integration"` — all green.
+- [ ] `python -m pytest -q -m "not integration"` — all green. Expect **404 tests** across 23 files, in a couple of seconds with `TMPDIR` on tmpfs.
 - [ ] `python -m pytest -q -m integration` — 1 skipped without keys; passes with them.
 - [ ] `python -m ruff check src tests && python -m ruff format --check src tests` — clean.
 - [ ] `python -m mypy` — clean under `--strict`.
@@ -8767,7 +9610,24 @@ Checked against the spec; the following are **deliberately deferred**, not omiss
 | `prompts/author.py`, `prompts/optimize.py` | Phase 2 |
 | Porting the four datasets as examples | Phase 3 |
 | CI matrix and Tantivy install smoke tests | Phase 3 (Task 5 Step 1 verifies the API locally now) |
+| Parquet source (spec's `tabular.py` lists `csv / tsv / jsonl / parquet`) | Phase 3 — needs `pyarrow`, so it belongs behind an extra, and the base install must stay small. TSV is already reachable via `csv_source(..., delimiter="\t")`. |
+| Emitting confirmed review pairs as a gold file | Phase 2 — the consumer is the prompt optimizer, and `evaluate/gold.py` is where the gold format is defined. Task 16's `adjudicated()` already exposes everything such an exporter needs. |
+| A documented alternate retriever for unsupported platforms | Phase 3, with the platform matrix. Never automatic: the spec is explicit that a silent engine switch would change ranking and undermine reproducibility. |
 
-Two items the spec lists that Phase 1 **does** cover and must not be skipped: the
+Three items the spec lists that Phase 1 **does** cover and must not be skipped: the
 contract-safe skeletons plus `contract.py` (Task 10 — only LLM-*assisted authoring* is
-deferred), and duplicate-target reporting (Task 18 — reported, never resolved).
+deferred), duplicate-target reporting (Task 18 — reported, never resolved), and the LLM
+response cache with the spec's full key derivation (Task 15 — the ledger table alone is
+not enough; `CachingLLM` is what makes it a cache rather than an unused table).
+
+## Open spec disagreements — decide before Task 1
+
+The spec wins over this plan. These four points are places where the plan still differs,
+each deliberate and each cheap to change if the ruling goes the other way.
+
+| # | Spec says | Plan does | Why, and what changing it costs |
+|---|---|---|---|
+| 1 | "**Tiny fixture target of ~50 records** as CSV, so retrieval tests run in milliseconds" | 5 target rows, 4 source rows | The stated *rationale* — millisecond retrieval tests with BM25 only — is met: the suite runs in ~2 s. Five rows is what the deterministic ranking assertions in Tasks 5 and 18 are written against, and each was verified by hand. Growing to 50 means re-deriving every expected ranking; it buys realistic near-miss ranking and genuine selector-budget pressure, which today's budget tests only reach with synthetic candidates. **Recommendation: keep 5 for Phase 1, grow the fixture in Phase 2** where the ceiling diagnostic needs a population to be meaningful. |
+| 2 | "Resolution is an **exact dictionary lookup** against the keys issued for that attempt; anything else is `UNRESOLVED_OUTPUT`" and "`null` is unambiguous" | `resolve_key` strips surrounding whitespace, quotes and brackets, upper-cases the key, and treats `none`/`nil`/`no_match`/`n/a`/`na` as abstention alongside `null` | The key space is issued by the library, so no tolerant path can reach a *wrong* record — every one of the spec's four adversarial cases is tested and still resolves to `UNRESOLVED`. The tolerance only ever maps to abstention or to the key the model plainly meant. But it *is* laxer than the letter of the spec, and every fuzzy hit is still labelled `EXACT_KEY`. **Recommendation: keep, and note the deviation in the module docstring.** Tightening is a one-line change to `_normalise` plus `_ABSTAIN_TOKENS`. |
+| 3 | "A **single writer coroutine** serialises writes" | One `asyncio.Lock` around each write on a shared connection | Same guarantee inside one event loop, less machinery, and no queue to drain on shutdown. It is a mechanism substitution, not a weaker invariant — `test_concurrent_writes_all_land` pins the behaviour the spec is asking for. **Recommendation: keep**; the plan's architecture paragraph has been left promising "a single writer coroutine" and should be reworded if you agree. |
+| 4 | Review rows carry `result_id` | `result_key` throughout | Matches `MatchResult.result_key`, so the exported CSV column and the field it refers to have one name. **Recommendation: keep**; rename is mechanical if you prefer the spec's word. |
