@@ -1850,7 +1850,7 @@ git commit -m "feat: Retriever protocol and Tantivy BM25 retriever"
 
 **Design note:** RRF scores each hit `1 / (k + rank)` and sums across retrievers. It needs no score calibration between retrievers, which matters because BM25 scores and cosine similarities are not comparable. `k=60` is the standard default. Every fused `Candidate` carries `evidence` — the full set of `RetrievalHit`s that produced it — and that is exactly what the Phase 2 ceiling diagnostic reads.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_fusion.py`:
 
@@ -1943,12 +1943,12 @@ def test_rejects_a_non_positive_k(store):
         reciprocal_rank_fusion([[hit("A", "bm25", 1)]], store, k=0)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_fusion.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.retrieval.fusion'`.
 
-- [ ] **Step 3: Write `src/xwalk/retrieval/fusion.py`**
+- [x] **Step 3: Write `src/xwalk/retrieval/fusion.py`**
 
 ```python
 """Reciprocal rank fusion.
@@ -2012,12 +2012,12 @@ def reciprocal_rank_fusion(
     return candidates
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_fusion.py -v`
 Expected: 11 passed.
 
-- [ ] **Step 5: Write the real `src/xwalk/retrieval/__init__.py`**
+- [x] **Step 5: Write the real `src/xwalk/retrieval/__init__.py`**
 
 ```python
 from xwalk.retrieval.base import Retriever, RetrieverError, SearchRequest
@@ -2033,12 +2033,12 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 6: Run the whole suite, lint, and type-check**
+- [x] **Step 6: Run the whole suite, lint, and type-check**
 
 Run: `python -m pytest -q && python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
 Expected: all green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/xwalk/retrieval tests/test_fusion.py
