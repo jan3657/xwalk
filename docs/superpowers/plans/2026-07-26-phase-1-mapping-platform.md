@@ -5273,7 +5273,7 @@ git commit -m "feat: scorer and verdict-returning verifier"
 - Consumes: Tasks 1, 3, 7, 9, 10, 12.
 - Produces: `QueryRewriter(llm, prompts, templates, *, max_queries=2)` with `async rewrite(source, context, previous_queries, keyed) -> RewriteOutcome(proposals, explanation, raw, usage, error)`; `RoutedProposals(candidate_keys, queries, dropped)`; `route_proposals(proposals, issued_keys, seen_queries) -> RoutedProposals`; `normalise_query(text) -> str`. Task 17 consumes these.
 
-- [ ] **Step 1: Write the failing routing test**
+- [x] **Step 1: Write the failing routing test**
 
 Create `tests/test_proposals.py`:
 
@@ -5452,12 +5452,12 @@ async def test_works_when_there_were_no_candidates():
     assert len(outcome.proposals) == 1
 ```
 
-- [ ] **Step 2: Run both to verify they fail**
+- [x] **Step 2: Run both to verify they fail**
 
 Run: `python -m pytest tests/test_proposals.py tests/test_rewrite.py -v`
 Expected: FAIL — modules do not exist.
 
-- [ ] **Step 3: Write `src/xwalk/stages/proposals.py`**
+- [x] **Step 3: Write `src/xwalk/stages/proposals.py`**
 
 ```python
 """Routing retry proposals.
@@ -5535,7 +5535,7 @@ def route_proposals(
     )
 ```
 
-- [ ] **Step 4: Write `src/xwalk/stages/rewrite.py`**
+- [x] **Step 4: Write `src/xwalk/stages/rewrite.py`**
 
 ```python
 """Query reformulation. Produces query proposals only — never candidate proposals."""
@@ -5638,12 +5638,12 @@ class QueryRewriter:
         )
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `python -m pytest tests/test_proposals.py tests/test_rewrite.py -v`
 Expected: 20 passed (13 + 7).
 
-- [ ] **Step 6: Lint, type-check, commit**
+- [x] **Step 6: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
