@@ -623,7 +623,7 @@ git commit -m "feat: deterministic fingerprinting and collision-safe result keys
 
 **Design note:** templates receive the record's fields as top-level variables plus `id`, so `"{{ mention }}"` works directly. Missing fields render as the empty string, *not* `StrictUndefined` — real source rows are sparse, and a missing optional column must not abort a 100k-row run. Template *syntax* errors, by contrast, raise at `TemplateSet` construction so a typo surfaces before any LLM call is billed.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_templates.py`:
 
@@ -702,12 +702,12 @@ def test_id_field_in_fields_does_not_shadow_record_id():
     assert ts.render_query(record) == "real"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_templates.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.templates'`.
 
-- [ ] **Step 3: Write `src/xwalk/templates.py`**
+- [x] **Step 3: Write `src/xwalk/templates.py`**
 
 ```python
 """The four templates that carry the entire domain mapping.
@@ -811,17 +811,17 @@ class TemplateSet:
         )
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_templates.py -v`
 Expected: 10 passed.
 
-- [ ] **Step 5: Lint and type-check**
+- [x] **Step 5: Lint and type-check**
 
 Run: `python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
 Expected: clean. `_compiled` as a mutable default on a frozen dataclass is intentional and `compare=False` keeps equality on the source strings; if mypy objects to assigning into it from `__post_init__`, that is fine — the dict itself is mutable, only the field binding is frozen.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/xwalk/templates.py tests/test_templates.py
