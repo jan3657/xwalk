@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Literal
 
 
@@ -101,3 +102,65 @@ class RetryProposal:
     kind: Literal["candidate", "query"]
     value: str
     source: Literal["scorer", "rewriter"]
+
+
+class MatchStatus(Enum):
+    MATCHED = "matched"
+    NEEDS_REVIEW = "needs_review"
+    UNMATCHED = "unmatched"
+    FAILED = "failed"
+
+
+class DecisionReason(Enum):
+    ACCEPT_THRESHOLD = "accept_threshold"
+    BELOW_ACCEPT_THRESHOLD = "below_accept_threshold"
+    BELOW_REVIEW_FLOOR = "below_review_floor"
+    SELECTOR_ABSTAINED = "selector_abstained"
+    NO_CANDIDATES = "no_candidates"
+    UNRESOLVED_OUTPUT = "unresolved_output"
+    RETRIEVER_FAILURE = "retriever_failure"
+    PROVIDER_FAILURE = "provider_failure"
+    VERIFIER_DISAGREEMENT = "verifier_disagreement"
+
+
+@dataclass(frozen=True)
+class Attempt:
+    """One pass through retrieve -> select -> gate. The complete audit trail."""
+
+    index: int
+    query: str
+    proposal: RetryProposal | None
+    candidates: tuple[Candidate, ...]
+    candidate_count: int
+    candidates_truncated: int
+    issued_keys: Mapping[str, str]
+    raw_selection: str | None
+    chosen_id: str | None
+    resolution: str
+    primary_score: float | None
+    explanation: str
+    verifier_decision: str | None
+    verifier_score: float | None
+    verifier_preferred_id: str | None
+    audited: bool
+    dropped_proposals: tuple[tuple[str, str], ...]
+    reason: DecisionReason | None
+    error: str | None
+    usage: Usage
+
+
+@dataclass(frozen=True)
+class MatchResult:
+    result_key: str
+    source_id: str
+    source_hash: str
+    matched_id: str | None
+    matched_record: Record | None
+    confidence: float | None
+    status: MatchStatus
+    reason: DecisionReason
+    explanation: str
+    candidates: tuple[Candidate, ...]
+    attempts: tuple[Attempt, ...]
+    usage: Usage
+    run_fingerprint: str

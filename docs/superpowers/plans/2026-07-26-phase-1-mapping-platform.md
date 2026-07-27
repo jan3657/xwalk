@@ -5678,7 +5678,7 @@ git commit -m "feat: query rewriter and candidate-vs-query proposal routing"
 
 Plus one rule from Task 9: **any non-exact resolution (legacy mode) forces `NEEDS_REVIEW`** even when the score clears `accept_at`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_policy.py`:
 
@@ -5931,7 +5931,7 @@ def test_max_attempts_below_one_is_rejected():
         MatchPolicy(max_attempts=0)
 ```
 
-- [ ] **Step 2: Add the result types to `src/xwalk/records.py`**
+- [x] **Step 2: Add the result types to `src/xwalk/records.py`**
 
 As in Task 12, the import belongs in the block at the top of the file, not where it appears below.
 
@@ -6010,12 +6010,12 @@ Two fields are worth their own justification, because both exist to keep a spec 
 
 `Attempt` has no field defaults on purpose — every construction site must state every field, so adding one later cannot silently leave a stale value behind. That also means these two fields must be present from *this* task: retrofitting them in Task 17 would break `serde.py`, both test fixtures, and two construction sites inside `matcher.py`.
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `python -m pytest tests/test_policy.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.policy'`.
 
-- [ ] **Step 4: Write `src/xwalk/policy.py`**
+- [x] **Step 4: Write `src/xwalk/policy.py`**
 
 ```python
 """Policy: cost controls, classification thresholds, and status derivation.
@@ -6150,16 +6150,16 @@ def derive_status(
     return MatchStatus.UNMATCHED, DecisionReason.NO_CANDIDATES, attempts[-1]
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `python -m pytest tests/test_policy.py -v`
 Expected: 31 passed. `test_a_weak_pick_outranks_an_earlier_abstention` is the one that pins precedence rule 3 above rule 4 — if it fails, the ordering in `derive_status` is wrong, not the test.
 
-- [ ] **Step 6: Export the new names**
+- [x] **Step 6: Export the new names**
 
 Add `Attempt`, `DecisionReason`, `MatchResult`, `MatchStatus`, `MatchPolicy` to `src/xwalk/__init__.py`, keeping `__version__` above the import block. Task 18 Step 3 writes the final version of this file.
 
-- [ ] **Step 7: Lint, type-check, commit**
+- [x] **Step 7: Lint, type-check, commit**
 
 ```bash
 python -m pytest -q -m "not integration"
