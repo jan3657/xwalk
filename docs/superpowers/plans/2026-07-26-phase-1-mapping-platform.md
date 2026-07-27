@@ -2059,7 +2059,7 @@ git commit -m "feat: reciprocal rank fusion with per-retriever evidence"
 
 **Why `FakeLLM` comes before the real client:** today's pipeline cannot be tested without a provider. `FakeLLM` is the single biggest testability win in the rewrite — the entire matcher loop (retry paths, proposal routing, verify band, disagreement, audit sampling, exhaustion, error handling) becomes testable offline. Build it first so every later stage has it.
 
-- [ ] **Step 1: Write the failing parsing test**
+- [x] **Step 1: Write the failing parsing test**
 
 Create `tests/test_parsing.py`:
 
@@ -2160,12 +2160,12 @@ def test_parse_error_carries_the_raw_text_for_the_trace():
     assert exc.value.raw == "garbage"
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `python -m pytest tests/test_parsing.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.llm'`.
 
-- [ ] **Step 3: Write `src/xwalk/llm/base.py`**
+- [x] **Step 3: Write `src/xwalk/llm/base.py`**
 
 ```python
 """The LLM contract.
@@ -2269,7 +2269,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Write `src/xwalk/llm/parsing.py`**
+- [x] **Step 4: Write `src/xwalk/llm/parsing.py`**
 
 ```python
 """Turning whatever the model said into a JSON object.
@@ -2367,12 +2367,12 @@ def parse_json_object(raw: str) -> dict[str, Any]:
     raise ParseError("could not extract a JSON object from the response", raw=raw)
 ```
 
-- [ ] **Step 5: Run the parsing tests**
+- [x] **Step 5: Run the parsing tests**
 
 Run: `python -m pytest tests/test_parsing.py -v`
 Expected: 20 passed.
 
-- [ ] **Step 6: Write the failing `FakeLLM` test**
+- [x] **Step 6: Write the failing `FakeLLM` test**
 
 Create `tests/test_fake_llm.py`:
 
@@ -2462,7 +2462,7 @@ async def test_fatal_errors_pass_through_unchanged():
         await llm.complete(REQ)
 ```
 
-- [ ] **Step 7: Write `src/xwalk/llm/fake.py`**
+- [x] **Step 7: Write `src/xwalk/llm/fake.py`**
 
 ```python
 """A scripted LLM client. The reason the whole matcher loop is testable offline."""
@@ -2587,12 +2587,12 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 8: Run the tests, lint, type-check**
+- [x] **Step 8: Run the tests, lint, type-check**
 
 Run: `python -m pytest tests/test_parsing.py tests/test_fake_llm.py -v && python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
 Expected: 31 passed, clean lint and types.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/xwalk/llm tests/test_parsing.py tests/test_fake_llm.py
