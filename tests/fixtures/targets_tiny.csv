@@ -1,0 +1,6 @@
+id,label,synonyms,definition
+CHEBI:17234,glucose,dextrose|grape sugar,A monosaccharide sugar.
+CHEBI:28757,fructose,fruit sugar|levulose,A ketohexose sugar.
+CHEBI:17992,sucrose,table sugar|saccharose,A disaccharide of glucose and fructose.
+CHEBI:17716,lactose,milk sugar,A disaccharide found in milk.
+CHEBI:15903,beta-D-glucose,,The beta-anomer of D-glucose.

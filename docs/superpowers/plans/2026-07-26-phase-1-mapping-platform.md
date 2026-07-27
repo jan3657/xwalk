@@ -844,7 +844,7 @@ git commit -m "feat: four-template rendering with fail-fast compilation"
 
 **Design note:** `RecordSource` is the *entire* extension contract for input data. It replaces the paper repo's `HOOK_REGISTRY` — adding a dataset is writing a generator in your own code, not editing library code. Keeping `TargetStore` separate from `Retriever` is what makes "plug in Elasticsearch for scale" real; otherwise the retriever still has to hold every target record in memory.
 
-- [ ] **Step 1: Create the fixtures**
+- [x] **Step 1: Create the fixtures**
 
 `tests/fixtures/targets_tiny.csv`:
 
@@ -869,7 +869,7 @@ s4,unobtainium,a sample of ,was requested
 
 `s4` is deliberately unmatchable — it exercises `NO_CANDIDATES` and abstention end-to-end.
 
-- [ ] **Step 2: Write `tests/conftest.py`**
+- [x] **Step 2: Write `tests/conftest.py`**
 
 ```python
 from pathlib import Path
@@ -889,7 +889,7 @@ def sources_csv() -> Path:
     return FIXTURES / "sources_tiny.csv"
 ```
 
-- [ ] **Step 3: Write the failing tests**
+- [x] **Step 3: Write the failing tests**
 
 Create `tests/test_sources.py`:
 
@@ -1039,12 +1039,12 @@ def test_iterating_the_store_yields_records(targets_csv):
     }
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [x] **Step 4: Run the tests to verify they fail**
 
 Run: `python -m pytest tests/test_sources.py tests/test_stores.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.sources'`.
 
-- [ ] **Step 5: Write `src/xwalk/sources/base.py`**
+- [x] **Step 5: Write `src/xwalk/sources/base.py`**
 
 ```python
 """The entire extension contract for input data."""
@@ -1072,7 +1072,7 @@ from xwalk.sources.tabular import csv_source, jsonl_source
 __all__ = ["RecordSource", "csv_source", "jsonl_source"]
 ```
 
-- [ ] **Step 6: Write `src/xwalk/sources/tabular.py`**
+- [x] **Step 6: Write `src/xwalk/sources/tabular.py`**
 
 ```python
 """CSV / TSV / JSONL record sources. Lazy by construction."""
@@ -1153,7 +1153,7 @@ def jsonl_source(
             yield Record(id=raw_id, fields=obj)
 ```
 
-- [ ] **Step 7: Write `src/xwalk/stores/base.py`**
+- [x] **Step 7: Write `src/xwalk/stores/base.py`**
 
 ```python
 """Target storage, deliberately separate from retrieval.
@@ -1196,7 +1196,7 @@ from xwalk.stores.memory import MemoryStore
 __all__ = ["MemoryStore", "TargetStore"]
 ```
 
-- [ ] **Step 8: Write `src/xwalk/stores/memory.py`**
+- [x] **Step 8: Write `src/xwalk/stores/memory.py`**
 
 ```python
 """In-memory target store. The default for collections that fit in RAM."""
@@ -1249,12 +1249,12 @@ class MemoryStore:
         return record_id in self._records
 ```
 
-- [ ] **Step 9: Run the tests**
+- [x] **Step 9: Run the tests**
 
 Run: `python -m pytest tests/test_sources.py tests/test_stores.py -v`
 Expected: 20 passed.
 
-- [ ] **Step 10: Verify `MemoryStore` satisfies the protocol**
+- [x] **Step 10: Verify `MemoryStore` satisfies the protocol**
 
 Add to `tests/test_stores.py`:
 
@@ -1268,12 +1268,12 @@ def test_memory_store_satisfies_the_target_store_protocol():
 
 Run: `python -m pytest tests/test_stores.py -v` — Expected: 10 passed.
 
-- [ ] **Step 11: Lint and type-check**
+- [x] **Step 11: Lint and type-check**
 
 Run: `python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy`
 Expected: clean.
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add src/xwalk/sources src/xwalk/stores tests/
