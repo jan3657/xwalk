@@ -6183,7 +6183,7 @@ git commit -m "feat: result types, match policy, and deterministic status deriva
 
 **Why SQLite and not JSONL:** concurrent append to JSONL invites partial final lines and duplicate records, which complicates exactly the resume logic that has to be trustworthy. `results.jsonl`, `mapping.csv` and `manifest.json` become **exports**, regenerated from the ledger on demand. Writes go through a single writer coroutine; WAL keeps concurrent readers working.
 
-- [ ] **Step 1: Write the failing serde test**
+- [x] **Step 1: Write the failing serde test**
 
 Create `tests/test_serde.py`:
 
@@ -6288,7 +6288,7 @@ def test_the_serialised_form_is_json_safe():
     json.dumps(result_to_dict(sample_result()))  # must not raise
 ```
 
-- [ ] **Step 2: Write `src/xwalk/serde.py`**
+- [x] **Step 2: Write `src/xwalk/serde.py`**
 
 ```python
 """Converting results to and from plain JSON-safe dicts.
@@ -6454,12 +6454,12 @@ def result_from_dict(data: Mapping[str, Any]) -> MatchResult:
     )
 ```
 
-- [ ] **Step 3: Run the serde tests**
+- [x] **Step 3: Run the serde tests**
 
 Run: `python -m pytest tests/test_serde.py -v`
 Expected: 6 passed. `Record.fields` restores as a plain dict, so equality holds against the original `Mapping`.
 
-- [ ] **Step 4: Create `tests/__init__.py`**
+- [x] **Step 4: Create `tests/__init__.py`**
 
 From here on, `tests/test_ledger.py`, `tests/test_review.py` and `tests/test_batch.py` import shared fixtures from sibling test modules (`from tests.test_serde import sample_result`). That only works if `tests/` is a package.
 
@@ -6467,7 +6467,7 @@ From here on, `tests/test_ledger.py`, `tests/test_review.py` and `tests/test_bat
 touch tests/__init__.py
 ```
 
-- [ ] **Step 5: Write the failing ledger test**
+- [x] **Step 5: Write the failing ledger test**
 
 Create `tests/test_ledger.py`:
 
@@ -6611,7 +6611,7 @@ async def test_a_crash_mid_run_leaves_completed_results_readable(tmp_path):
     reopened.close()
 ```
 
-- [ ] **Step 6: Write `src/xwalk/ledger.py`**
+- [x] **Step 6: Write `src/xwalk/ledger.py`**
 
 ```python
 """The run ledger: transactional, resumable execution state.
@@ -6838,12 +6838,12 @@ class Ledger:
 
 `isolation_level=None` puts the connection in autocommit, so every statement is its own durable transaction — that is what makes the crash-mid-run test pass without an explicit flush.
 
-- [ ] **Step 7: Run the ledger tests**
+- [x] **Step 7: Run the ledger tests**
 
 Run: `python -m pytest tests/test_ledger.py -v`
 Expected: 15 passed.
 
-- [ ] **Step 8: Write the failing cache test**
+- [x] **Step 8: Write the failing cache test**
 
 The `llm_cache` table now exists but nothing writes to it. The spec is explicit that the cache is part of the ledger *and* explicit about the key: "`(model, rendered_prompt)` is not a sufficient LLM cache key. The key covers the complete request body, the schema, provider identity, model parameters, and adapter version." A cache keyed on less than that returns a stale answer when the schema or temperature changes — the answer to a question that was not asked.
 
@@ -6977,7 +6977,7 @@ def test_caching_llm_satisfies_the_llm_client_protocol(ledger):
     assert isinstance(CachingLLM(FakeLLM(["x"]), ledger), LLMClient)
 ```
 
-- [ ] **Step 9: Write `src/xwalk/llm/cache.py`**
+- [x] **Step 9: Write `src/xwalk/llm/cache.py`**
 
 ```python
 """Ledger-backed LLM response caching.
@@ -7078,12 +7078,12 @@ class CachingLLM:
 
 Add `CachingLLM` and `llm_cache_key` to `src/xwalk/llm/__init__.py`.
 
-- [ ] **Step 10: Run the cache tests**
+- [x] **Step 10: Run the cache tests**
 
 Run: `python -m pytest tests/test_llm_cache.py -v`
 Expected: 13 passed.
 
-- [ ] **Step 11: Lint, type-check, commit**
+- [x] **Step 11: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
