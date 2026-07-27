@@ -3200,7 +3200,7 @@ git commit -m "feat: OpenAI-compatible client with capability profiles and backo
 
 **This is the highest-stakes task in Phase 1.** The paper repo's resolver (`src/pipeline.py:67`) ends in a branch that treats a bare integer as a 1-based candidate rank. With numeric target IDs — `NCBIGene:3` — a hallucinated ID that is *not* in the candidate set falls through and **silently becomes a different, real mapping**. Opaque keys exist to make that impossible.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_keying.py`:
 
@@ -3388,12 +3388,12 @@ def test_every_non_exact_resolution_is_distinguishable_from_exact(keyed):
     assert Resolution.EXACT_KEY not in fuzzy and Resolution.ABSTAIN not in fuzzy
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `python -m pytest tests/test_keying.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.stages'`.
 
-- [ ] **Step 3: Write `src/xwalk/stages/keying.py`**
+- [x] **Step 3: Write `src/xwalk/stages/keying.py`**
 
 ```python
 """Opaque candidate keys.
@@ -3533,14 +3533,14 @@ Note the ordering inside legacy mode: exact ID, then case-insensitive, then suff
 """Stages: keying, selection, gating, rewriting, proposal routing."""
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_keying.py -v`
 Expected: 34 passed (24 test functions, one of which parametrises 8 abstention tokens, plus the 3 adversarial cases below). The `test_legacy_rank_out_of_range_does_not_resolve` case with `"99"` and a suffix map containing `"3"` and `"7"` must reach the rank branch and fail on range — verify that.
 
 The spec names four adversarial resolution cases that opaque keys exist to prevent, and each must reach `UNRESOLVED`, never a real record: a numeric hallucinated ID, an ID differing only by case, **an ID valid in another namespace**, and a key not issued this attempt. All four are now covered, the third by `test_an_id_from_another_namespace_does_not_resolve` and its legacy-mode twin. The legacy suffix map keys on the bare local part, so `"CHEBI:3"` never matches `"3"` — verify that branch rather than assuming it.
 
-- [ ] **Step 5: Lint, type-check, commit**
+- [x] **Step 5: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
