@@ -7658,7 +7658,7 @@ git commit -m "feat: immutable review overlay with snapshot-mismatch refusal"
 
 On exhaustion, `derive_status` picks the best attempt.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_matcher.py`:
 
@@ -8140,12 +8140,12 @@ def test_match_sync_works_outside_an_event_loop():
     assert result.status is MatchStatus.MATCHED
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `python -m pytest tests/test_matcher.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.matcher'`.
 
-- [ ] **Step 3: Write `src/xwalk/matcher.py`**
+- [x] **Step 3: Write `src/xwalk/matcher.py`**
 
 ```python
 """The matching loop. Orchestration only — every decision lives in a stage or in policy."""
@@ -8610,7 +8610,7 @@ def _empty_keyed() -> KeyedCandidates:
     return KeyedCandidates(order=(), by_key={}, issued={}, rendered="")
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_matcher.py -v`
 Expected: 31 passed.
@@ -8623,12 +8623,12 @@ Five decisions in the code above are load-bearing. If a test fails, check these 
 4. **A scorer that returns no usable score does not fall back to the selector's confidence.** That fallback would let malformed gate output become `MATCHED / ACCEPT_THRESHOLD` on a number the gate never produced. The attempt is marked `UNRESOLVED` and routes to review, which is what the spec's error-handling contract requires.
 5. **`TimeoutError` is tested before `BaseException`** in `_retrieve`, because it is one.
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `python -m pytest -q -m "not integration"`
 Expected: all green.
 
-- [ ] **Step 6: Lint, type-check, commit**
+- [x] **Step 6: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
