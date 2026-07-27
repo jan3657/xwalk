@@ -4398,7 +4398,7 @@ git commit -m "feat: contract-safe prompt skeletons with validated domain slots"
 
 **Design note:** the budget is **not** a retrieval-depth setting. Retrieval depth `k` belongs to each retriever; the budget governs how much of the *fused* list reaches the model. Truncation is deterministic and the count is recorded, because Phase 2's ceiling diagnostic must separate "never retrieved" from "retrieved but cut by the budget" — those have different fixes.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_select.py`:
 
@@ -4599,12 +4599,12 @@ async def test_usage_is_recorded():
     assert outcome.usage.calls == 1
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `python -m pytest tests/test_select.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.stages.select'`.
 
-- [ ] **Step 3: Write `src/xwalk/stages/select.py`**
+- [x] **Step 3: Write `src/xwalk/stages/select.py`**
 
 ```python
 """Selection: show the model a keyed candidate list, get back one key or null."""
@@ -4778,12 +4778,12 @@ class Selector:
         )
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_select.py -v`
 Expected: 21 passed.
 
-- [ ] **Step 5: Lint, type-check, commit**
+- [x] **Step 5: Lint, type-check, commit**
 
 ```bash
 python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy
