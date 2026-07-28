@@ -4,12 +4,21 @@ Nothing in this package calls an LLM or a retriever. It reads the ledger, so eva
 is free, repeatable, and safe to run on a machine with no credentials.
 """
 
+from xwalk.evaluate.ablate import (
+    Ablation,
+    AblationReport,
+    AblationRow,
+    MatcherConfig,
+    ablate,
+    standard_ablations,
+)
 from xwalk.evaluate.ceiling import (
     CeilingBucket,
     CeilingReport,
     ceiling_report,
     classify_ceiling,
 )
+from xwalk.evaluate.compare import RunSummary, compare_runs, compare_runs_dict, summarise_run
 from xwalk.evaluate.failures import FailureCase, PromptRole, render_failure, select_failures
 from xwalk.evaluate.gold import GoldSet, load_gold_csv, load_gold_jsonl
 from xwalk.evaluate.metrics import (
@@ -31,19 +40,27 @@ from xwalk.evaluate.partition import (
 from xwalk.evaluate.report import FullReport, evaluate, render_report, write_report
 
 __all__ = [
+    "Ablation",
+    "AblationReport",
+    "AblationRow",
     "CeilingBucket",
     "CeilingReport",
     "EvalReport",
     "FailureCase",
     "FullReport",
     "GoldSet",
+    "MatcherConfig",
     "Partition",
     "Partitioner",
     "PromptRole",
+    "RunSummary",
     "ThresholdPoint",
+    "ablate",
     "calibration_warning",
     "ceiling_report",
     "classify_ceiling",
+    "compare_runs",
+    "compare_runs_dict",
     "evaluate",
     "evaluate_results",
     "evaluate_run",
@@ -55,6 +72,8 @@ __all__ = [
     "render_failure",
     "render_report",
     "select_failures",
+    "standard_ablations",
+    "summarise_run",
     "threshold_curve",
     "write_partition_file",
     "write_report",
