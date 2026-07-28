@@ -124,3 +124,21 @@ def test_ci_checks_the_same_paths_as_the_local_gate():
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     for path in ("src", "tests", "examples", "scripts"):
         assert f"ruff check {path}" in ci or re.search(rf"ruff check [^\n]*\b{path}\b", ci)
+
+
+def test_the_version_is_not_duplicated_in_the_source():
+    """Two sources of truth for a version is how a release ends up mislabelled.
+
+    `__init__.py` may name a fallback for a source checkout, but the installed value
+    must come from distribution metadata.
+    """
+    init = (ROOT / "src" / "xwalk" / "__init__.py").read_text(encoding="utf-8")
+    assert "importlib.metadata" in init or "from importlib import metadata" in init
+
+
+def test_the_installed_version_comes_from_metadata():
+    from importlib.metadata import version
+
+    from xwalk import __version__
+
+    assert __version__ == version("xwalk")
