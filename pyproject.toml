@@ -9,6 +9,32 @@ description = "LLM-RAG record matching between two collections"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [{ name = "Jan Androle", email = "jandrole2@gmail.com" }]
+keywords = [
+    "record-linkage",
+    "entity-matching",
+    "entity-linking",
+    "ontology",
+    "crosswalk",
+    "rag",
+    "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
+]
+
 dependencies = [
     "pydantic>=2.0",
     "jinja2>=3.1",
@@ -16,6 +42,15 @@ dependencies = [
     "pyyaml>=6.0",
     "tantivy>=0.22",
 ]
+
+# Must come after every bare `key = value` in [project]: a table header ends the
+# preceding table, so anything below it would be parsed as a URL entry.
+[project.urls]
+Homepage = "https://github.com/jan3657/xwalk"
+Documentation = "https://github.com/jan3657/xwalk#readme"
+Repository = "https://github.com/jan3657/xwalk"
+Issues = "https://github.com/jan3657/xwalk/issues"
+Changelog = "https://github.com/jan3657/xwalk/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dense = ["sentence-transformers>=3.0", "torch>=2.0", "faiss-cpu>=1.8"]

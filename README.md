@@ -2,6 +2,24 @@
 
 Match records from any collection to any other, using retrieval plus an LLM.
 
+## Install
+
+```bash
+pip install xwalk                 # BM25 + any OpenAI-compatible endpoint. No torch.
+pip install 'xwalk[dense]'        # + sentence-transformers, torch, faiss-cpu
+pip install 'xwalk[ontology]'     # + rdflib, for OWL sources
+pip install 'xwalk[sql]'          # + SQLAlchemy, for database sources
+pip install 'xwalk[all]'
+```
+
+Matching two CSVs with an API-hosted model installs none of the heavy stack. A missing
+extra raises an error naming the extra and the install command, never a bare
+`ImportError` from a library you have never heard of.
+
+See [docs/platforms.md](docs/platforms.md) for the supported platform matrix. xwalk
+never substitutes a different BM25 engine silently, because that would change ranking
+and quietly undermine reproducibility.
+
 ```python
 import os
 
@@ -159,3 +177,32 @@ hard stop.
 The model is asked for **slots only**, never prompt text, and every candidate is run
 through `validate_contract` before it is written. A bad round produces a poor rubric; it
 cannot produce a prompt whose output will not parse.
+
+## Command line
+
+The SDK stays primary; the CLI is a shell over it. A job file is serialized constructor
+arguments — every field maps to something the quickstart above passes by hand.
+
+```bash
+xwalk index   --job job.yaml --out runs/index
+xwalk match   --job job.yaml --out runs/first
+xwalk eval    --run runs/first --gold gold.csv
+xwalk compare --gold gold.csv --run 'mini=runs/first' --run 'big=runs/second'
+xwalk ablate  --job job.yaml --gold gold.csv --out runs/ablation
+xwalk review  export --run runs/first --out review.csv
+xwalk review  apply  --run runs/first --reviewed review.csv --job job.yaml
+```
+
+Exit codes: `0` success, `1` completed but the review bucket is non-empty, `2` usage
+error, `3` runtime failure. Credentials are never written in a job file — `api_key_env`
+names an environment variable, and an inline `api_key` is rejected at load time.
+
+## Worked examples
+
+| Example | What it exercises |
+|---|---|
+| [`examples/chemistry`](examples/chemistry) | the smallest end-to-end run, with scripts you can execute |
+| [`examples/chebi`](examples/chebi) | the OWL loader; one-field source with long-document context |
+| [`examples/ncbi_disease`](examples/ncbi_disease) | user-supplied gold alias expansion, living in your code |
+| [`examples/nlm_gene`](examples/nlm_gene) | numeric target IDs — the case opaque candidate keys exist for |
+| [`examples/cafeteria_fcd`](examples/cafeteria_fcd) | a second OWL domain; only `slots.yaml` differs from `chebi` |

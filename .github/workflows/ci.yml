@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      # Same paths as the local gate. CI that lints a narrower tree than the developer
+      # does is CI that passes while the local gate fails.
+      - run: ruff check src tests examples scripts
+      - run: ruff format --check src tests examples scripts
+      - run: mypy
+
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - name: Tantivy install smoke test
+        run: python -c "import tantivy; print('tantivy', getattr(tantivy, '__version__', 'ok'))"
+      - name: Tantivy ranking smoke test
+        run: python -m pytest tests/test_bm25.py -q
+      - name: Base test suite
+        run: python -m pytest -q -m "not integration and not dense and not ontology and not sql"
+      - name: Assert the base install stays light
+        shell: bash
+        run: |
+          pip list --format=freeze | tr 'A-Z' 'a-z' > installed.txt
+          for pkg in torch sentence-transformers faiss-cpu rdflib sqlalchemy litellm; do
+            if grep -q "^${pkg}==" installed.txt; then
+              echo "::error::${pkg} leaked into the base install"; exit 1
+            fi
+          done
+
+  aarch64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest tests/test_bm25.py -q
+
+  extras:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        extra: [ontology, sql]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev,${{ matrix.extra }}]"
+      - run: python -m pytest -q -m "${{ matrix.extra }}"
+
+  dense:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev,dense]"
+      - run: python -m pytest -q -m dense
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Assert the wheel ships the prompt skeletons
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          expected = {f"xwalk/prompts/base/{n}.j2" for n in
+                      ("select", "score", "verify", "rewrite")}
+          missing = expected - set(names)
+          assert not missing, f"wheel is missing {missing}"
+          assert "xwalk/py.typed" in names
+          print("wheel contents OK")
+          PY
+      - name: Install the wheel into a clean environment and use it
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/pip install --quiet dist/*.whl
+          /tmp/fresh/bin/xwalk --version
+          /tmp/fresh/bin/python -c "
+          from xwalk import Matcher, TemplateSet
+          from xwalk.prompts.contract import PromptSet, PromptSlots, validate_contract
+          validate_contract(PromptSet.from_slots(PromptSlots(
+              entity_noun='a', target_noun='b', domain_brief='c',
+              rubric=[{'score': 1.0, 'name': 'x', 'when': 'y'},
+                      {'score': 0.4, 'name': 'z', 'when': 'w'}])))
+          print('fresh install OK')
+          "
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
