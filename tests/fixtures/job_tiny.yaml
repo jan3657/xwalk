@@ -1,0 +1,48 @@
+# Paths are relative to THIS FILE, not to the repository root -- `load_job` sets
+# `base_dir` to the job file's own directory so a job is movable as a unit.
+name: tiny
+templates:
+  query: "{{ mention }}"
+  context: "{{ context_left }} [{{ mention }}] {{ context_right }}"
+  doc: "{{ label }} {{ synonyms | join(' ') }}"
+  candidate: "ID: {{ id }} Label: {{ label }}"
+
+target:
+  kind: csv
+  path: targets_tiny.csv
+  id_column: id
+  multivalue_columns: [synonyms]
+
+source:
+  kind: csv
+  path: sources_tiny.csv
+  id_column: mention_id
+
+retrievers:
+  - kind: bm25
+    name: bm25
+    limit: 20
+    exact_fields: [label, synonyms]
+
+llm:
+  kind: openai_compat
+  model: gpt-4o-mini
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY
+  profile: openai
+  temperature: 0.0
+
+prompts:
+  slots: ../../examples/chemistry/slots.yaml
+
+policy:
+  max_attempts: 4
+  accept_at: 0.6
+  review_floor: 0.4
+  verify_band: [0.6, 0.8]
+  audit_rate: 0.0
+  concurrency: 8
+
+selector:
+  max_candidates: 30
+  max_candidate_tokens: 8000
