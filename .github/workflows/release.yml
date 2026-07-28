@@ -1,0 +1,105 @@
+name: Release
+
+# Tag-triggered only. A publish that can fire from a merge is a publish that fires by
+# accident.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: twine check
+        run: python -m twine check dist/*
+
+      - name: The tag must match the packaged version
+        run: |
+          python - <<'PY'
+          import glob, os, re, sys
+          ref = os.environ["GITHUB_REF_NAME"]
+          wheel = os.path.basename(glob.glob("dist/*.whl")[0])
+          packaged = wheel.split("-")[1]
+          expected = ref[1:] if ref.startswith("v") else ref
+          if packaged != expected:
+              sys.exit(f"tag {ref} does not match packaged version {packaged}")
+          print(f"tag {ref} matches {packaged}")
+          PY
+
+      - name: The wheel must ship the prompt skeletons, py.typed, and the licence
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          names = set(zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist())
+          missing = {f"xwalk/prompts/base/{n}.j2" for n in
+                     ("select", "score", "verify", "rewrite")} - names
+          assert not missing, f"wheel is missing {missing}"
+          assert "xwalk/py.typed" in names, "wheel is missing py.typed"
+          assert any("LICENSE" in n for n in names), "wheel is missing the licence"
+          print("wheel contents OK")
+          PY
+
+      # The tests that matter here run against the *built artefact*, not the source
+      # tree: a package that passes in-place and fails once installed is the failure
+      # mode this step exists to catch.
+      - name: Test the installed wheel in a clean environment
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/pip install --quiet dist/*.whl
+          /tmp/fresh/bin/pip install --quiet pytest pytest-asyncio
+          /tmp/fresh/bin/xwalk --version
+          /tmp/fresh/bin/python -c "
+          import sys, importlib.util
+          from xwalk import Matcher, MatchPolicy, TemplateSet, __version__
+          from xwalk.prompts.contract import PromptSet, PromptSlots, validate_contract
+          validate_contract(PromptSet.from_slots(PromptSlots(
+              entity_noun='a', target_noun='b', domain_brief='c',
+              rubric=[{'score': 1.0, 'name': 'x', 'when': 'y'},
+                      {'score': 0.4, 'name': 'z', 'when': 'w'}])))
+          heavy = [m for m in ('torch','numpy','rdflib','sqlalchemy','faiss','litellm')
+                   if importlib.util.find_spec(m)]
+          assert not heavy, f'base install pulled {heavy}'
+          print('installed wheel OK:', __version__)
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # A protected environment lets the owner require manual approval before anything
+    # leaves the machine, and is also what the Trusted Publisher registration names.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/xwalk
+    permissions:
+      # Trusted Publishing exchanges this OIDC token for a short-lived PyPI credential.
+      # There is no API token stored anywhere, so there is none to leak.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -142,3 +142,44 @@ def test_the_installed_version_comes_from_metadata():
     from xwalk import __version__
 
     assert __version__ == version("xwalk")
+
+
+def _workflow(name: str) -> dict:
+    import yaml
+
+    return yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text("utf-8"))
+
+
+def test_the_release_workflow_fires_only_on_a_tag():
+    """A publish that can fire from a merge is a publish that fires by accident."""
+    # `on` is parsed as the boolean True by YAML 1.1; look it up either way.
+    workflow = _workflow("release.yml")
+    triggers = workflow.get("on", workflow.get(True))
+    assert set(triggers) <= {"push", "workflow_dispatch"}
+    assert "branches" not in triggers["push"]
+    assert triggers["push"]["tags"] == ["v*"]
+
+
+def test_the_release_workflow_uses_trusted_publishing_not_a_token():
+    workflow = _workflow("release.yml")
+    publish = workflow["jobs"]["publish"]
+    assert publish["permissions"]["id-token"] == "write"
+    assert publish["environment"]["name"] == "pypi"
+    text = (ROOT / ".github/workflows/release.yml").read_text("utf-8")
+    assert "PYPI_API_TOKEN" not in text and "password:" not in text
+
+
+def test_the_release_workflow_publishes_only_after_the_build_job():
+    assert _workflow("release.yml")["jobs"]["publish"]["needs"] == "build"
+
+
+def test_the_ci_workflow_never_publishes():
+    text = (ROOT / ".github/workflows/ci.yml").read_text("utf-8")
+    assert "pypi-publish" not in text
+
+
+def test_the_release_document_warns_against_delete_and_reupload():
+    """PyPI refuses a filename it has seen before; deleting burns the version."""
+    text = (ROOT / "docs" / "releasing.md").read_text("utf-8").lower()
+    assert "yank" in text
+    assert "do not delete" in text or "never delete" in text
