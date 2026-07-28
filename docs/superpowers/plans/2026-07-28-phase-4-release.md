@@ -35,14 +35,14 @@ The `license = { text = "MIT" }` declaration currently has no `LICENSE` file beh
 which is a licensing claim with nothing to back it. PyPI also renders the changelog link
 already declared in `[project.urls]`, so that file must exist before the URL is truthful.
 
-- [ ] **Step 1:** Write `LICENSE` — MIT, copyright the author, current year.
-- [ ] **Step 2:** Write `CHANGELOG.md` in Keep-a-Changelog form with a `0.1.0` section
+- [x] **Step 1:** Write `LICENSE` — MIT, copyright the author, current year.
+- [x] **Step 2:** Write `CHANGELOG.md` in Keep-a-Changelog form with a `0.1.0` section
       describing what the first release contains, honestly scoped.
-- [ ] **Step 3:** Write `CONTRIBUTING.md`: how to set up a dev environment, the four
+- [x] **Step 3:** Write `CONTRIBUTING.md`: how to set up a dev environment, the four
       gates, the TDD expectation, and how to run the optional-extra suites.
-- [ ] **Step 4:** Switch `pyproject.toml` to `license = "MIT"` with
+- [x] **Step 4:** Switch `pyproject.toml` to `license = "MIT"` with
       `license-files = ["LICENSE"]` (PEP 639), and confirm the wheel ships the licence.
-- [ ] **Step 5:** Extend `tests/test_packaging.py` to assert the licence file exists, is
+- [x] **Step 5:** Extend `tests/test_packaging.py` to assert the licence file exists, is
       referenced, and reaches the wheel; assert the changelog documents the declared
       version. Run the gates and commit.
 
@@ -55,11 +55,11 @@ already declared in `[project.urls]`, so that file must exist before the URL is 
 `__version__` is currently a literal that must be kept in step with `pyproject.toml` by
 hand. Two sources of truth for a version number is how a release ends up mislabelled.
 
-- [ ] **Step 1:** Write the failing test — `xwalk.__version__` equals the installed
+- [x] **Step 1:** Write the failing test — `xwalk.__version__` equals the installed
       distribution metadata version.
-- [ ] **Step 2:** Read the version from `importlib.metadata.version("xwalk")`, falling
+- [x] **Step 2:** Read the version from `importlib.metadata.version("xwalk")`, falling
       back to a literal only when the package is not installed (a source checkout).
-- [ ] **Step 3:** Run the gates and commit.
+- [x] **Step 3:** Run the gates and commit.
 
 ---
 
@@ -72,15 +72,15 @@ secret is stored anywhere. It requires a one-time configuration on PyPI that onl
 project owner can perform, so this task writes and validates the workflow; firing it is
 gated on that setup.
 
-- [ ] **Step 1:** Write `.github/workflows/release.yml`: triggered on `push: tags: v*`,
+- [x] **Step 1:** Write `.github/workflows/release.yml`: triggered on `push: tags: v*`,
       builds, runs `twine check`, re-runs the test suite against the built wheel, then
       publishes with `pypa/gh-action-pypi-publish` using `id-token: write`.
-- [ ] **Step 2:** Gate the publish job on a GitHub Environment so the owner can require
+- [x] **Step 2:** Gate the publish job on a GitHub Environment so the owner can require
       manual approval before anything leaves the machine.
-- [ ] **Step 3:** Write `docs/releasing.md`: the exact PyPI Trusted Publishing settings,
+- [x] **Step 3:** Write `docs/releasing.md`: the exact PyPI Trusted Publishing settings,
       the tag-and-push procedure, and what to do about a bad release (yank, never
       delete-and-reupload — PyPI will not accept the same filename twice).
-- [ ] **Step 4:** Validate the workflow YAML parses and its job graph is what it claims.
+- [x] **Step 4:** Validate the workflow YAML parses and its job graph is what it claims.
       Run the gates and commit.
 
 ---
@@ -89,13 +89,13 @@ gated on that setup.
 
 **Files:** `pyproject.toml`, `CHANGELOG.md`
 
-- [ ] **Step 1:** Set `version = "0.1.0"` (dropping `.dev0`).
-- [ ] **Step 2:** Date the changelog entry.
-- [ ] **Step 3:** Rebuild; confirm `twine check` passes and the artefacts are named
+- [x] **Step 1:** Set `version = "0.1.0"` (dropping `.dev0`).
+- [x] **Step 2:** Date the changelog entry.
+- [x] **Step 3:** Rebuild; confirm `twine check` passes and the artefacts are named
       `xwalk-0.1.0`.
-- [ ] **Step 4:** Fresh-venv install of the final wheel; run the console script and the
+- [x] **Step 4:** Fresh-venv install of the final wheel; run the console script and the
       public-API smoke test.
-- [ ] **Step 5:** Run every gate, commit, and create an annotated `v0.1.0` tag.
+- [x] **Step 5:** Run every gate, commit, and create an annotated `v0.1.0` tag.
 
 ---
 
