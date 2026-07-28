@@ -39,10 +39,12 @@ For a project that does not exist on PyPI yet, register a **pending** publisher 
 
 The first successful publish converts the pending publisher into a real one.
 
-> **The name `xwalk` is not yet claimed and has not been checked.** If it is taken,
-> change `[project] name` in `pyproject.toml` and the "PyPI Project Name" above. The
-> import package stays `xwalk` either way — the distribution name and the import name
-> are independent.
+> **The name `xwalk` was checked against the PyPI index on 2026-07-28 and is
+> available** (`GET https://pypi.org/pypi/xwalk/json` → 404). It is not reserved by that
+> check, so re-check before registering the publisher. If it has since been claimed,
+> change `[project] name` in `pyproject.toml` and the "PyPI Project Name" above —
+> `xwalk-match` and `llm-xwalk` were also free. The import package stays `xwalk` either
+> way; the distribution name and the import name are independent.
 
 ## Cutting a release
 

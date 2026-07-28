@@ -114,20 +114,33 @@ cannot be created from it. They are listed so the remaining work is unambiguous.
 - [ ] Push the tag (or re-run the release workflow) to publish.
 - [ ] Verify `pip install xwalk` from PyPI in a clean environment.
 
-**The name `xwalk` is unverified on PyPI.** Nothing here can check it without network
-access to the index. If it is taken, the fallback is a distribution name change in
-`pyproject.toml` only — the import package stays `xwalk`.
+**The name `xwalk` is available on PyPI**, checked against the index on 2026-07-28
+(`GET /pypi/xwalk/json` → 404). Availability is not a reservation, so re-check at
+registration time. `xwalk-match` and `llm-xwalk` were also free as fallbacks; a change
+would touch `[project] name` only, since the import package stays `xwalk` regardless.
 
 ---
 
-## Definition of done for Phase 4
+## Definition of done for Phase 4 — VERIFIED 2026-07-28
 
-- [ ] `LICENSE`, `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/releasing.md` all exist.
-- [ ] `xwalk.__version__` is read from distribution metadata, not duplicated.
-- [ ] `python -m build && twine check dist/*` passes on `xwalk-0.1.0`.
-- [ ] The wheel ships `LICENSE`, `py.typed`, and all four `.j2` skeletons.
-- [ ] A fresh venv installing only the wheel can run `xwalk --version` and import the
-      public API with no heavy dependency present.
-- [ ] `.github/workflows/release.yml` fires only on a `v*` tag.
-- [ ] An annotated `v0.1.0` tag exists locally.
-- [ ] All four gates green.
+- [x] `LICENSE`, `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/releasing.md` all exist, and
+      `tests/test_packaging.py` asserts each is real rather than merely present.
+- [x] `xwalk.__version__` reads `importlib.metadata.version("xwalk")`; a test asserts it
+      equals the installed distribution version.
+- [x] `python -m build && twine check dist/*` — both `xwalk-0.1.0-py3-none-any.whl` and
+      `xwalk-0.1.0.tar.gz` PASSED.
+- [x] The wheel ships `LICENSE` (in `dist-info/licenses/`), `py.typed`, and all four
+      `.j2` skeletons.
+- [x] Fresh venv, wheel only: `xwalk --version` → `0.1.0`; the public API imports;
+      `validate_contract` runs; an end-to-end BM25 build-and-search returns the right
+      record; none of torch, numpy, rdflib, sqlalchemy, faiss, litellm is present. The
+      **sdist** was installed into a second clean venv and also works.
+- [x] `.github/workflows/release.yml` fires only on `push: tags: [v*]` (plus manual
+      dispatch), publishes only after the build job, and uses `id-token: write` with no
+      token anywhere. Tests assert all of this by parsing the YAML.
+- [x] Annotated `v0.1.0` tag exists locally at `a355287`.
+- [x] All four gates green: 748 passed / 1 skipped / 1 deselected, ruff, ruff format,
+      mypy --strict.
+
+Remaining work is Task 5 only, and every item in it needs credentials or permissions
+that do not exist on this machine.
