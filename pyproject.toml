@@ -58,3 +58,17 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.10"
 strict = true
 files = ["src/xwalk", "scripts", "examples"]
+
+# Optional extras are, by definition, absent from the base dev environment. Typing the
+# call sites is what matters; chasing stubs for a package the base install must not pull
+# would make the gate depend on which extras happen to be installed.
+[[tool.mypy.overrides]]
+module = [
+    "faiss.*",
+    "numpy.*",
+    "sentence_transformers.*",
+    "rdflib.*",
+    "sqlalchemy.*",
+    "litellm.*",
+]
+ignore_missing_imports = true
