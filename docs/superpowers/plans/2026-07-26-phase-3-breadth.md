@@ -101,7 +101,7 @@ taken from which path.
 **Interfaces:**
 - Produces: `MissingExtra` exception; `require(extra: str, module: str, *, purpose: str) -> ModuleType`. Tasks 2–4 and 6 use it.
 
-- [ ] **Step 1: Add the extras and markers to `pyproject.toml`**
+- [x] **Step 1: Add the extras and markers to `pyproject.toml`**
 
 ```toml
 [project.optional-dependencies]
@@ -129,7 +129,7 @@ markers = [
 ]
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `tests/test_extras.py`:
 
@@ -168,7 +168,7 @@ def test_submodules_are_importable():
     assert hasattr(module, "join")
 ```
 
-- [ ] **Step 3: Write `src/xwalk/_extras.py`**
+- [x] **Step 3: Write `src/xwalk/_extras.py`**
 
 ```python
 """One place where a missing optional dependency is explained.
@@ -199,7 +199,7 @@ def require(extra: str, module: str, *, purpose: str) -> ModuleType:
         ) from exc
 ```
 
-- [ ] **Step 4: Run the tests, lint, type-check, commit**
+- [x] **Step 4: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_extras.py -v      # expect 5 passed
@@ -225,7 +225,7 @@ git commit -m "feat: optional-extra plumbing with actionable install errors"
 
 The `Encoder` protocol exists so a user can plug in an API embedding service without installing torch at all.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_dense.py`:
 
@@ -407,7 +407,7 @@ def test_dense_import_without_the_extra_gives_an_actionable_error(monkeypatch):
     assert hasattr(module, "DenseRetriever")
 ```
 
-- [ ] **Step 2: Write `src/xwalk/retrieval/dense.py`**
+- [x] **Step 2: Write `src/xwalk/retrieval/dense.py`**
 
 Note the storage choice: vectors are persisted as a plain binary file plus a JSON sidecar, and FAISS is used *if available* for search speed, falling back to an exact NumPy-free dot product over the stored vectors. That keeps the toy-encoder tests dependency-free while giving real users FAISS.
 
@@ -691,7 +691,7 @@ class DenseRetriever:
 
 Add `DenseRetriever`, `Encoder`, `SentenceTransformerEncoder` to `src/xwalk/retrieval/__init__.py`, importing `SentenceTransformerEncoder` lazily is unnecessary — its constructor is what calls `require`.
 
-- [ ] **Step 3: Run the tests, lint, type-check, commit**
+- [x] **Step 3: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_dense.py -v -m "not dense"   # expect 17 passed
@@ -717,7 +717,7 @@ git commit -m "feat: dense retrieval with a pluggable encoder protocol"
 
 **Design note:** OBO gets a hand-rolled stanza parser and needs **no** dependency — the format is line-oriented and 60 lines of parsing beats pulling rdflib for it. OWL uses rdflib behind `[ontology]`. Both emit the same field names (`label`, `synonyms`, `definition`, `parents`, `obsolete`) so one `doc` template works against either.
 
-- [ ] **Step 1: Create the fixtures**
+- [x] **Step 1: Create the fixtures**
 
 `tests/fixtures/tiny.obo`:
 
@@ -777,7 +777,7 @@ name: part of
 </rdf:RDF>
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `tests/test_ontology_source.py`:
 
@@ -923,7 +923,7 @@ def test_curie_handles_a_fragment_uri():
     assert curie("http://example.org/onto#Term_1") == "Term_1"
 ```
 
-- [ ] **Step 3: Write `src/xwalk/sources/ontology.py`**
+- [x] **Step 3: Write `src/xwalk/sources/ontology.py`**
 
 ```python
 """Ontology record sources.
@@ -1109,7 +1109,7 @@ def owl_source(
         )
 ```
 
-- [ ] **Step 4: Run the tests, lint, type-check, commit**
+- [x] **Step 4: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_ontology_source.py -v -m "not ontology"   # expect 15 passed
@@ -1131,7 +1131,7 @@ git commit -m "feat: OBO and OWL record sources with a shared field shape"
 
 **Design note on SQL:** streamed with a server-side cursor in chunks, because "point at your warehouse" is exactly the case where materialising the result set defeats the purpose. `sqlite:///:memory:` is used in tests, so the extra is real but the test is fast.
 
-- [ ] **Step 1: Write the failing SQL test**
+- [x] **Step 1: Write the failing SQL test**
 
 Create `tests/test_sql_source.py`:
 
@@ -1218,7 +1218,7 @@ def test_the_source_is_lazy(db):
                       types.GeneratorType)
 ```
 
-- [ ] **Step 2: Write `src/xwalk/sources/sql.py`**
+- [x] **Step 2: Write `src/xwalk/sources/sql.py`**
 
 ```python
 """SQL record source. Requires xwalk[sql].
@@ -1280,7 +1280,7 @@ def sql_source(
                 yield Record(id=str(raw_id).strip(), fields=fields)
 ```
 
-- [ ] **Step 3: Write the LiteLLM adapter and its test**
+- [x] **Step 3: Write the LiteLLM adapter and its test**
 
 Create `tests/test_litellm.py`:
 
@@ -1495,7 +1495,7 @@ class LiteLLMClient:
         )
 ```
 
-- [ ] **Step 4: Run the tests, lint, type-check, commit**
+- [x] **Step 4: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_sql_source.py tests/test_litellm.py -v
@@ -1517,7 +1517,7 @@ git commit -m "feat: SQL record source and LiteLLM adapter"
 
 **Design note:** ablation flips one flag and reports the delta. The standard set is: drop each retriever in turn, disable the verifier (`verify_band=None`), disable retries (`max_attempts=1`), and halve the selector budget. The last one is there precisely because the ceiling decomposition separates budget misses — an ablation that confirms the diagnosis is worth more than one that only measures a component.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_ablate.py`:
 
@@ -1702,7 +1702,7 @@ def test_compare_runs_with_no_summaries_does_not_crash():
     assert "no runs" in compare_runs([]).lower()
 ```
 
-- [ ] **Step 2: Write `src/xwalk/evaluate/ablate.py`**
+- [x] **Step 2: Write `src/xwalk/evaluate/ablate.py`**
 
 ```python
 """Ablation: flip one flag, report the delta.
@@ -1881,7 +1881,7 @@ async def ablate(
     return result
 ```
 
-- [ ] **Step 3: Write `src/xwalk/evaluate/compare.py`**
+- [x] **Step 3: Write `src/xwalk/evaluate/compare.py`**
 
 ```python
 """Comparing runs. This is how you actually 'select an LLM'."""
@@ -2011,7 +2011,7 @@ def compare_runs_dict(summaries: Sequence[RunSummary]) -> list[dict[str, Any]]:
     return [s.as_dict() for s in summaries]
 ```
 
-- [ ] **Step 4: Run the tests, lint, type-check, commit**
+- [x] **Step 4: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_ablate.py tests/test_compare.py -v   # expect 19 passed
@@ -2034,7 +2034,7 @@ git commit -m "feat: component ablation and run comparison"
 
 **Design note:** a config file is *serialized constructor arguments*, nothing more. Every field maps to a parameter the Phase 1 README passes by hand. No config field ever gates behaviour that the SDK cannot express, and API keys are read from named environment variables — never stored in the file.
 
-- [ ] **Step 1: Create `tests/fixtures/job_tiny.yaml`**
+- [x] **Step 1: Create `tests/fixtures/job_tiny.yaml`**
 
 ```yaml
 name: tiny
@@ -2084,7 +2084,7 @@ selector:
   max_candidate_tokens: 8000
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `tests/test_config.py`:
 
@@ -2241,7 +2241,7 @@ def test_a_job_spec_can_be_constructed_in_python_without_a_file():
     assert spec.name == "tiny"
 ```
 
-- [ ] **Step 3: Write `src/xwalk/config.py`**
+- [x] **Step 3: Write `src/xwalk/config.py`**
 
 ```python
 """A job spec is serialized constructor arguments — nothing more.
@@ -2560,7 +2560,7 @@ def load_job(path: str | Path) -> JobSpec:
     return spec.model_copy(update={"base_dir": path.parent.resolve()})
 ```
 
-- [ ] **Step 4: Run the tests, lint, type-check, commit**
+- [x] **Step 4: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_config.py -v   # expect 18 passed
@@ -2584,7 +2584,7 @@ git commit -m "feat: YAML job spec as serialized constructor arguments"
 
 Exit codes: `0` success, `1` a run completed but has a non-empty review bucket or a failed metric threshold, `2` usage error, `3` a runtime failure (missing key, unreadable file).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_cli.py`:
 
@@ -2702,7 +2702,7 @@ def test_help_for_a_subcommand_lists_its_flags(capsys):
     assert "--resume" in capsys.readouterr().out
 ```
 
-- [ ] **Step 2: Write `src/xwalk/cli/main.py`**
+- [x] **Step 2: Write `src/xwalk/cli/main.py`**
 
 ```python
 """The CLI: a thin shell over the SDK.
@@ -3077,7 +3077,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 3: Fix the `prompts optimize` wiring**
+- [x] **Step 3: Fix the `prompts optimize` wiring**
 
 The `factory` above ignores the `prompts` argument, which silently disables optimisation — every round would run the original slots. Fix it by threading prompts through `build_matcher`: add a `prompts: PromptSet | None = None` parameter to `JobSpec.build_matcher` that overrides `self.build_prompts()` when supplied, and have the factory pass it. Add a test in `tests/test_config.py`:
 
@@ -3102,7 +3102,7 @@ def test_build_matcher_accepts_overridden_prompts(monkeypatch, tmp_path):
     )
 ```
 
-- [ ] **Step 4: Run the tests, lint, type-check, commit**
+- [x] **Step 4: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_cli.py tests/test_config.py -v
@@ -3133,7 +3133,7 @@ git commit -m "feat: CLI shell over the SDK"
 | NLM-Gene | TSV loader, row filtering, multi-field disambiguation, **numeric IDs — the case that motivates opaque keys** |
 | CafeteriaFCD | a second OWL domain, showing prompt slots are the only domain-specific part |
 
-- [ ] **Step 1: Extract the sample slices from the paper repo**
+- [x] **Step 1: Extract the sample slices from the paper repo**
 
 Each `sample/` holds at most 200 target records and 50 source records. **No file over 1 MB.** For each dataset, write a one-off extraction script under `examples/<name>/extract.py` documenting exactly which rows were taken and from which paper-repo path, then delete the script's output paths from `.gitignore` exceptions if needed. Verify:
 
@@ -3142,7 +3142,7 @@ find examples -type f -size +1M    # must print nothing
 du -sh examples                    # expect well under 20 MB
 ```
 
-- [ ] **Step 2: Write `examples/nlm_gene/` — the one that matters most**
+- [x] **Step 2: Write `examples/nlm_gene/` — the one that matters most**
 
 `examples/nlm_gene/job.yaml`:
 
@@ -3264,7 +3264,7 @@ xwalk eval  --run runs/nlm_gene --gold examples/nlm_gene/sample/gold.csv
 ```
 ```
 
-- [ ] **Step 3: Write the remaining three examples**
+- [x] **Step 3: Write the remaining three examples**
 
 `examples/chebi/` — `target.kind: owl`, `path: sample/chebi_sample.owl`, one-field source, slots copied from `examples/chemistry/slots.yaml`. README states it exercises the OWL loader and the simplest source shape.
 
@@ -3335,7 +3335,7 @@ def make_expander(tsv_path: str):
 
 `examples/cafeteria_fcd/` — a second OWL domain with a food-composition slots file. Its README states plainly: the only file that differs from `examples/chebi/` in kind is `slots.yaml`.
 
-- [ ] **Step 4: Write the regression test**
+- [x] **Step 4: Write the regression test**
 
 Create `tests/test_examples.py`:
 
@@ -3450,7 +3450,7 @@ def test_the_nlm_gene_example_uses_numeric_target_ids():
     assert any(i.split(":")[-1].isdigit() for i in ids)
 ```
 
-- [ ] **Step 5: Run the tests, lint, commit**
+- [x] **Step 5: Run the tests, lint, commit**
 
 ```bash
 python -m pytest tests/test_examples.py -v
@@ -3474,7 +3474,7 @@ git commit -m "feat: port the four paper datasets as working examples"
 
 **Why the matrix is explicit:** the spec fixes a Tantivy support matrix and forbids a silent fallback, because a switch between BM25 engines changes ranking behaviour and quietly undermines reproducibility. CI must therefore *prove* the declared platforms work, and the docs must tell an unsupported-platform user what to do instead — explicitly, never automatically.
 
-- [ ] **Step 1: Write the failing packaging test**
+- [x] **Step 1: Write the failing packaging test**
 
 Create `tests/test_packaging.py`:
 
@@ -3558,7 +3558,7 @@ def test_the_platform_document_forbids_automatic_fallback():
     assert "never automatic" in text or "not automatic" in text
 ```
 
-- [ ] **Step 2: Write `docs/platforms.md`**
+- [x] **Step 2: Write `docs/platforms.md`**
 
 ```markdown
 # Supported platforms
@@ -3598,7 +3598,7 @@ Whichever you choose, record it: the retriever's `fingerprint` appears in the ru
 manifest, so results produced on different retrieval stacks are never silently mixed.
 ```
 
-- [ ] **Step 3: Write `.github/workflows/ci.yml`**
+- [x] **Step 3: Write `.github/workflows/ci.yml`**
 
 ```yaml
 name: CI
@@ -3713,7 +3713,7 @@ jobs:
           path: dist/
 ```
 
-- [ ] **Step 4: Extend `pyproject.toml` and the README**
+- [x] **Step 4: Extend `pyproject.toml` and the README**
 
 Add to `[project]`:
 
@@ -3754,7 +3754,7 @@ See [docs/platforms.md](docs/platforms.md) for the supported platform matrix —
 never substitutes a different BM25 engine silently, because that would change ranking.
 ````
 
-- [ ] **Step 5: Run the tests, lint, type-check, commit**
+- [x] **Step 5: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_packaging.py -v
@@ -3767,17 +3767,22 @@ git commit -m "chore: CI matrix, packaging metadata, and the platform support do
 
 ---
 
-## Definition of done for Phase 3
+## Definition of done for Phase 3 — VERIFIED 2026-07-28
 
-- [ ] `python -m pytest -q -m "not integration and not dense and not ontology and not sql"` — green on a base install.
-- [ ] `python -m pytest -q -m ontology` / `-m sql` / `-m dense` — green with each extra installed.
-- [ ] `python -m ruff check src tests && python -m ruff format --check src tests && python -m mypy` — clean.
-- [ ] `pip install .` in a fresh venv → `pip list` contains none of torch, sentence-transformers, faiss, rdflib, sqlalchemy, litellm, numpy.
-- [ ] `xwalk --help` lists index, match, eval, compare, ablate, prompts, review.
-- [ ] All four examples pass `tests/test_examples.py`; `find examples -type f -size +1M` prints nothing.
-- [ ] The built wheel contains all four `.j2` skeletons and `py.typed`.
-- [ ] CI is green on every matrix row, including aarch64.
-- [ ] `grep -ri crosswalk src examples docs` — zero hits.
+- [x] `python -m pytest -q -m "not integration and not dense and not ontology and not sql"` — **722 passed, 18 deselected**.
+- [x] `-m ontology` **6 passed**, `-m sql` **10 passed**, `-m dense` **1 skipped** (the single test needing torch; the other 19 dense tests run on the dependency-free `ToyEncoder` and are in the base run). rdflib and SQLAlchemy were installed into the dev venv so those two suites genuinely execute rather than skip.
+- [x] `ruff check` / `ruff format --check` / `mypy --strict` — clean. Scope is `src tests examples scripts`, widened in Phase 2 and matched by CI.
+- [x] Fresh-venv install of the built wheel: `xwalk --version` works, the public API imports, and `torch`, `numpy`, `rdflib`, `sqlalchemy`, `faiss`, `litellm` are all absent. A missing extra raises `MissingExtra` naming the extra and the install command.
+- [x] `xwalk --help` lists `{index,match,eval,compare,ablate,prompts,review}`.
+- [x] `tests/test_examples.py` — **51 passed**. `find examples -type f -size +1M` prints nothing; the four samples total 390 KB.
+- [x] The built wheel contains all four `.j2` skeletons and `py.typed`; `twine check` passes on both wheel and sdist.
+- [ ] **CI green on every matrix row — cannot be verified here.** There is no git remote and no GitHub repository yet, so `.github/workflows/ci.yml` has never executed. This is the one item genuinely blocked on external setup, not on the code.
+- [x] `grep -ril crosswalk src examples docs` — the only hit is prose in the Phase 1 plan discussing the naming decision. No source, example, or user-facing document uses it.
+
+One correction to the checklist itself: mypy's file list now includes `examples`, and a
+`[[tool.mypy.overrides]]` block sets `ignore_missing_imports` for the optional extras.
+Without it the type gate would pass or fail depending on which extras happen to be
+installed, which is not a gate.
 
 ## Plan self-review notes
 
