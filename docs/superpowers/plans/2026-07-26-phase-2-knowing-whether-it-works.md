@@ -124,7 +124,7 @@ shipping a README that documents commands that do not exist, Task 8 now writes r
 
 **Design note:** an empty `gold_ids` cell means **"the correct answer is no match"** — a first-class label, not a missing one. A source record absent from the file entirely is unlabelled and is excluded from every metric. Conflating those two would silently inflate no-match recall.
 
-- [ ] **Step 1: Create `tests/fixtures/gold_tiny.csv`**
+- [x] **Step 1: Create `tests/fixtures/gold_tiny.csv`**
 
 ```csv
 source_id,gold_ids
@@ -136,7 +136,7 @@ s4,
 
 `s4` (unobtainium) has an empty cell — its correct answer is no match.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `tests/test_gold.py`:
 
@@ -282,12 +282,12 @@ def test_gold_set_is_constructible_directly():
     assert gold.get("s1") == frozenset({"A"})
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `python -m pytest tests/test_gold.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'xwalk.evaluate'`.
 
-- [ ] **Step 4: Write `src/xwalk/evaluate/gold.py`**
+- [x] **Step 4: Write `src/xwalk/evaluate/gold.py`**
 
 ```python
 """Gold labels.
@@ -431,7 +431,7 @@ from xwalk.evaluate.gold import GoldSet, load_gold_csv, load_gold_jsonl
 __all__ = ["GoldSet", "load_gold_csv", "load_gold_jsonl"]
 ```
 
-- [ ] **Step 5: Run the tests, lint, type-check, commit**
+- [x] **Step 5: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_gold.py -v      # expect 18 passed
@@ -511,7 +511,7 @@ Update `tests/test_serde.py`'s `sample_result()` and `tests/test_policy.py`'s `a
 
 Run: `python -m pytest -q -m "not integration"` — Expected: all green.
 
-- [ ] **Step 2: Write the failing metrics test**
+- [x] **Step 2: Write the failing metrics test**
 
 Create `tests/test_metrics.py`:
 
@@ -786,7 +786,7 @@ def test_report_as_dict_is_json_safe():
     json.dumps(report.as_dict())
 ```
 
-- [ ] **Step 3: Write `src/xwalk/evaluate/metrics.py`**
+- [x] **Step 3: Write `src/xwalk/evaluate/metrics.py`**
 
 ```python
 """Operational metrics.
@@ -1010,7 +1010,7 @@ def calibration_warning(results: Iterable[MatchResult], gold: GoldSet) -> str | 
 
 Add `EvalReport`, `evaluate_results`, `evaluate_run`, `threshold_curve`, `calibration_warning` to `src/xwalk/evaluate/__init__.py`.
 
-- [ ] **Step 4: Run the tests, lint, type-check, commit**
+- [x] **Step 4: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_metrics.py -v   # expect 24 passed
@@ -1034,7 +1034,7 @@ git commit -m "feat: latency instrumentation and operational metric suite"
 
 **Why three buckets and not two:** the selector budget creates a genuinely distinct failure. If the gold record was retrieved but cut by `max_candidates`, that is a *budget* miss and the fix is a larger budget — not a better retriever, and not a better prompt. Collapsing it into "retrieval failure" sends users to fix the wrong thing. This is nearly free because the loop already records `evidence` on every candidate and `issued_keys` on every attempt.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_ceiling.py`:
 
@@ -1226,7 +1226,7 @@ def test_report_recommends_prompts_when_misjudgement_dominates():
     assert "prompt" in ceiling_report(results, GOLD).recommendation.lower()
 ```
 
-- [ ] **Step 2: Write `src/xwalk/evaluate/ceiling.py`**
+- [x] **Step 2: Write `src/xwalk/evaluate/ceiling.py`**
 
 ```python
 """Where the failures actually are.
@@ -1370,7 +1370,7 @@ def ceiling_report(results: Sequence[MatchResult], gold: GoldSet) -> CeilingRepo
 
 Add `CeilingBucket`, `CeilingReport`, `ceiling_report`, `classify_ceiling` to `src/xwalk/evaluate/__init__.py`.
 
-- [ ] **Step 3: Run the tests, lint, type-check, commit**
+- [x] **Step 3: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_ceiling.py -v   # expect 18 passed
@@ -1399,7 +1399,7 @@ git commit -m "feat: three-way retrieval/budget/judgement ceiling decomposition"
 | **validation** | chooses the retained round and the stopping point |
 | **test** | evaluated **once**, after the final prompt is selected |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_partition.py`:
 
@@ -1492,7 +1492,7 @@ def test_an_unknown_partition_name_is_rejected(tmp_path):
         load_partition_file(path)
 ```
 
-- [ ] **Step 2: Write `src/xwalk/evaluate/partition.py`**
+- [x] **Step 2: Write `src/xwalk/evaluate/partition.py`**
 
 ```python
 """Three partitions with distinct roles.
@@ -1603,7 +1603,7 @@ def ids_in(
     )
 ```
 
-- [ ] **Step 3: Run the tests, lint, type-check, commit**
+- [x] **Step 3: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_partition.py -v   # expect 12 passed
@@ -1633,7 +1633,7 @@ git commit -m "feat: deterministic three-way partitioning with stable assignment
 | Rewriter | gold absent from the first attempt but present in a later one, or absent throughout while retrievable |
 | Doc template | gold never surfaced in any attempt despite being in the target |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_failures.py`:
 
@@ -1787,7 +1787,7 @@ def test_render_failure_never_contains_a_python_repr():
     assert "frozenset" not in render_failure(case)
 ```
 
-- [ ] **Step 2: Write `src/xwalk/evaluate/failures.py`**
+- [x] **Step 2: Write `src/xwalk/evaluate/failures.py`**
 
 ```python
 """Choosing which failures to show the optimising model.
@@ -1924,7 +1924,7 @@ def render_failure(case: FailureCase) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 3: Run the tests, lint, type-check, commit**
+- [x] **Step 3: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_failures.py -v   # expect 18 passed
@@ -1947,7 +1947,7 @@ git commit -m "feat: role-specific failure selection for prompt optimisation"
 
 **Design note:** the model returns **slots only**, never raw prompt text. A bad draft can produce a poor rubric but never a broken prompt, because Phase 1's skeleton owns every part of the machine-readable contract and `validate_contract` runs before anything is written to disk.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_author.py`:
 
@@ -2098,7 +2098,7 @@ def test_write_slots_produces_readable_yaml(tmp_path):
     assert "!!python" not in path.read_text(encoding="utf-8")
 ```
 
-- [ ] **Step 2: Write `src/xwalk/prompts/author.py`**
+- [x] **Step 2: Write `src/xwalk/prompts/author.py`**
 
 ```python
 """Drafting domain slots with an LLM.
@@ -2279,7 +2279,7 @@ def write_slots(slots: PromptSlots, path: str | Path) -> None:
     )
 ```
 
-- [ ] **Step 3: Run the tests, lint, type-check, commit**
+- [x] **Step 3: Run the tests, lint, type-check, commit**
 
 ```bash
 python -m pytest tests/test_author.py -v   # expect 15 passed
@@ -2320,7 +2320,7 @@ async def optimize_prompt(
 ) -> OptimizeReport: ...
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_optimize.py`:
 
@@ -2591,7 +2591,7 @@ async def test_the_final_report_is_json_serialisable(tmp_path):
     json.dumps(report.as_dict())
 ```
 
-- [ ] **Step 2: Write `src/xwalk/prompts/optimize.py`**
+- [x] **Step 2: Write `src/xwalk/prompts/optimize.py`**
 
 ```python
 """Label-driven prompt optimisation over three partitions.
@@ -2926,7 +2926,7 @@ async def optimize_prompt(
     return report
 ```
 
-- [ ] **Step 3: Run the tests**
+- [x] **Step 3: Run the tests**
 
 Run: `python -m pytest tests/test_optimize.py -v`
 Expected: 16 passed.
@@ -2935,7 +2935,7 @@ Expected: 16 passed.
 
 The `type(case)(**{...})` reconstruction for `source_fields` is awkward; replace it with `dataclasses.replace(case, source_fields=fields.get(case.source_id, {}))` — `FailureCase` is a frozen dataclass, so that is the idiomatic form.
 
-- [ ] **Step 4: Run everything, lint, type-check, commit**
+- [x] **Step 4: Run everything, lint, type-check, commit**
 
 ```bash
 python -m pytest -q -m "not integration"
@@ -2960,7 +2960,7 @@ git commit -m "feat: three-partition prompt optimiser with role-specific failure
 
 **Design note:** this is what a user actually calls. One function, one printable summary, and the ceiling recommendation front and centre — the whole point of the phase is answering "where should I spend effort?", and that answer must not be buried three attribute accesses deep.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_eval_report.py`:
 
@@ -3057,7 +3057,7 @@ async def test_evaluate_calls_no_llm_and_no_retriever(ledger):
     assert report.metrics.total == 2  # completed without any client being constructed
 ```
 
-- [ ] **Step 2: Write `src/xwalk/evaluate/report.py`**
+- [x] **Step 2: Write `src/xwalk/evaluate/report.py`**
 
 ```python
 """The evaluation entry point.
@@ -3205,7 +3205,7 @@ def write_report(report: FullReport, path_stem: str | Path) -> None:
 
 Export `FullReport`, `evaluate`, `render_report`, `write_report`, plus `Partition`, `Partitioner`, `PromptRole`, `select_failures` from `src/xwalk/evaluate/__init__.py`.
 
-- [ ] **Step 3: Extend the README**
+- [x] **Step 3: Extend the README**
 
 Append to `README.md`:
 
@@ -3260,7 +3260,7 @@ Three partitions: **prompt-train** supplies the failures shown to the optimising
 end. Test is never reported per round — that would make it a second validation set.
 ````
 
-- [ ] **Step 4: Write `examples/chemistry/README.md`**
+- [x] **Step 4: Write `examples/chemistry/README.md`**
 
 ```markdown
 # Chemistry example
@@ -3286,7 +3286,7 @@ Swapping this to a different domain means editing `slots.yaml` and `templates.ya
 No library code changes.
 ```
 
-- [ ] **Step 5: Run everything, lint, type-check, commit**
+- [x] **Step 5: Run everything, lint, type-check, commit**
 
 ```bash
 python -m pytest -q -m "not integration"
@@ -3297,15 +3297,20 @@ git commit -m "feat: evaluation entry point with ceiling-first reporting"
 
 ---
 
-## Definition of done for Phase 2
+## Definition of done for Phase 2 — VERIFIED 2026-07-28
 
-- [ ] `python -m pytest -q -m "not integration"` — all green, including every Phase 1 test.
-- [ ] `python -m ruff check src tests && python -m ruff format --check src tests` — clean.
-- [ ] `python -m mypy` — clean under `--strict`.
-- [ ] Base install still pulls no torch, sentence-transformers, faiss, rdflib, sqlalchemy, numpy, or sklearn.
-- [ ] `grep -rn "test" src/xwalk/prompts/optimize.py` — every reference to the test partition is outside the round loop.
-- [ ] `render_report` on the Phase 1 fixture run prints a recommendation naming one of retrieval / budget / prompts.
-- [ ] `git log --oneline` shows one commit per task.
+- [x] `python -m pytest -q -m "not integration"` — **545 passed, 1 deselected**, including every Phase 1 test.
+- [x] `python -m ruff check src tests examples scripts && python -m ruff format --check ...` — clean, 80 files. (Scope widened from `src tests`: Task 8 adds runnable example scripts, and an unchecked example is an example that rots.)
+- [x] `python -m mypy` — clean under `--strict`, 46 source files. `examples` added to the mypy file list for the same reason.
+- [x] Base install still pulls no torch, sentence-transformers, faiss, rdflib, sqlalchemy, numpy, or sklearn. Base deps remain `pydantic, jinja2, httpx, pyyaml, tantivy`; none of the banned packages is importable in the dev venv either.
+- [x] `grep -n "test" src/xwalk/prompts/optimize.py` — every reference to the test partition is at line 312+, i.e. after the round loop closes. No hit inside it.
+- [x] `render_report` on a real run prints the recommendation first. Run against DeepSeek via OpenRouter on `examples/chemistry` (20 mentions, 52 targets): accepted precision 100%, automatic coverage 85%, no-match precision and recall both 100%, `found: 18 / misjudged: 0 / truncated: 0 / never_retrieved: 0`. The recommendation line therefore reads *"no ceiling failures on labelled records"* rather than naming a bucket — the clean-run branch, which is the correct output for a run with no failures. The three bucket-naming branches are pinned by `test_report_recommends_{the_budget,retrieval,prompts}_when_*_dominates`.
+- [x] `git log --oneline` shows one commit per task: `ad64c52`, `01a3074`, `98136a0`, `fc09f0d`, `4a3d70b`, `3fa8951`, `c628132`, `c2533b6`.
+
+One observation from the live run worth keeping: `duplicate_target_conflicts` reported 1,
+for `glucose` and `dextrose` both mapping to `CHEBI:17234`. That is correct — they are
+synonyms and both gold-labelled to it. The metric is a *signal to inspect*, not an error
+count, and the report should never be read as if a non-zero value were a defect.
 
 ## Plan self-review notes
 
