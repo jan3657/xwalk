@@ -26,6 +26,74 @@ Every task's requirements implicitly include this section, in addition to Phase 
 
 ---
 
+## Plan review — corrections applied 2026-07-28
+
+Reviewed against the as-built Phase 1 tree (`src/xwalk/`, 406 tests green at `515f792`).
+The code blocks below have been edited in place; this section records *why*, so a later
+reader does not "restore" a defect.
+
+### Already done — do not re-apply
+
+**Task 2 Step 1** (`elapsed_seconds` on `Attempt`/`MatchResult`, populated in `matcher.py`,
+carried in `serde.py`, exported by `batch.py`) shipped in commit `515f792`, together with
+`finish_reason`, which this plan never anticipated. Re-applying it duplicates fields and
+breaks `serde`. Step 1 is now a verification step only.
+
+### Defects that would have failed at runtime
+
+| # | Where | Defect | Fix |
+|---|---|---|---|
+| 1 | Task 2, `test_calibration_warning_fires_when_bands_overlap` | 1 correct / 2 incorrect confidences, but `_MIN_CALIBRATION_SAMPLES = 3` requires 3 of **each**. `calibration_warning` returns `None`, so the test fails. | Fixture widened to 3 correct + 3 incorrect with overlapping means. |
+| 2 | Task 2, `test_no_calibration_warning_when_bands_separate` | 2 correct / 1 incorrect — passes, but because there was *not enough data*, not because the bands separate. A green test pinning nothing. | Widened to 3 + 3 with genuinely separated means. |
+| 3 | Task 5, `test_scorer_ignores_never_retrieved_cases` | Asserts `[]`, but `NEVER` has `status=MATCHED` with a wrong `matched_id`, which is `wrong_accept` — the implementation keeps it, and **is right to**. A confident accept of a wrong candidate when nothing correct was retrieved is the canonical scorer failure: rejecting in that situation is the scorer's entire job. Excluding it would blind the optimiser to abstention behaviour. | Test inverted and renamed; the "model never saw the right answer" argument applies to the **selector**, which must choose among what it was shown, not to the scorer. |
+| 4 | Task 7, `make_factory` | `sequence` is indexed per *factory call*, and the call order is baseline → train → candidate → test. `[False, True]` therefore makes the prompt-train run **correct**, which yields no failures, so the optimiser exits with "no failures" before ever calling the model. `test_an_improving_round_is_retained` and `test_a_round_producing_invalid_slots_is_skipped_not_fatal` both fail. | Factory rewritten to be driven by *accuracy per prompt*, keyed on `slots.domain_brief`, so correctness is a property of the prompt under test rather than of call ordering. |
+| 5 | Task 7, `test_estimate_calls_counts_the_test_partition_once` | `estimate_calls(rounds=1, 0,0,100) == 201` and `(rounds=4, …) == 204` — the per-round optimiser call makes them differ, so the assertion is simply false. | Rewritten to compare the *test partition's contribution* (`with_test - without_test`) across round counts, which is what the property actually says. |
+| 6 | Task 7, `test_only_prompt_train_failures_reach_the_optimising_model` | Source ids `s0…s29` — `"s2" in prompt` is satisfied by `"s20"`, so a train id can spuriously fail the leak check. | Ids zero-padded to `s00…s29`. |
+| 7 | Task 8, `test_a_calibration_warning_appears_prominently_when_present` | Same defect as #1: 1 correct / 2 incorrect. | Widened to 3 + 3. |
+
+### Lint and type gates (would fail every task's `ruff check`)
+
+- Every module and test block imports ABCs from `typing` (`Iterable`, `Mapping`, `Sequence`,
+  `Callable`, `AbstractSet`). `ruff` 0.16 raises **UP035** on all of them. All rewritten to
+  `collections.abc` — exactly the sweep Phase 1 needed.
+- `tests/test_metrics.py`, `tests/test_ceiling.py`, `tests/test_failures.py` import `pytest`
+  without using it → **F401**.
+- `partition.py` uses `.encode("utf-8")` → **UP012**.
+- `optimize.py` imports `xwalk.llm.parsing` after `xwalk.prompts.contract` → **I001**.
+- Over-length lines in `metrics.evaluate_results` (the `recalled` generator) and
+  `Partitioner.__post_init__` → **E501**.
+- `GoldSet.__iter__` is annotated `-> Iterable[str]` but returns an iterator; the iteration
+  protocol wants `Iterator[str]`.
+- `optimize.py`'s `type(case)(**{**case.__dict__, …})` defeats `mypy --strict`. The plan
+  already flags this in Task 7 Step 3; it is now written correctly in Step 2 as
+  `dataclasses.replace`, and `_render_optimiser_prompt` takes `Sequence[FailureCase]`
+  rather than `Sequence[Any]`.
+
+### Drift between "Interfaces" and the code blocks
+
+- Task 2 advertises `evaluate_results(results, gold, *, duplicate_targets=None)`; no such
+  parameter exists or is needed (`Ledger.duplicate_targets` already covers the ledger case).
+  Removed from the interface line.
+- Task 4 omits `partition_of` and `ids_in`, which Tasks 7 and 8 both import. Added.
+- Task 5's `FailureCase` field list omits `source_fields`, `status`, and `reason`, all of
+  which the code block defines and `render_failure` reads. Added.
+- Task 7's `estimate_calls` charges the baseline for `n_prompt_train + n_validation`, but the
+  baseline only runs validation. Corrected to `n_validation`.
+
+### Test-count claims
+
+Stated vs actual: Task 2 `24 → 23`, Task 7 `16 → 15`. Tasks 1, 3, 4, 5, 6 are accurate.
+
+### Task 8's worked example
+
+The example README invokes `python -m examples.chemistry.run` and
+`python -m examples.chemistry.evaluate`, neither of which the plan creates. Rather than
+shipping a README that documents commands that do not exist, Task 8 now writes real
+`examples/chemistry/` artefacts (`slots.yaml`, `templates.yaml`, `gold.csv`, `targets.csv`,
+`sources.csv`, `run.py`, `evaluate_run.py`) and the README describes what is actually there.
+
+---
+
 ## File Structure
 
 | File | Responsibility |
@@ -405,7 +473,18 @@ git commit -m "feat: gold label loading with user-supplied normalization and exp
 | `duplicate_target_conflicts` | count of target ids selected by more than one source record |
 | `mean_llm_calls` / `mean_tokens` / `mean_seconds` | per **completed** (non-`FAILED`) result |
 
-- [ ] **Step 1: Add `elapsed_seconds` to the result types**
+- [x] **Step 1: Add `elapsed_seconds` to the result types — ALREADY DONE in `515f792`**
+
+> Shipped ahead of this plan, together with `finish_reason` (a truncated provider answer is
+> otherwise indistinguishable from a badly-answered one). **Do not re-apply** — the fields
+> already exist and re-adding them breaks `serde`. Verify instead:
+>
+> ```bash
+> python -m pytest -q -m "not integration"   # 406 passed
+> grep -n "elapsed_seconds" src/xwalk/records.py src/xwalk/matcher.py src/xwalk/serde.py src/xwalk/batch.py
+> ```
+>
+> The original instructions are kept below for the record.
 
 In `src/xwalk/records.py`, add `elapsed_seconds: float` to `Attempt` (after `usage`) and to `MatchResult` (after `usage`).
 
@@ -653,15 +732,27 @@ def test_a_higher_threshold_improves_precision_on_separated_confidences():
 def test_calibration_warning_fires_when_bands_overlap():
     """Correct and incorrect confidences that look the same mean the score is useless
     as a threshold, and every threshold recommendation from it is noise."""
-    results = [
-        result("s1", "T1", confidence=0.80),
-        result("s2", "TX", confidence=0.81),
-        result("s3", "TY", confidence=0.79),
-    ]
-    assert calibration_warning(results, GOLD) is not None
+    correct = [result(f"c{i}", "T1", confidence=c) for i, c in enumerate([0.80, 0.82, 0.78])]
+    wrong = [result(f"w{i}", "TX", confidence=c) for i, c in enumerate([0.81, 0.79, 0.83])]
+    gold = GoldSet(
+        {**{f"c{i}": frozenset({"T1"}) for i in range(3)},
+         **{f"w{i}": frozenset({"T9"}) for i in range(3)}}
+    )
+    assert calibration_warning(correct + wrong, gold) is not None
 
 
 def test_no_calibration_warning_when_bands_separate():
+    correct = [result(f"c{i}", "T1", confidence=c) for i, c in enumerate([0.95, 0.92, 0.97])]
+    wrong = [result(f"w{i}", "TX", confidence=c) for i, c in enumerate([0.20, 0.15, 0.25])]
+    gold = GoldSet(
+        {**{f"c{i}": frozenset({"T1"}) for i in range(3)},
+         **{f"w{i}": frozenset({"T9"}) for i in range(3)}}
+    )
+    assert calibration_warning(correct + wrong, gold) is None
+
+
+def test_calibration_warning_needs_three_of_each_class():
+    """Two correct and one incorrect is not evidence of anything."""
     results = [
         result("s1", "T1", confidence=0.95),
         result("s2", "TX", confidence=0.20),
@@ -1538,7 +1629,7 @@ git commit -m "feat: deterministic three-way partitioning with stable assignment
 | Role | Useful cases |
 |---|---|
 | Selector | gold was retrieved **and presented**, and a different candidate was chosen |
-| Scorer / gate | incorrect automatic accepts, and unnecessary abstentions where gold *was* presented |
+| Scorer / gate | incorrect automatic accepts (**including where gold was never retrieved** — abstaining there is the scorer's job), and unnecessary abstentions or suppressions where gold *was* presented |
 | Rewriter | gold absent from the first attempt but present in a later one, or absent throughout while retrievable |
 | Doc template | gold never surfaced in any attempt despite being in the target |
 
@@ -1620,8 +1711,11 @@ def test_scorer_ignores_a_correct_confident_accept():
     assert select_failures([good], GOLD, PromptRole.SCORER) == []
 
 
-def test_scorer_ignores_never_retrieved_cases():
-    assert select_failures([NEVER], GOLD, PromptRole.SCORER) == []
+def test_scorer_takes_a_wrong_accept_even_when_gold_was_never_retrieved():
+    """The canonical scorer failure. When nothing correct was retrieved, the right
+    behaviour is to abstain; a confident accept instead is exactly what the rubric
+    exists to prevent. Excluding these would blind the optimiser to abstention."""
+    assert len(select_failures([NEVER], GOLD, PromptRole.SCORER)) == 1
 
 
 # --- rewriter ---------------------------------------------------------------------
@@ -2255,30 +2349,35 @@ SLOTS = PromptSlots(
     rubric=[{"score": 1.0, "name": "Certain", "when": "exact"},
             {"score": 0.4, "name": "Weak", "when": "vague"}],
 )
-SOURCES = [Record(id=f"s{i}", fields={"mention": "glucose"}) for i in range(30)]
-GOLD = GoldSet({f"s{i}": frozenset({"T1"}) for i in range(30)})
+SOURCES = [Record(id=f"s{i:02d}", fields={"mention": "glucose"}) for i in range(30)]
+GOLD = GoldSet({f"s{i:02d}": frozenset({"T1"}) for i in range(30)})
 RETRIEVER_MAP = {"glucose": ["T1", "T2"]}
 
 
-def matcher_llm(*, correct: bool):
-    key = "C01" if correct else "C02"
+def matcher_llm(accuracy: float):
+    """Answers correctly for the first `accuracy` share of each block of ten records.
+
+    Deterministic and independent of how many matchers get built, which is the point:
+    the earlier version keyed correctness on factory-call order, so a "successful"
+    prompt-train run produced no failures and the optimiser exited before round one.
+    """
+    state = {"n": 0}
 
     def handler(request):
         if "## Candidates" in request.user:
-            return select_reply(key)
+            index = state["n"]
+            state["n"] += 1
+            return select_reply("C01" if (index % 10) < round(accuracy * 10) else "C02")
         return score_reply(0.95)
 
     return FakeLLM(handler=handler)
 
 
-def make_factory(sequence):
-    """sequence: one bool per matcher build — whether that round matches correctly."""
-    state = {"i": 0}
+def make_factory(accuracy_by_brief, default=0.5):
+    """Correctness is a property of the prompt under test, not of call ordering."""
 
     def factory(prompts: PromptSet) -> Matcher:
-        correct = sequence[min(state["i"], len(sequence) - 1)]
-        state["i"] += 1
-        llm = matcher_llm(correct=correct)
+        llm = matcher_llm(accuracy_by_brief.get(prompts.slots.domain_brief, default))
         return Matcher(
             templates=TEMPLATES, retrievers=[ScriptedRetriever(RETRIEVER_MAP)], store=STORE,
             selector=Selector(llm, prompts, TEMPLATES),
@@ -2286,7 +2385,7 @@ def make_factory(sequence):
             verifier=Verifier(llm, prompts, TEMPLATES),
             rewriter=QueryRewriter(llm, prompts, TEMPLATES),
             policy=MatchPolicy(max_attempts=1),
-            run_fingerprint=f"round{state['i']}",
+            run_fingerprint=prompts.slots.domain_brief,
         )
 
     return factory
@@ -2314,7 +2413,7 @@ async def test_the_test_partition_is_evaluated_exactly_once(tmp_path):
     seen: list[str] = []
 
     report = await optimize_prompt(
-        matcher_factory=make_factory([False, True, True]),
+        matcher_factory=make_factory({"v1": 1.0, "v2": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("v1", "v2"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=2),
@@ -2326,7 +2425,7 @@ async def test_the_test_partition_is_evaluated_exactly_once(tmp_path):
 
 async def test_test_scores_are_absent_from_every_round_result(tmp_path):
     report = await optimize_prompt(
-        matcher_factory=make_factory([False, True]),
+        matcher_factory=make_factory({"v1": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("v1"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1),
@@ -2343,7 +2442,7 @@ async def test_only_prompt_train_failures_reach_the_optimising_model(tmp_path):
         s.id for s in SOURCES if partitioner.assign(s.id) is Partition.TEST
     }
     await optimize_prompt(
-        matcher_factory=make_factory([False, True]),
+        matcher_factory=make_factory({"v1": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS, optimiser_llm=llm,
         partitioner=partitioner,
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1), work_dir=tmp_path,
@@ -2357,7 +2456,7 @@ async def test_partition_overrides_are_honoured(tmp_path):
     overrides.update({s.id: Partition.VALIDATION for s in SOURCES[10:20]})
     overrides.update({s.id: Partition.TEST for s in SOURCES[20:]})
     report = await optimize_prompt(
-        matcher_factory=make_factory([False, True]),
+        matcher_factory=make_factory({"v1": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("v1"), partition_overrides=overrides,
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1), work_dir=tmp_path,
@@ -2369,7 +2468,7 @@ async def test_partition_overrides_are_honoured(tmp_path):
 
 async def test_an_improving_round_is_retained(tmp_path):
     report = await optimize_prompt(
-        matcher_factory=make_factory([False, True]),
+        matcher_factory=make_factory({"better": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("better"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1), work_dir=tmp_path,
@@ -2380,7 +2479,7 @@ async def test_an_improving_round_is_retained(tmp_path):
 
 async def test_a_regressing_round_is_discarded(tmp_path):
     report = await optimize_prompt(
-        matcher_factory=make_factory([True, False]),
+        matcher_factory=make_factory({"worse": 0.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("worse"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1), work_dir=tmp_path,
@@ -2391,7 +2490,7 @@ async def test_a_regressing_round_is_discarded(tmp_path):
 
 async def test_the_baseline_is_measured_before_any_round(tmp_path):
     report = await optimize_prompt(
-        matcher_factory=make_factory([True, True]),
+        matcher_factory=make_factory({}, default=1.0),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("v1"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1), work_dir=tmp_path,
@@ -2401,7 +2500,7 @@ async def test_the_baseline_is_measured_before_any_round(tmp_path):
 
 async def test_optimisation_stops_early_after_patience_rounds_without_improvement(tmp_path):
     report = await optimize_prompt(
-        matcher_factory=make_factory([True, False, False, False, False]),
+        matcher_factory=make_factory({}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("a", "b", "c", "d"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=4, patience=2),
@@ -2413,7 +2512,7 @@ async def test_optimisation_stops_early_after_patience_rounds_without_improvemen
 
 async def test_optimisation_stops_when_there_are_no_failures_to_learn_from(tmp_path):
     report = await optimize_prompt(
-        matcher_factory=make_factory([True]),
+        matcher_factory=make_factory({}, default=1.0),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("unused"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=4), work_dir=tmp_path,
@@ -2432,7 +2531,7 @@ async def test_a_round_producing_invalid_slots_is_skipped_not_fatal(tmp_path):
          "hard_rules": [], "disambiguation_steps": ""}
     )])
     report = await optimize_prompt(
-        matcher_factory=make_factory([False, True, True]),
+        matcher_factory=make_factory({"recovered": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS, optimiser_llm=llm,
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=2), work_dir=tmp_path,
     )
@@ -2443,7 +2542,7 @@ async def test_a_round_producing_invalid_slots_is_skipped_not_fatal(tmp_path):
 async def test_the_call_budget_is_enforced(tmp_path):
     with pytest.raises(ValueError, match="max_calls"):
         await optimize_prompt(
-            matcher_factory=make_factory([False, True]),
+            matcher_factory=make_factory({}),
             source_records=SOURCES, gold=GOLD, initial=SLOTS,
             optimiser_llm=optimiser_llm("v1"),
             config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=4, max_calls=5),
@@ -2458,15 +2557,21 @@ def test_estimate_calls_scales_with_rounds_and_records():
 
 
 def test_estimate_calls_counts_the_test_partition_once():
-    """Not once per round — that would be both wasteful and methodologically wrong."""
-    one = estimate_calls(OptimizeConfig(rounds=1), 0, 0, 100)
-    four = estimate_calls(OptimizeConfig(rounds=4), 0, 0, 100)
-    assert one == four
+    """Not once per round — that would be both wasteful and methodologically wrong.
+
+    Compared as the test partition's *contribution*: the per-round optimiser call means
+    the totals themselves differ with `rounds`, so equating them would be simply false.
+    """
+    one = OptimizeConfig(rounds=1)
+    four = OptimizeConfig(rounds=4)
+    contribution_one = estimate_calls(one, 0, 0, 100) - estimate_calls(one, 0, 0, 0)
+    contribution_four = estimate_calls(four, 0, 0, 100) - estimate_calls(four, 0, 0, 0)
+    assert contribution_one == contribution_four == 200
 
 
 async def test_every_round_is_persisted_for_inspection(tmp_path):
     await optimize_prompt(
-        matcher_factory=make_factory([False, True]),
+        matcher_factory=make_factory({"v1": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("v1"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1), work_dir=tmp_path,
@@ -2478,7 +2583,7 @@ async def test_every_round_is_persisted_for_inspection(tmp_path):
 
 async def test_the_final_report_is_json_serialisable(tmp_path):
     report = await optimize_prompt(
-        matcher_factory=make_factory([False, True]),
+        matcher_factory=make_factory({"v1": 1.0}),
         source_records=SOURCES, gold=GOLD, initial=SLOTS,
         optimiser_llm=optimiser_llm("v1"),
         config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1), work_dir=tmp_path,
@@ -2612,7 +2717,7 @@ def estimate_calls(
 ) -> int:
     """Printed before spending anything. Test is counted once, not once per round."""
     per_round = (n_prompt_train + n_validation) * calls_per_record + 1  # +1 optimiser call
-    baseline = (n_prompt_train + n_validation) * calls_per_record
+    baseline = n_validation * calls_per_record  # the baseline runs validation only
     return baseline + config.rounds * per_round + n_test * calls_per_record
 
 
@@ -2911,15 +3016,17 @@ async def test_a_calibration_warning_appears_prominently_when_present(ledger, tm
 
     led = Ledger.open(tmp_path / "cal.sqlite")
     base = result("s1", "T1", [attempt(0, [cand("T1")], {"C01": "T1"})])
-    for i, (sid, mid, conf) in enumerate(
-        [("s1", "T1", 0.80), ("s3", "T9", 0.81), ("s4", "T8", 0.79)]
-    ):
+    rows = [(f"c{i}", "T1", c) for i, c in enumerate([0.80, 0.82, 0.78])]
+    rows += [(f"w{i}", "T9", c) for i, c in enumerate([0.81, 0.79, 0.83])]
+    for i, (sid, mid, conf) in enumerate(rows):
         await led.put_result(
             MatchResult(**{**base.__dict__, "result_key": f"rk{i}", "source_id": sid,
                            "matched_id": mid, "confidence": conf})
         )
-    gold = type(GOLD)({"s1": frozenset({"T1"}), "s3": frozenset({"T3"}),
-                       "s4": frozenset({"T4"})})
+    gold = type(GOLD)(
+        {**{f"c{i}": frozenset({"T1"}) for i in range(3)},
+         **{f"w{i}": frozenset({"T8"}) for i in range(3)}}
+    )
     text = render_report(evaluate(led, "fp1", gold))
     led.close()
     assert "calibration" in text.lower()
