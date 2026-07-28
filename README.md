@@ -83,3 +83,79 @@ apply_review(ledger, read_review("review.csv"), target_store_fingerprint=store.f
 
 Review never overwrites model output; `export_mapping_csv(..., use_review=True)` writes
 the adjudicated view alongside it.
+
+## Evaluation
+
+```python
+from xwalk.evaluate import evaluate, load_gold_csv, render_report
+from xwalk.ledger import Ledger
+
+gold = load_gold_csv("gold.csv")            # source_id,gold_ids  (empty = no match)
+ledger = Ledger.open("run/ledger.sqlite")
+report = evaluate(ledger, run_fingerprint, gold)
+print(render_report(report))
+```
+
+Nothing here calls an LLM or a retriever — it reads the ledger, so scoring a run is
+free, repeatable, and works on a machine with no credentials.
+
+An **empty** `gold_ids` cell means "the correct answer is no match", a first-class
+label. A source id **absent** from the file is unlabelled and excluded from every
+metric. Conflating those two silently inflates no-match recall.
+
+The report leads with where to spend effort, decomposed three ways:
+
+- **never retrieved** — fix the `doc` template, the retriever set, or retrieval depth
+- **truncated** — the gold record was retrieved but the selector budget cut it before
+  the model saw it; raise `SelectorPolicy.max_candidates`
+- **misjudged** — the gold record was presented and the model chose otherwise; fix prompts
+
+The middle bucket is why there are three and not two. Collapsing a budget miss into
+"retrieval failure" sends you to fix the wrong thing.
+
+Alongside it: `accepted_precision`, `automatic_coverage`, `review_rate`,
+`recall_at_any_status` (the ceiling perfect thresholds could reach), no-match precision
+and recall, cost and latency per record, a threshold curve re-derived from recorded
+confidences, and a calibration warning when those confidences do not separate correct
+from incorrect — in which case tuning `accept_at` is tuning nothing.
+
+Alias expansion and ID normalization are yours, not the library's:
+
+```python
+gold = load_gold_csv(
+    "gold.csv",
+    normalize=lambda i: f"NCBIGene:{i}" if i.isdigit() else i,
+    expand=lambda ids: frozenset().union(*(alias_map.get(i, {i}) for i in ids)),
+)
+```
+
+## Prompt optimisation
+
+```python
+from xwalk.evaluate import PromptRole
+from xwalk.prompts.optimize import OptimizeConfig, optimize_prompt
+
+report = await optimize_prompt(
+    matcher_factory=build_matcher,          # (PromptSet) -> Matcher
+    source_records=records, gold=gold, initial=slots,
+    optimiser_llm=strong_model,
+    config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=4, max_calls=5_000),
+    work_dir="opt/",
+)
+print(report.stopped_because, report.test_report.accepted_precision)
+```
+
+Three partitions with distinct roles: **prompt-train** supplies the failures shown to
+the optimising model, **validation** chooses the retained round and the stopping point,
+and **test** is evaluated exactly once at the end. Test is never reported per round —
+that would make it a second validation set, which is the same mistake one level up.
+
+Which failures the model is shown depends on the role. A selector learns nothing from a
+case where the gold record was never retrieved, because it never saw the right answer;
+a scorer learns a great deal from exactly that case, because abstaining there was its
+job. `estimate_calls` prints the cost before anything is spent, and `max_calls` is a
+hard stop.
+
+The model is asked for **slots only**, never prompt text, and every candidate is run
+through `validate_contract` before it is written. A bad round produces a poor rubric; it
+cannot produce a prompt whose output will not parse.

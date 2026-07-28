@@ -21,3 +21,16 @@ rubric:
 hard_rules:
   - For regulated substances, any difference in name or number means distinct entities
   - A salt, ester, or hydrate is a distinct entity from its parent compound
+  - >-
+    An anomer (alpha-D-glucose, beta-D-glucose) is a distinct term from the unqualified
+    parent (glucose). Choose the anomer only when the mention itself specifies it.
+  - >-
+    A conjugate base and its acid are distinct terms. Prefer the acid for an acid
+    mention and the base for a base mention; never treat them as interchangeable.
+  - >-
+    If no candidate names the same chemical species, abstain. A plausible-looking
+    neighbour is worse than no match, because a wrong mapping is silently wrong.
+disambiguation_steps: >-
+  Read the surrounding context before choosing. "Sugar" in a clinical blood-glucose
+  sentence is glucose; in a cooking sentence it is sucrose. When the mention carries a
+  stereochemical or ionic qualifier, that qualifier is decisive and must be honoured.

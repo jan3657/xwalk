@@ -1,0 +1,21 @@
+mention_id,mention,context_left,context_right
+m01,glucose,blood ,levels were elevated
+m02,dextrose,intravenous ,was administered
+m03,table sugar,a spoonful of ,in the coffee
+m04,unobtainium,a sample of ,was requested
+m05,vitamin C,supplemental ,was prescribed
+m06,aspirin,low-dose ,for secondary prevention
+m07,acetaminophen,650 mg of ,every six hours
+m08,caffeine,the ,content of the beverage
+m09,fruit sugar,high levels of ,in the juice
+m10,milk sugar,intolerance to ,is common in adults
+m11,ethyl alcohol,the ,content of the sample
+m12,rubbing alcohol,swabbed with ,before the injection
+m13,norepinephrine,a ,infusion was started
+m14,5-HT,central ,signalling was disrupted
+m15,alpha-D-glucopyranose,the ,anomer predominates in solution
+m16,omega-3 fatty acid,dietary ,intake was recorded
+m17,hydrocortisone,serum ,was measured at 8am
+m18,creatinine,serum ,rose above baseline
+m19,phlogiston,the ,theory was abandoned
+m20,vinegar acid,dilute ,was used as a preservative

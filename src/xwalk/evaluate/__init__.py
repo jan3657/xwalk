@@ -28,12 +28,14 @@ from xwalk.evaluate.partition import (
     partition_of,
     write_partition_file,
 )
+from xwalk.evaluate.report import FullReport, evaluate, render_report, write_report
 
 __all__ = [
     "CeilingBucket",
     "CeilingReport",
     "EvalReport",
     "FailureCase",
+    "FullReport",
     "GoldSet",
     "Partition",
     "Partitioner",
@@ -42,6 +44,7 @@ __all__ = [
     "calibration_warning",
     "ceiling_report",
     "classify_ceiling",
+    "evaluate",
     "evaluate_results",
     "evaluate_run",
     "ids_in",
@@ -50,7 +53,9 @@ __all__ = [
     "load_partition_file",
     "partition_of",
     "render_failure",
+    "render_report",
     "select_failures",
     "threshold_curve",
     "write_partition_file",
+    "write_report",
 ]

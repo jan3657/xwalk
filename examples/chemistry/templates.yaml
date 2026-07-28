@@ -1,0 +1,6 @@
+# The four templates. Everything domain-specific about *how records are read* lives
+# here; everything domain-specific about *how the model reasons* lives in slots.yaml.
+query: "{{ mention }}"
+context: "{{ context_left }}[{{ mention }}]{{ context_right }}"
+doc: "{{ label }} {{ synonyms | join(' ') }} {{ definition }}"
+candidate: "ID: {{ id }} | Label: {{ label }} | Synonyms: {{ synonyms | join(', ') }}"
