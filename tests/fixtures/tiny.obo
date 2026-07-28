@@ -1,0 +1,26 @@
+format-version: 1.2
+ontology: tiny
+
+[Term]
+id: CHEBI:17234
+name: glucose
+def: "A monosaccharide sugar." [PMID:1]
+synonym: "dextrose" EXACT []
+synonym: "grape sugar" RELATED []
+is_a: CHEBI:16646 ! carbohydrate
+
+[Term]
+id: CHEBI:28757
+name: fructose
+def: "A ketohexose sugar." []
+synonym: "fruit sugar" EXACT []
+is_a: CHEBI:16646 ! carbohydrate
+
+[Term]
+id: CHEBI:00000
+name: obsolete thing
+is_obsolete: true
+
+[Typedef]
+id: part_of
+name: part of

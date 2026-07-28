@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:oboInOwl="http://www.geneontology.org/formats/oboInOwl#"
+         xmlns:obo="http://purl.obolibrary.org/obo/">
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_17234">
+    <rdfs:label>glucose</rdfs:label>
+    <obo:IAO_0000115>A monosaccharide sugar.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>dextrose</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasRelatedSynonym>grape sugar</oboInOwl:hasRelatedSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_16646"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_28757">
+    <rdfs:label>fructose</rdfs:label>
+    <oboInOwl:hasExactSynonym>fruit sugar</oboInOwl:hasExactSynonym>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_00000">
+    <rdfs:label>obsolete thing</rdfs:label>
+    <owl:deprecated rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</owl:deprecated>
+  </owl:Class>
+</rdf:RDF>
