@@ -18,6 +18,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dense = ["sentence-transformers>=3.0", "torch>=2.0", "faiss-cpu>=1.8"]
+ontology = ["rdflib>=7.0"]
+sql = ["sqlalchemy>=2.0"]
+litellm = ["litellm>=1.40"]
+all = ["xwalk[dense,ontology,sql,litellm]"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -25,6 +30,9 @@ dev = [
     "mypy>=1.11",
     "types-PyYAML",
 ]
+
+[project.scripts]
+xwalk = "xwalk.cli.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/xwalk"]
@@ -34,6 +42,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: hits a real LLM provider; skipped without an API key",
+    "dense: needs xwalk[dense]",
+    "ontology: needs xwalk[ontology]",
+    "sql: needs xwalk[sql]",
 ]
 
 [tool.ruff]
