@@ -26,6 +26,53 @@ Every task's requirements implicitly include this section, plus Phases 1 and 2's
 
 ---
 
+## Plan review — corrections applied 2026-07-28
+
+Reviewed against the as-built tree after Phase 2 (`c2533b6`, 545 tests green). Code blocks
+below are edited in place; this records why.
+
+### Defects that would have failed at runtime
+
+| # | Where | Defect | Fix |
+|---|---|---|---|
+| 1 | Task 2, `DenseRetriever` | The class defines `name`, `fingerprint`, and `search` but **not `default_limit`**, which `Retriever` (`retrieval/base.py`) requires. `test_dense_satisfies_the_retriever_protocol` fails, and worse, `Matcher` reads `retriever.default_limit` on every attempt — a dense retriever would break the loop at runtime, not at construction. | `default_limit` added as a constructor parameter and property, defaulting to 20, persisted in the index metadata like BM25's. |
+| 2 | Task 3, `test_owl_without_the_extra_gives_an_actionable_error` | Monkeypatches `builtins.__import__`, but `require()` uses `importlib.import_module`, which does **not** route through `builtins.__import__`. With rdflib absent the test passes for the wrong reason; with rdflib installed it fails. | Patches `importlib.import_module` instead — the function actually under test. |
+| 3 | Task 6, `JobSpec.build_retrievers` | Reads `spec.exact_fields`, which `RetrieverSpec` does not define. Every `build_retrievers` call raises `AttributeError`. | `exact_fields: list[str] | None = None` added to `RetrieverSpec`. |
+| 4 | Task 6, `tests/fixtures/job_tiny.yaml` | Paths are written repo-root-relative (`tests/fixtures/targets_tiny.csv`) but `load_job` sets `base_dir` to the **job file's own directory**, so every path resolves to `tests/fixtures/tests/fixtures/…`. Six tests fail on a missing file. | Fixture paths rewritten relative to the fixture directory; the slots path becomes `../../examples/chemistry/slots.yaml`. |
+| 5 | Task 7, `main()` | `main(["telepathy"])` is asserted to **return** 2, but `argparse` raises `SystemExit(2)` on an invalid subcommand choice. Separately, `test_every_subcommand_appears_in_the_help` calls `main(["--help"])` expecting a normal return while `test_help_for_a_subcommand_lists_its_flags` wraps the same mechanism in `pytest.raises(SystemExit)` — the two cannot both hold. | `main` catches `SystemExit` from parsing and returns its code. Both help tests now assert a returned exit code; neither expects an exception. |
+| 6 | Task 7, `prompts optimize` | The `factory` closure ignores its `prompts` argument, so every optimisation round silently re-runs the original slots and the optimiser measures nothing. The plan flags this in Step 3 as an afterthought. | Folded into Step 2: `JobSpec.build_matcher` takes `prompts: PromptSet | None = None`, and the factory passes it through. |
+
+### Lint and type gates
+
+- ABCs imported from `typing` in `dense.py`, `ontology.py`, `sql.py`, `ablate.py`,
+  `compare.py`, `config.py`, `cli/main.py` → **UP035**. All moved to `collections.abc`.
+- `zip()` without `strict=` in `dense.py` (two sites), `sql.py`, and `compare.py` → **B905**.
+- `import pytest` unused in `tests/test_ablate.py` → **F401**.
+- `cli/main.py` uses `__doc__.splitlines()[0]`; `__doc__` is `str | None` under
+  `mypy --strict` → `(__doc__ or "")`.
+- The nested `factory` closures in `_cmd_ablate` and `_cmd_prompts` are unannotated →
+  `mypy --strict` rejects them. Both given full signatures.
+- Gate scope: Phase 2 widened the lint/type commands from `src tests` to
+  `src tests examples scripts` (Phase 2 Task 8 added runnable example scripts). Task 9's
+  CI job must use the same scope or CI passes while the local gate fails.
+
+### Task 9 metadata
+
+`[project.urls]` uses a literal `<owner>` placeholder. The repository owner is
+**`jan3657`**; the URLs are written out rather than left as a placeholder that would ship
+to PyPI broken.
+
+### Task 8 — data availability confirmed
+
+The paper repo is at `/ceph/grid/home/jd3099/projects/onto_rag_paper_version` and does
+hold real data for all four datasets: `data/datasets/{craft_chebi,ncbi_disease,nlm_gene,cafeteria_fcd}/test.jsonl.gz`
+for the mentions, `data/*/ontology_dump.json` for the target vocabularies, and
+`configs/datasets/*.json` describing each. Sample slices are extracted from these rather
+than synthesised, with `extract.py` in each example recording exactly which rows were
+taken from which path.
+
+---
+
 ## File Structure
 
 | File | Responsibility |
