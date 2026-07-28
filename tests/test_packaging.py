@@ -49,6 +49,26 @@ def test_the_project_urls_are_real_not_placeholders():
     assert "<owner>" not in PYPROJECT
 
 
+def test_the_licence_file_exists_and_is_referenced():
+    """`license = "MIT"` with no LICENSE file is a licensing claim with nothing behind it."""
+    licence = ROOT / "LICENSE"
+    assert licence.exists()
+    assert "MIT License" in licence.read_text(encoding="utf-8")
+    assert 'license-files = ["LICENSE"]' in PYPROJECT
+
+
+def test_the_changelog_documents_the_declared_version():
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    declared = re.search(r'^version = "([^"]+)"', PYPROJECT, re.M)
+    assert declared
+    base = declared.group(1).split(".dev")[0]
+    assert f"[{base}]" in changelog, f"CHANGELOG.md has no section for {base}"
+
+
+def test_a_contributor_entry_point_exists():
+    assert (ROOT / "CONTRIBUTING.md").exists()
+
+
 def test_the_package_never_calls_itself_crosswalk():
     hits = [p for p in (ROOT / "src").rglob("*.py") if "crosswalk" in p.read_text("utf-8").lower()]
     assert not hits, f"'crosswalk' appears in {hits}"
