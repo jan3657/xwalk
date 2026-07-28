@@ -1,0 +1,1122 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:oboInOwl="http://www.geneontology.org/formats/oboInOwl#"
+         xmlns:obo="http://purl.obolibrary.org/obo/">
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10015">
+    <rdfs:label>vobasine</rdfs:label>
+    <obo:IAO_0000115>An indole alkaloid that is vobasan in which the bridgehead methyl group is substituted by a methoxycarbonyl group and an additional oxo substituent is present in the 3-position.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Vobasine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>methyl 3-oxovobasan-17-oate</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>3-oxovobasan-17-oic acid, methyl ester</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25248"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38163"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38481"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38958"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_3992"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_100187">
+    <rdfs:label>2-[(3R,6aS,8R,10aS)-3-hydroxy-1-(1-oxopropyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3,5-difluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10023">
+    <rdfs:label>voriconazole</rdfs:label>
+    <obo:IAO_0000115>A triazole-based antifungal agent used for the treatment of esophageal candidiasis, invasive pulmonary aspergillosis, and serious fungal infections caused by Scedosporium apiospermum and Fusarium spp. It is an inhibitor of cytochrome P450 2C9 (CYP2C9) and CYP3A4.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>(2R,3S)-2-(2,4-difluorophenyl)-3-(5-fluoropyrimidin-4-yl)-1-(1H-1,2,4-triazol-1-yl)butan-2-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(R-(R*,S*))-alpha-(2,4-difluorophenyl)-5-fluoro-beta-methyl-alpha-(1H-1,2,4-triazol-1-ylmethyl)-4-pyrimidineethanol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(alphaR,betaS)-alpha-(2,4-difluorophenyl)-5-fluoro-beta-methyl-alpha(1H-1,2,4-triazol-1-ylmethyl)-4-pyrimidineethanol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>VCZ</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Vfend</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>voriconazol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>voriconazolum</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26878"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38582"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_39447"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_87071"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_87101"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_100311">
+    <rdfs:label>2-[(3S,6aS,8S,10aS)-3-hydroxy-1-(1-oxopropyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3,5-difluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10032">
+    <rdfs:label>Warburganal</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26878"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10041">
+    <rdfs:label>withanolide D</rdfs:label>
+    <obo:IAO_0000115>A  withanolide that is 5,6:22,26-diepoxyergosta-2,24-diene-1,26-dione substituted by hydroxy groups at positions 4 and 22 (the 4beta,5beta,6beta,22R stereoisomer). Isolated from Tubocapsicum anomalum and Withania somnifera, it exhibits cytotoxic activity.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>(4beta,5beta,6beta,22R)-4,20-dihydroxy-5,6:22,26-diepoxyergosta-2,24-diene-1,26-dione</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Withanolide D</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4beta,20alpha-dihydroxy-1-oxo-5beta,6beta-epoxy-20S,22R-witha-2,24-dienolide</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_145217"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_18946"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26878"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35681"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_36854"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50403"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_51689"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_62846"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_74716"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_100598">
+    <rdfs:label>2-[(3R,6aS,8R,10aS)-3-hydroxy-1-(4-oxazolylmethyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_100815">
+    <rdfs:label>2-[(3R,6aR,8R,10aR)-3-hydroxy-1-[(1-methyl-4-imidazolyl)sulfonyl]-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_100896">
+    <rdfs:label>2-[(3R,6aS,8S,10aS)-1-(cyclohexylmethyl)-3-hydroxy-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_100977">
+    <rdfs:label>2-[(3R,6aR,8S,10aR)-3-hydroxy-1-(1-oxopropyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3,5-difluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101064">
+    <rdfs:label>Ro 48-8071</rdfs:label>
+    <obo:IAO_0000115>An aromatic ketone that is 2-fluoro-4'-bromobenzophenone in which the hydrogen at position 4 (meta to the fluoro group) is replaced by a 6-[methyl(prop-2-en-1-yl)amino]hexyl}oxy group. An inhibitor of lanosterol synthase.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>(4-bromophenyl)[2-fluoro-4-({6-[methyl(prop-2-en-1-yl)amino]hexyl}oxy)phenyl]methanone</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35618"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37149"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50996"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_78840"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83575"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101224">
+    <rdfs:label>Ro 48-8071(1+)</rdfs:label>
+    <obo:IAO_0000115>An organic cation obtained by protonation of the tertiary amino group of Ro 48-8071.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>6-[4-(4-bromobenzoyl)-3-fluorophenoxy]-N-methyl-N-(prop-2-en-1-yl)hexan-1-aminium</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Ro 48-8071 cation</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25697"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35274"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101257">
+    <rdfs:label>GGTI-2133 free base</rdfs:label>
+    <obo:IAO_0000115>An N-acyl-L-amino acid obtained by condensation of the carboxy group of 4-{[(imidazol-4-yl)methyl]amino}-2-(naphthalen-1-yl)benzoic acid with the amino group of L-leucine. An inhibitor of geranylgeranyltransferase type I.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>N-[4-{[(1H-imidazol-4-yl)methyl]amino}-2-(naphthalen-1-yl)benzoyl]-L-leucine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>GGTI 2133 free base</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_21644"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_22702"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_24780"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25018"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25477"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_48975"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50995"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_64459"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101260">
+    <rdfs:label>2-[(3S,6aR,8R,10aR)-3-hydroxy-1-(1-oxopropyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3,5-difluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101333">
+    <rdfs:label>GGTI-2133 free base(1+)</rdfs:label>
+    <obo:IAO_0000115>An organic cation obtained by protonation of GGTI-2133 free base.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>4-{[(1S)-1-carboxy-3-methylbutyl]carbamoyl}-N-[(1H-imidazol-4-yl)methyl]-3-(naphthalen-1-yl)anilinium</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>GGTI-2133 free base cation</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25697"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35274"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101374">
+    <rdfs:label>2-[(3S,6aS,8S,10aS)-1-(cyclohexylmethyl)-3-hydroxy-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101520">
+    <rdfs:label>2-[(3R,6aR,8S,10aR)-3-hydroxy-1-[(1-methyl-4-imidazolyl)sulfonyl]-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101643">
+    <rdfs:label>2-[(3R,6aR,8S,10aR)-1-(cyclohexylmethyl)-3-hydroxy-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101681">
+    <rdfs:label>2-[(3S,6aR,8S,10aR)-3-hydroxy-1-(1-oxopropyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3,5-difluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101683">
+    <rdfs:label>2-[(3R,6aS,8S,10aS)-3-hydroxy-1-[(1-methyl-4-imidazolyl)sulfonyl]-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_101692">
+    <rdfs:label>2-[(3S,6aS,8S,10aS)-3-hydroxy-1-[(1-methyl-4-imidazolyl)sulfonyl]-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102029">
+    <rdfs:label>sorbinil</rdfs:label>
+    <obo:IAO_0000115>An azaspiro compound having a monofluoro-substituted chromane skeleton spiro-linked to an imidazolidinedione ring.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>(4S)-6-fluoro-2,3-dihydro-2'H,5'H-spiro[chromene-4,4'-imidazolidine]-2',5'-dione</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(S)-6-Fluorospiro(chroman-4,4'-imidazolidine)-2',5'-dione</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sorbinilo</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sorbinilum</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sorbinol</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_23230"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35624"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37948"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_55370"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102114">
+    <rdfs:label>2-[(2R,4aS,12aR)-5-methyl-6-oxo-8-[[oxo-(propan-2-ylamino)methyl]amino]-2,3,4,4a,12,12a-hexahydropyrano[2,3-c][1,5]benzoxazocin-2-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102167">
+    <rdfs:label>N-{4-[2-ethyl-1-(1,2,4-triazol-1-yl)butyl]phenyl}-1,3-benzothiazol-2-amine</rdfs:label>
+    <obo:IAO_0000115>A member of the class of benzothiazoles that is 2-amino-1,3-benzothiazole in which one of the amino hydrogens is replaced by a 4-[2-ethyl-1-(1H-1,2,4-triazol-1-yl)butyl]phenyl group.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>N-{4-[2-ethyl-1-(1H-1,2,4-triazol-1-yl)butyl]phenyl}-1,3-benzothiazol-2-amine</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33860"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35727"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37947"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50995"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10217">
+    <rdfs:label>cedrol</rdfs:label>
+    <oboInOwl:hasExactSynonym>(8R)-cedran-8-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Cedrol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(+)-cedrol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>8betaH-cedran-8-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>[3R-(3alpha,3abeta,6alpha,7beta,8aalpha)]-octahydro-3,6,8,8-tetramethyl-1H-3a,7-methanoazulen-6-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>alpha-cedrol</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26878"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_36745"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102354">
+    <rdfs:label>2-[(2S,4aR,12aR)-5-methyl-6-oxo-8-[[oxo-(propan-2-ylamino)methyl]amino]-2,3,4,4a,12,12a-hexahydropyrano[2,3-c][1,5]benzoxazocin-2-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102392">
+    <rdfs:label>2-[(3R,6aS,8S,10aS)-3-hydroxy-1-(1-oxopropyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3,5-difluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10278">
+    <rdfs:label>alpha-eudesmol</rdfs:label>
+    <obo:IAO_0000115>A eudesmane sesquiterpenoid in which the eudesmane skeleton carries a hydroxy substituent at C-11 and has a double bond between C-3 and C-4.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>2-[(2R,4aR,8aR)-4a,8-dimethyl-1,2,3,4,4a,5,6,8a-octahydronaphthalen-2-yl]propan-2-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>alpha-Eudesmol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>eudesm-3-en-11-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(2R,4aR,8aR)-1,2,3,4,4a,5,6,8a-octahydro-alpha,alpha,4a,8-tetramethyl-2-naphthalenemethanol</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_138397"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26878"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_62508"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102804">
+    <rdfs:label>2-[(3R,6aS,8R,10aS)-1-(cyclohexylmethyl)-3-hydroxy-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102822">
+    <rdfs:label>2-[(2R,4aS,12aS)-5-methyl-6-oxo-8-[[oxo-(propan-2-ylamino)methyl]amino]-2,3,4,4a,12,12a-hexahydropyrano[2,3-c][1,5]benzoxazocin-2-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102934">
+    <rdfs:label>2-[(3R,6aR,8R,10aR)-3-hydroxy-1-(1-oxopropyl)-3,4,6,6a,8,9,10,10a-octahydro-2H-pyrano[2,3-c][1,5]oxazocin-8-yl]-N-[(3,5-difluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_102938">
+    <rdfs:label>2-[(2R,4aR,12aR)-5-methyl-6-oxo-8-[[oxo-(propan-2-ylamino)methyl]amino]-2,3,4,4a,12,12a-hexahydropyrano[2,3-c][1,5]benzoxazocin-2-yl]-N-[(4-fluorophenyl)methyl]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10324">
+    <rdfs:label>alpha-peltatin</rdfs:label>
+    <obo:IAO_0000115>An organic heterotetracyclic compound that is 4'-demethylpodophyllotoxin which is substituted by a hydroxy group at position 10 but which is lacking the hydroxy group at position 9. It is found as a glucoside in the rhizomes of Podophyllum peltatum.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>(5R,5aR,8aR)-10-hydroxy-5-(4-hydroxy-3,5-dimethoxyphenyl)-5,8,8a,9-tetrahydrofuro[3',4':6,7]naphtho[2,3-d][1,3]dioxol-6(5aH)-one</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>8-hydroxy-2-hydroxymethyl-6,7-methylenedioxy-4-(4'-hydroxy-3',5'-dimethoxyphenyl)-1,2,3,4-tetrahydronaphthalene-3-carboxylic acid lactone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>NCI 1074</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>NSC 24817</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>[5R-(5alpha,5aalpha,5abeta,8aalpha)]-5,8,8a,9-tetrahydro-10-hydroxy-5-(4-hydroxy-3,5-dimethoxyphenyl)furo[3',3':6,7]naphtho[2,3-d]-1,3-dioxo-6(5aH)-one</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>alpha-peltatin A</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25036"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33853"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37581"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38163"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50307"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103785">
+    <rdfs:label>(2R)-2-[(4S,5S)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103786">
+    <rdfs:label>(2R)-2-[(4R,5R)-8-(2-fluorophenyl)-4-methyl-5-(methylaminomethyl)-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103787">
+    <rdfs:label>(2R)-2-[(4R,5R)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-(methylaminomethyl)-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103792">
+    <rdfs:label>(2S)-2-[(4S,5R)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103799">
+    <rdfs:label>(2S)-2-[(4R,5S)-5-[[cyclopropylmethyl(methyl)amino]methyl]-8-[2-(3-fluorophenyl)ethynyl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103810">
+    <rdfs:label>(2R)-2-[(4S,5R)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103811">
+    <rdfs:label>(2S)-2-[(4R,5R)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103818">
+    <rdfs:label>(2S)-2-[(4R,5S)-8-(2-fluorophenyl)-4-methyl-5-(methylaminomethyl)-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103838">
+    <rdfs:label>1-(3-methoxyphenyl)-2-[(1-methyl-2-imidazolyl)thio]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103843">
+    <rdfs:label>2-[2-[2-[(4-tert-butyl-2,6-dimethylphenyl)thio]ethyl]-1-pyridin-1-iumyl]-1-(4-nitrophenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103844">
+    <rdfs:label>1-(4-chlorophenyl)-2-(3-methyl-1-imidazol-3-iumyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103845">
+    <rdfs:label>1-phenyl-2-(1-quinolin-1-iumyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103847">
+    <rdfs:label>2-(3-imino-1H-isoindol-2-yl)-1-(4-methoxyphenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103849">
+    <rdfs:label>1-(4-methylphenyl)-2-[3-(4-methylphenyl)-6,7,8,9-tetrahydro-5H-imidazo[1,2-a]azepin-1-ium-1-yl]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103853">
+    <rdfs:label>1-(3,4-dichlorophenyl)-2-[2-imino-3-[2-(1-piperidinyl)ethyl]-1-benzimidazolyl]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103856">
+    <rdfs:label>2-(1-adamantyl)acetic acid 2-[3-[2-(4-bromophenyl)-2-oxoethyl]-4-methyl-5-thiazol-3-iumyl]ethyl ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103875">
+    <rdfs:label>1-(4-phenylphenyl)-2-(3-thiophen-2-yl-5,6-dihydroimidazo[2,1-b]thiazol-7-ium-7-yl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103876">
+    <rdfs:label>2-(4-methyl-1-quinolin-1-iumyl)-1-phenylethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103878">
+    <rdfs:label>2-[3-[(2-chlorophenyl)methyl]-2-imino-1-benzimidazolyl]-1-(4-nitrophenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103883">
+    <rdfs:label>3,5,7-trimethyl-1-adamantanecarboxylic acid 2-(4-methyl-3-phenacyl-5-thiazol-3-iumyl)ethyl ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103885">
+    <rdfs:label>1-(4-bromophenyl)-2-[3-[(4-chloroanilino)methyl]-6,7,8,9-tetrahydro-5H-[1,2,4]triazolo[4,3-a]azepin-4-ium-1-yl]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103886">
+    <rdfs:label>1-(4-methoxyphenyl)-2-(1-methyl-2-isoquinolin-2-iumyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103902">
+    <rdfs:label>1-[4-(2-methylpropoxy)phenyl]-3-(1-piperidinyl)-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103948">
+    <rdfs:label>N-(3-methoxyphenyl)quinazolin-4-amine</rdfs:label>
+    <obo:IAO_0000115>A member of the class of quinazolines that is quinazoline which is substituted by a (3-methoxyphenyl)nitrilo group at position 4.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>N-(3-methoxyphenyl)-4-quinazolinamine</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25235"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38530"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_48975"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50995"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_103954">
+    <rdfs:label>1-cyclohexyl-4-[1-[1-[(4-fluorophenyl)methyl]-5-tetrazolyl]propyl]piperazine</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104022">
+    <rdfs:label>2-amino-1-phenylethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104033">
+    <rdfs:label>5-ethyl-N3-[(2-fluorophenyl)methylideneamino]-1,2,4-triazole-3,4-diamine</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104042">
+    <rdfs:label>1-[4-[2-hydroxy-3-[2-phenylethyl-(phenylmethyl)amino]propoxy]phenyl]-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104107">
+    <rdfs:label>1-(4-benzoyl-1-pyridin-1-iumyl)-3-(1,3,3-trimethyl-2-indolylidene)-2-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104125">
+    <rdfs:label>1-(4-bromophenyl)-3-[4-(2-fluorophenyl)-1-piperazinyl]-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10417">
+    <rdfs:label>beta-eudesmol</rdfs:label>
+    <obo:IAO_0000115>A carbobicyclic compound that is trans-decalin substituted at positions 2, 4a, and 8 by 2-hydroxypropan-2-yl, methyl and methylidene groups, respectively (the 2R,4aR,8aS-diastereoisomer).</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>2-[(2R,4aR,8aS)-4a-methyl-8-methylidenedecahydronaphthalen-2-yl]propan-2-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>beta-Eudesmol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>eudesm-4(14)-en-11-ol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(2R,4aR,8aS)-decahydro-8-methylene-alpha,alpha,4a-trimethyl-2-naphthylmethanol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>beta-selinenol</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26878"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_36785"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_62508"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104176">
+    <rdfs:label>(4-fluorophenyl)-[1-(4-phenylbutyl)-4-piperidinyl]methanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10435">
+    <rdfs:label>beta-obscurine</rdfs:label>
+    <oboInOwl:hasExactSynonym>(1R,9S,10R,16R)-14,16-dimethyl-6,14-diazatetracyclo[7.5.3.0(1,10).0(2,7)]heptadeca-2(7),3-dien-5-one</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>beta-Obscurine</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26509"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38163"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10471">
+    <rdfs:label>cis-3-(1-Carboxy-ethyl)-3,5-cyclo-hexadiene-1,2-diol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_23469"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33822"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104978">
+    <rdfs:label>4-[(4-tert-butylphenyl)-oxomethyl]-N-[3-(1-imidazolyl)propyl]-1H-pyrrole-2-carboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_104985">
+    <rdfs:label>LSM-16348</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105018">
+    <rdfs:label>LSM-16381</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105048">
+    <rdfs:label>1-[4-(2-chlorophenoxy)butyl]imidazole</rdfs:label>
+    <obo:IAO_0000115>An aromatic ether that is 2-chlorophenol in which the phenolic hydrogen has been substituted by a 4-(1H-imidazol-1-yl)butyl group.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>1-[4-(2-chlorophenoxy)butyl]-1H-imidazole</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_24780"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35618"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105092">
+    <rdfs:label>2-[[2-oxo-2-[3-(trifluoromethyl)phenyl]ethyl]thio]-3-pyridinecarboxylic acid</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105168">
+    <rdfs:label>2-chloro-1-[1-(3-isoxazolyl)-2,5-dimethyl-3-pyrrolyl]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105205">
+    <rdfs:label>N,N-dimethylcarbamic acid [4-[2-(benzenesulfonyl)-1-oxoethyl]-2,6-dimethylphenyl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105211">
+    <rdfs:label>methyl 4-[1-(furan-2-ylmethyl)-3-(4-methoxybenzoyl)-4,5-dioxopyrrolidin-2-yl]benzoate</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105229">
+    <rdfs:label>5-(2,5-difluorophenyl)-N-(2-oxolanylmethyl)-6H-1,3,4-thiadiazin-2-amine</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105288">
+    <rdfs:label>(1-tert-butyl-5-phenyl-3-pyrrolyl)-phenylmethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105312">
+    <rdfs:label>1-(4-fluorophenyl)-N-phenylmethanimine oxide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105313">
+    <rdfs:label>2-amino-4-[[2-(4-bromophenyl)-2-oxoethyl]thio]-3-azaspiro[5.5]undeca-1,4-diene-1,5-dicarbonitrile</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105321">
+    <rdfs:label>N,N-dimethylcarbamothioic acid O-[4-[2-[(4-chlorophenyl)thio]-1-oxoethyl]-2,6-dimethylphenyl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105349">
+    <rdfs:label>3-anilino-1-(3-nitrophenyl)-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105395">
+    <rdfs:label>2-methyl-5-[2-(4-methylphenyl)-2-oxoethyl]-2,3-dihydro-1H-pyrazin-6-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105398">
+    <rdfs:label>N-(3-acetylphenyl)-3,5-dimethyl-4-isoxazolesulfonamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105401">
+    <rdfs:label>3-(2,2-dichloroethenyl)-N-[(2-fluorophenyl)methylideneamino]-2,2-dimethyl-1-cyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105449">
+    <rdfs:label>[9-(4-ethoxyphenyl)sulfonyl-2,3-dihydro-[1,4]dioxino[2,3-g]quinolin-8-yl]-(4-methylphenyl)methanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26513"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105496">
+    <rdfs:label>1-(4-acetylphenyl)-3-[(4-nitrophenyl)sulfonylamino]urea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10552">
+    <rdfs:label>epi-tulipinolide</rdfs:label>
+    <obo:IAO_0000115>A germacranolide with formula C17H22O4, originally isolated from Liriodendron tulipifera. It exhibits anti-cancer and anti-oxidant properties.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>(3aR,4R,6E,10E,11aR)-6,10-dimethyl-3-methylidene-2-oxo-2,3,3a,4,5,8,9,11a-octahydrocyclodeca[b]furan-4-yl acetate</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Eupatolide acetate</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>epitulipinolide</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_47622"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_73011"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105633">
+    <rdfs:label>1-(2-chlorophenyl)-2-(3,5-dimethyl-4-nitro-1-pyrazolyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105662">
+    <rdfs:label>2-anilinobenzoic acid [2-(4-acetylanilino)-2-oxoethyl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105709">
+    <rdfs:label>2-[1-(2-methylphenyl)-3-oxo-3-thiophen-2-ylpropyl]propanedinitrile</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105714">
+    <rdfs:label>3-[2,2-dichloro-1-(3-fluoro-4-methylphenyl)ethyl]-1,1-bis(phenylmethyl)urea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105726">
+    <rdfs:label>N-[(4-chlorophenyl)methyl]-2-(2,4-dioxo-1H-pyrimidin-6-yl)acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_140325"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38337"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105744">
+    <rdfs:label>1-[4-ethoxy-3-[[[4-(2-oxolanylmethyl)-5-thiophen-2-yl-1,2,4-triazol-3-yl]thio]methyl]phenyl]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105800">
+    <rdfs:label>(2-amino-5-methyl-3-thiophenyl)-thiophen-2-ylmethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26961"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105862">
+    <rdfs:label>2-(1H-benzimidazol-2-yl)-1-(3-nitrophenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_10588">
+    <rdfs:label>1-(3-chlorophenyl)piperazine</rdfs:label>
+    <obo:IAO_0000115>A N-arylpiperazine that is piperazine carrying a 3-chlorophenyl substituent at position 1. It is a metabolite of the antidepressant drug trazodone.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>1-(3-Chlorophenyl)piperazine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(m-CPP)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>m-Chlorophenylpiperazine</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_46848"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105884">
+    <rdfs:label>N-[2-(3,4-dimethoxyphenyl)ethyl]-4-(4-ethoxyphenyl)-2,4-dioxobutanamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105953">
+    <rdfs:label>1-(5-chloro-2-methoxyphenyl)-2-[(4,6-diamino-2-pyrimidinyl)thio]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_105960">
+    <rdfs:label>N-(3-{[2-(2-fluorophenyl)quinazolin-4-yl]amino}phenyl)acetamide</rdfs:label>
+    <obo:IAO_0000115>A member of the class of quinazolines that is quinazoline which is substituted at positions 2 and 4 by 2-fluorophenyl and (3-acetamidophenyl)nitrilo groups, respectively.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>N-[3-[[2-(2-fluorophenyl)-4-quinazolinyl]amino]phenyl]acetamide</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_27856"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33860"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38530"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_48975"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50995"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83575"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_106008">
+    <rdfs:label>[2-(methylthio)phenyl]-[1-[oxo(4-thiadiazolyl)methyl]-3-piperidinyl]methanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_106116">
+    <rdfs:label>(2R,3S)-8-[2-(2-fluorophenyl)ethynyl]-5-[(2S)-1-hydroxypropan-2-yl]-3-methyl-2-(methylaminomethyl)-3,4-dihydro-2H-pyrido[2,3-b][1,5]oxazocin-6-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_106193">
+    <rdfs:label>(2R,3S)-8-[2-(2-fluorophenyl)ethynyl]-5-[(2R)-1-hydroxypropan-2-yl]-3-methyl-2-(methylaminomethyl)-3,4-dihydro-2H-pyrido[2,3-b][1,5]oxazocin-6-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_106240">
+    <rdfs:label>N-[[(2R,3S)-8-[2-(3-fluorophenyl)ethynyl]-5-[(2R)-1-hydroxypropan-2-yl]-3-methyl-6-oxo-3,4-dihydro-2H-pyrido[2,3-b][1,5]oxazocin-2-yl]methyl]-N-methylmethanesulfonamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_106263">
+    <rdfs:label>(2S,3R)-8-[2-(2-fluorophenyl)ethynyl]-5-[(2R)-1-hydroxypropan-2-yl]-3-methyl-2-(methylaminomethyl)-3,4-dihydro-2H-pyrido[2,3-b][1,5]oxazocin-6-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_106297">
+    <rdfs:label>(2S,3R)-8-[2-(2-fluorophenyl)ethynyl]-5-[(2S)-1-hydroxypropan-2-yl]-3-methyl-2-(methylaminomethyl)-3,4-dihydro-2H-pyrido[2,3-b][1,5]oxazocin-6-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107213">
+    <rdfs:label>N-(4-acetylphenyl)-2-[[3-(2-pyridinyl)-[1,2,4]triazolo[4,3-b]pyridazin-6-yl]thio]acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107216">
+    <rdfs:label>N-(4-acetylphenyl)-2-[(4-oxo-1H-quinazolin-2-yl)thio]butanamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107219">
+    <rdfs:label>1-(3,4-dimethoxyphenyl)-3-[(5-methyl-2-pyridinyl)imino]-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107246">
+    <rdfs:label>N,N-dimethylcarbamic acid [4-[2-(4-fluorophenyl)sulfonyl-1-oxoethyl]-2,6-dimethylphenyl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107309">
+    <rdfs:label>2-(4-chlorophenyl)-5-(4-fluorophenyl)-1,3,4-oxadiazole</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107341">
+    <rdfs:label>2-(8-quinolinylthio)acetic acid phenacyl ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107345">
+    <rdfs:label>4-[2-(3-methoxyphenyl)-2-oxoethoxy]benzoic acid methyl ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107363">
+    <rdfs:label>1-[4-[2-hydroxy-3-[4-[3-(trifluoromethyl)phenyl]-1-piperazinyl]propoxy]phenyl]-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107377">
+    <rdfs:label>2-[[5-(5-bromo-2-furanyl)-4-(phenylmethyl)-1,2,4-triazol-3-yl]thio]-1-(2-fluorophenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107399">
+    <rdfs:label>1-(2-hydroxyphenyl)-2-(2H-tetrazol-5-yl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107412">
+    <rdfs:label>2-[(1-oxido-2-pyridin-1-iumyl)thio]-1-(4-phenylphenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107431">
+    <rdfs:label>N-[3-[(4-chlorophenyl)-oxomethyl]-4,5,6,7-tetrahydro-1-benzothiophen-2-yl]-3-pyridinecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107453">
+    <rdfs:label>3-(4-acetylanilino)-1-(4-methylphenyl)-2-propen-1-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107534">
+    <rdfs:label>6-methyl-12-indolo[1,2-c]quinazolinamine</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38101"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38163"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107659">
+    <rdfs:label>3-[(3-fluorophenyl)methyl]-8-[4-(4-fluorophenyl)-4-oxobutyl]-1-phenyl-1,3,8-triazaspiro[4.5]decan-4-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107665">
+    <rdfs:label>2-(2-methyl-4-oxo-3-pyranyl)acetaldehyde</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_131906"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_17478"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107701">
+    <rdfs:label>4-(4-butoxy-2-methylbenzoyl)-5-pyridin-4-yl-1-(pyridin-3-ylmethyl)pyrrolidine-2,3-dione</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107736">
+    <rdfs:label>metoclopramide</rdfs:label>
+    <obo:IAO_0000115>A member of the class of  benzamides resulting from the formal condensation of 4-amino-5-chloro-2-methoxybenzoic acid with the primary amino group of N,N-diethylethane-1,2-diamine.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>4-amino-5-chloro-N-[2-(diethylamino)ethyl]-2-methoxybenzamide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>2-methoxy-4-amino-5-chloro-N,N-(dimethylaminoethyl)benzamide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>2-methoxy-5-chloroprocainamide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4-amino-5-chloro-2-methoxy-N-(beta-diethylaminoethyl)benzamide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4-amino-5-chloro-N-(2-(diethylamino)ethyl)-2-methoxybenzamide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4-amino-5-chloro-N-(2-(diethylamino)ethyl)-o-anisamide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Elieten</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Reliveran</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>metoclopramida</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>metoclopramidum</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_22702"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_48975"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50996"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107750">
+    <rdfs:label>1-(4-fluorophenyl)-2-[(2-propyl-4-quinazolinyl)thio]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107761">
+    <rdfs:label>N-(4-methylphenyl)-2-(pyridin-4-yl)quinazolin-4-amine</rdfs:label>
+    <obo:IAO_0000115>A member of the class of quinazolines that is quinazoline which is substituted at positions 2 and 4 by pyridin-4-yl and (4-methylphenyl)nitrilo groups, respectively.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>N-(4-methylphenyl)-2-pyridin-4-yl-4-quinazolinamine</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26421"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_27024"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33860"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38530"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_48975"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50995"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107967">
+    <rdfs:label>5,5,7,12,12,14-hexamethyl-1,4,8,11-tetrazacyclotetradecane</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50995"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_107968">
+    <rdfs:label>2-[2-[[5-cyano-1-(3-methoxypropyl)-6-oxo-3-pyridinyl]-oxomethyl]-4-methoxyphenoxy]-N-(5-methyl-3-isoxazolyl)acetamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108046">
+    <rdfs:label>2-[(4-fluorophenyl)methylidene]-6,7-dihydro-5H-thiazolo[3,2-a]pyrimidin-3-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108103">
+    <rdfs:label>N-(3-acetylphenyl)-4-[[3-(4-fluorophenyl)-3-oxoprop-1-enyl]amino]benzenesulfonamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108115">
+    <rdfs:label>1-(2,4-dihydroxyphenyl)-1-hexanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108151">
+    <rdfs:label>3-chloro-4-[(2-fluorobenzyl)oxy]benzaldehyde oxime</rdfs:label>
+    <oboInOwl:hasExactSynonym>N-{3-chloro-4-[(2-fluorobenzyl)oxy]benzylidene}hydroxylamine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>3-chloro-4-[(2-fluorophenyl)methoxy]benzaldehyde oxime</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>AC1LFRBG</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_22307"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35618"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83575"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108167">
+    <rdfs:label>6-amino-2-[[2-(3,4-dimethylphenyl)-2-oxoethyl]thio]-1H-pyrimidin-4-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108363">
+    <rdfs:label>3-(4-bromoanilino)-1-(3-nitrophenyl)-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108419">
+    <rdfs:label>3-(4-fluoroanilino)-1-(3-nitrophenyl)-1-propanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108436">
+    <rdfs:label>1-(2,4-dimethylphenyl)-2-([1,2,4]triazolo[4,3-a]pyridin-3-ylthio)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108554">
+    <rdfs:label>2-[[5-[(1,3-benzothiazol-2-ylthio)methyl]-4-ethyl-1,2,4-triazol-3-yl]thio]-1-(3,4-dihydroxyphenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108586">
+    <rdfs:label>5-hydroxy-11,11-dimethyl-4-methylene-8-bicyclo[7.2.0]undecanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33822"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108587">
+    <rdfs:label>2-(4-oxo-2-propyl-3-pyranyl)acetaldehyde</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_131906"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_17478"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108598">
+    <rdfs:label>2-chloro-1-(4,5-dibromo-2-thiophenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_108971">
+    <rdfs:label>acetic acid [4-[[(3aS,4R,9aS,9bR)-2-(2-naphthalenyl)-1,3-dioxo-3a,4,9a,9b-tetrahydropyrrolo[1,2]pyrrolo[3,5-b]pyridazin-4-yl]-oxomethyl]phenyl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109030">
+    <rdfs:label>2-[2-(4-methoxyphenyl)-2-oxoethyl]-1,1-dioxo-1,2-benzothiazol-3-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109034">
+    <rdfs:label>4-chloro-N-[(phenacylamino)-sulfanylidenemethyl]benzamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109043">
+    <rdfs:label>4-(4-chlorophenyl)-4-oxobutanoic acid [2-(2-furanylmethylamino)-2-oxoethyl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109093">
+    <rdfs:label>3-(4-oxo-1H-quinazolin-2-yl)propanoic acid [1-(4-bromophenyl)-1-oxopropan-2-yl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109154">
+    <rdfs:label>(5-methoxy-3-benzofuranyl)-phenylmethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109161">
+    <rdfs:label>N-[1,4-dioxo-3-(1-pyridin-1-iumyl)-2-naphthalenyl]-2-thiophenesulfonamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25697"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109187">
+    <rdfs:label>2-(2-fluorophenyl)-5-phenyl-4-thieno[2,3-d][1,3]oxazinone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109200">
+    <rdfs:label>3-[1-(4-acetylphenyl)-5-thiophen-2-yl-2-pyrrolyl]propanoic acid</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109225">
+    <rdfs:label>6-amino-1-(4-chlorophenyl)-2-oxo-4-(1,2,4-triazol-1-ylmethyl)-5-pyrimidinecarbonitrile</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_18379"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35727"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38337"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109273">
+    <rdfs:label>LSM-20670</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109344">
+    <rdfs:label>2-[(5-ethyl-[1,2,4]triazino[5,6-b]indol-3-yl)thio]-1-phenylethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109411">
+    <rdfs:label>5-[2-(4-bromophenyl)-2-oxoethyl]-2,3-dihydro-1H-pyrazin-6-one</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109460">
+    <rdfs:label>2-[(4-methyl-2-pyrimidinyl)thio]-1-(3-nitrophenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109467">
+    <rdfs:label>(3-hydroxy-5,6,7,8-tetrahydro-4H-cyclohepta[d]imidazol-2-yl)-phenylmethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109550">
+    <rdfs:label>6-hydroxy-7-(4-hydroxyphenyl)-5-methoxy-2,2-dimethyl-10-(3-methylbut-2-enyl)-8-pyrano[3,2-g][1]benzopyranone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33822"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50753"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109565">
+    <rdfs:label>2-[[5-(2-furanyl)-1,3,4-oxadiazol-2-yl]thio]-1-(2-methoxyphenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109599">
+    <rdfs:label>1-[4-[(4,6-dimethyl-2-pyrimidinyl)amino]phenyl]ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109626">
+    <rdfs:label>2-[(4-hydroxy-3-nitrophenyl)sulfonylamino]benzoic acid [2-(4-methoxyphenyl)-2-oxoethyl] ester</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109644">
+    <rdfs:label>4-[(3-fluorophenyl)methyl-(3-pyridinylmethyl)amino]-4-oxobutanoic acid</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109734">
+    <rdfs:label>5-(furan-2-yl)-1-(3-imidazol-1-ylpropyl)-4-[4-[(2-methylphenyl)methoxy]benzoyl]pyrrolidine-2,3-dione</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109762">
+    <rdfs:label>4-[(4-tert-butylphenyl)-oxomethyl]-N-[2-(2-pyridinyl)ethyl]-1H-pyrrole-2-carboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109766">
+    <rdfs:label>(7-methoxy-2-benzofuranyl)-(4-nitrophenyl)methanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109801">
+    <rdfs:label>2-[[5,6-bis(2-furanyl)-1,2,4-triazin-3-yl]thio]-1-(4-methoxyphenyl)ethanone</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109860">
+    <rdfs:label>1-[[(4R,5S)-8-(2-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109865">
+    <rdfs:label>(2R)-2-[(4R,5R)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109888">
+    <rdfs:label>N-[[(4R,5S)-8-(3-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109893">
+    <rdfs:label>1-[[(4S,5S)-8-(2-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109908">
+    <rdfs:label>(2R)-2-[(4R,5S)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109955">
+    <rdfs:label>1-[[(4R,5S)-8-(2-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109982">
+    <rdfs:label>N-[[(4S,5R)-8-(3-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_109994">
+    <rdfs:label>N-[[(4S,5S)-8-(3-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110027">
+    <rdfs:label>1-[[(4S,5R)-8-(2-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110058">
+    <rdfs:label>1-[[(4R,5R)-8-(2-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110070">
+    <rdfs:label>1-[[(4S,5R)-8-(2-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110083">
+    <rdfs:label>N-[[(4R,5R)-8-(3-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110106">
+    <rdfs:label>1-[[(4R,5R)-8-(2-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110109">
+    <rdfs:label>N-[[(4S,5S)-8-(3-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110117">
+    <rdfs:label>1-[[(4S,5S)-8-(2-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-1-methyl-3-propylurea</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110124">
+    <rdfs:label>(2S)-2-[(4R,5S)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110128">
+    <rdfs:label>(2S)-2-[(4S,5S)-8-[2-(2-fluorophenyl)ethynyl]-4-methyl-5-[[methyl(4-oxanylmethyl)amino]methyl]-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-2-yl]-1-propanol</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110136">
+    <rdfs:label>N-[[(4R,5R)-8-(3-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110148">
+    <rdfs:label>N-[[(4S,5R)-8-(3-fluorophenyl)-2-[(2R)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_110151">
+    <rdfs:label>N-[[(4R,5S)-8-(3-fluorophenyl)-2-[(2S)-1-hydroxypropan-2-yl]-4-methyl-1,1-dioxo-4,5-dihydro-3H-6,1$l^{6},2-benzoxathiazocin-5-yl]methyl]-N-methylcyclopropanecarboxamide</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_15355">
+    <rdfs:label>acetylcholine</rdfs:label>
+    <obo:IAO_0000115>Actylcholine is an ester of acetic acid and choline, which acts as a neurotransmitter.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>2-acetyloxy-N,N,N-trimethylethanaminium</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>ACETYLCHOLINE</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Acetylcholine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>ACh</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Azetylcholin</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>O-Acetylcholine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>choline acetate</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35287"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_47622"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_15377">
+    <rdfs:label>water</rdfs:label>
+    <obo:IAO_0000115>An oxygen hydride consisting of an oxygen atom that is covalently bonded to two hydrogen atoms</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>WATER</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Water</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>oxidane</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>BOUND WATER</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>H2O</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>HOH</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Wasser</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>[OH2]</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>acqua</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>agua</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>aqua</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>dihydridooxygen</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>dihydrogen oxide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>eau</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>hydrogen hydroxide</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33693"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37176"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_52625"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_16842">
+    <rdfs:label>formaldehyde</rdfs:label>
+    <obo:IAO_0000115>An aldehyde resulting from the formal oxidation of methanol.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>FORMALDEHYDE</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Formaldehyde</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>FORMALIN</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Formaldehyd</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Formalin</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Methanal</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Methylene oxide</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Oxomethane</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Oxomethylene</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_17478"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_64708"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_17544">
+    <rdfs:label>hydrogencarbonate</rdfs:label>
+    <obo:IAO_0000115>The carbon oxoanion resulting from the removal of a proton from carbonic acid.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Hydrogencarbonate</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>hydrogen(trioxidocarbonate)(1-)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>hydrogencarbonate(1-)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>hydrogentrioxocarbonate(1-)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>hydrogentrioxocarbonate(IV)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>hydroxidodioxidocarbonate(1-)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Acid carbonate</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>BICARBONATE ION</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Bicarbonate</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>HCO3(-)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>HCO3-</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>[CO2(OH)](-)</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>hydrogen carbonate</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_35604"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_23888">
+    <rdfs:label>drug</rdfs:label>
+    <obo:IAO_0000115>Any substance which when absorbed into a living organism may modify one or more of its functions. The term is generally accepted for a substance taken for a therapeutic purpose, but is also commonly used for abused substances.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>drugs</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>medicine</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_52217"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_24866">
+    <rdfs:label>salt</rdfs:label>
+    <obo:IAO_0000115>A salt is an assembly of cations and anions.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Salz</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Salze</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>ionic compound</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>ionic compounds</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sal</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sales</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>salts</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sel</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sels</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37577"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_26130">
+    <rdfs:label>biological pigment</rdfs:label>
+    <obo:IAO_0000115>An endogenous molecular entity that results in a colour of an organism as the consequence of the selective absorption of light.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>pigments</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_52208"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_30879">
+    <rdfs:label>alcohol</rdfs:label>
+    <obo:IAO_0000115>A compound in which a hydroxy group, -OH, is attached to a saturated carbon atom.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Alcohol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>alcohols</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>an alcohol</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_33822"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_35186">
+    <rdfs:label>terpene</rdfs:label>
+    <obo:IAO_0000115>A hydrocarbon of biological origin having carbon skeleton formally derived from isoprene [CH2=C(CH3)CH=CH2].</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>terpenes</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Terpen</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>terpeno</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>terpenos</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_24632"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_24913"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_36357">
+    <rdfs:label>polyatomic entity</rdfs:label>
+    <obo:IAO_0000115>Any molecular entity consisting of more than one atom.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>polyatomic entities</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_23367"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_37586">
+    <rdfs:label>sodium phosphate</rdfs:label>
+    <oboInOwl:hasExactSynonym>phosphoric acid, sodium salt</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sodium orthophosphate</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sodium phosphates</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>sodium salt of phosphoric acid</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_190300"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_24838"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38702"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_38867">
+    <rdfs:label>anaesthetic</rdfs:label>
+    <obo:IAO_0000115>Substance which produces loss of feeling or sensation.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Anaesthetika</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Anaesthetikum</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>anaesthetics</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>anesthetic agent</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>anesthetic drug</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>anesthetics</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_23888"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_50913">
+    <rdfs:label>fixative</rdfs:label>
+    <obo:IAO_0000115>Any compound used for the purpose of preserving biological tissues from decay in such a way as to allow for the preparation of thin, stained sections for subsequent histological study.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>fixating agent</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>fixating agents</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>fixation agent</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_24432"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_52815">
+    <rdfs:label>cresyl violet</rdfs:label>
+    <obo:IAO_0000115>A cationic heterotetracyclic fluorescent dye derived from benzo[a]phenoxazine.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>5,9-diaminobenzo[a]phenoxazin-7-ium</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_25697"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38163"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_5613">
+    <rdfs:label>haloperidol</rdfs:label>
+    <obo:IAO_0000115>A compound composed of a central piperidine structure with hydroxy and p-chlorophenyl substituents at position 4 and an N-linked p-fluorobutyrophenone moiety.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>4-[4-(4-chlorophenyl)-4-hydroxypiperidin-1-yl]-1-(4-fluorophenyl)butan-1-one</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>1-(3-p-fluorobenzoylpropyl)-4-p-chlorophenyl-4-hydroxypiperidine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4'-fluoro-4-(4-(p-chlorophenyl)-4-hydroxypiperidinyl)butyrophenone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4'-fluoro-4-(4-hydroxy-4-(4'-chlorophenyl)piperidino)butyrophenone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4-(4-(para-chlorophenyl)-4-hydroxypiperidino)-4'-fluorobutyrophenone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>4-[4-(4-chlorophenyl)-4-hydroxy-1-piperidyl]-1-(4-fluorophenyl)-butan-1-one</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Haldol</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>gamma-(4-(p-chlorophenyl)-4-hydroxpiperidino)-p-fluorbutyrophenone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>haloperidolum</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_26878"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_37143"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_48590"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_76224"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_6121">
+    <rdfs:label>ketamine</rdfs:label>
+    <obo:IAO_0000115>A member of the class of cyclohexanones in which one of the hydrogens at position 2 is substituted by a 2-chlorophenyl group, while the other is substituted by a methylamino group.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>2-(2-chlorophenyl)-2-(methylamino)cyclohexanone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>KETAMINE</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Ketamine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>(+-)-ketamine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>2-(2-Chloro-phenyl)-2-methylamino-cyclohexanone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>2-(methylamino)-2-(2-chlorophenyl)cyclohexanone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>2-(o-chlorophenyl)-2-(methylamino)-cyclohexanone</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>DL-ketamine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>NMDA</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>dl-ketamine</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>ketamina</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>ketaminum</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>special K</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_23482"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_50995"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_83403"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/CHEBI_64276">
+    <rdfs:label>glutaraldehyde</rdfs:label>
+    <obo:IAO_0000115>A dialdehyde comprised of pentane with aldehyde functions at C-1 and C-5.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Glutaraldehyde</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>pentanedial</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>1,3-Diformylpropane</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>1,5-Pentanedial</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>1,5-Pentanedione</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Glutaral</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Glutardialdehyde</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Glutaric acid dialdehyde</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Glutaric dialdehyde</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>PENTANEDIAL</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>glutaral</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>glutaralum</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/CHEBI_38124"/>
+  </owl:Class>
+</rdf:RDF>

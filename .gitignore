@@ -23,3 +23,6 @@ runs/
 index/
 *.index/
 data/
+
+# Example extraction scratch; the committed sample/ slices are the artefact.
+runs/

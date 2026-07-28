@@ -1,0 +1,41 @@
+entity_noun: gene or protein mention
+target_noun: NCBI Gene record
+domain_brief: >-
+  gene nomenclature across model organisms, where the same symbol names different genes
+  in different species and case conventions differ between them
+rubric:
+  - score: 1.0
+    name: Certain
+    when: symbol matches exactly and the organism is confirmed by the context
+    example: "human TP53 -> NCBIGene:7157 (Homo sapiens TP53)"
+  - score: 0.9
+    name: High
+    when: an official symbol or alias matches and only one organism is plausible
+    example: "Trp53 -> the mouse gene, since Trp53 is mouse-specific nomenclature"
+  - score: 0.6
+    name: Plausible
+    when: the symbol matches but the organism is not stated anywhere in the context
+    example: "bare 'p53' with no species mentioned"
+  - score: 0.3
+    name: Speculative
+    when: only a description or partial name matches, not the symbol
+    example: "'the tumour suppressor' -> TP53"
+hard_rules:
+  - >-
+    A gene symbol in one organism is a DIFFERENT entity from the same symbol in another
+    organism. Never match across species without contextual evidence.
+  - >-
+    Gene family members differing only by a trailing number are distinct entities.
+  - >-
+    If no candidate is the right gene, abstain. A wrong gene mapping is indistinguishable
+    from a right one downstream.
+disambiguation_steps: |
+  ## Step 1: Determine the organism
+  Scan the context for a species name, a cell line, a tissue, or an organism-specific
+  nomenclature convention (all-caps for human, initial-caps for mouse).
+
+  ## Step 2: Filter candidates by that organism
+  Discard candidates from other organisms before comparing symbols.
+
+  ## Step 3: Match the symbol
+  Prefer the official symbol over an alias when both are available.

@@ -1,0 +1,1077 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:oboInOwl="http://www.geneontology.org/formats/oboInOwl#"
+         xmlns:obo="http://purl.obolibrary.org/obo/">
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001013">
+    <rdfs:label>cheese food product</rdfs:label>
+    <obo:IAO_0000115>Cheese is a food derived from milk that is produced in a wide range of flavors, textures, and forms by coagulation of the milk protein casein.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cheese</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001053">
+    <rdfs:label>fermented dairy food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001258"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001073">
+    <rdfs:label>vinegar food product</rdfs:label>
+    <obo:IAO_0000115>A liquid produced from the fermentation of ethanol in a process that yields its key ingredient, acetic acid.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001258"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001083">
+    <rdfs:label>sugar condiment</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001093">
+    <rdfs:label>cereal grain food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001094">
+    <rdfs:label>fermented beverage</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid FOODON:03430130 * microbial/enzymatic modification process FOODON:03460119 * curing or aging process FOODON:03460253</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>alcoholic beverage</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001258"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301977"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001100">
+    <rdfs:label>orange fruit beverage</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, low viscosity FOODON:03430109 * acidified FOODON:03460200 * ingredient: water addition process FOODON:03460148 * ingredient: sweetener added FOODON:03460202 * ingredient: flavoring, spice or herb added FOODON:03460227</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001156"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002071"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001101">
+    <rdfs:label>grape beverage</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001170"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001106">
+    <rdfs:label>camelid dairy food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001107">
+    <rdfs:label>bovine dairy food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001111">
+    <rdfs:label>equine dairy food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001119">
+    <rdfs:label>cervid dairy food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001162">
+    <rdfs:label>grape extract</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001058"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001170"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001174">
+    <rdfs:label>plant lipid food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001015"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002664"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001181">
+    <rdfs:label>food (cooked)</rdfs:label>
+    <obo:IAO_0000115>Food material which is cooked.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cooked</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001215">
+    <rdfs:label>cacao food product</rdfs:label>
+    <obo:IAO_0000115>A food product derived from Theobroma cacao.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cocoa and cocoa products</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001230">
+    <rdfs:label>mustard seed food product</rdfs:label>
+    <obo:IAO_0000115>A product made from the seeds of a mustard plant (white or yellow mustard, Sinapis hirta; brown or Indian mustard, Brassica juncea; or black mustard, Brassica nigra).</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002053"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001233">
+    <rdfs:label>nut oil food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001087"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001243">
+    <rdfs:label>animal lipid food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002664"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00004242"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001252">
+    <rdfs:label>animal derived beverage</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00004242"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301977"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001253">
+    <rdfs:label>plant derived beverage</rdfs:label>
+    <obo:IAO_0000115>A beverage derived from plants.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001015"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301977"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001257">
+    <rdfs:label>milk or milk based food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001258">
+    <rdfs:label>food (fermented)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been fermented.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002501"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001290">
+    <rdfs:label>salad dressing</rdfs:label>
+    <obo:IAO_0000115>A sauce for a salad.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002146"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001313">
+    <rdfs:label>nam-budu</rdfs:label>
+    <obo:IAO_0000115>Fermented fish in liquid form</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001054"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03430130"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001316">
+    <rdfs:label>nham-pla</rdfs:label>
+    <obo:IAO_0000115>Nham-pla are made from four kinds of fish, namely, striped catfish and nile tilapia from the fresh water fish and threadfin bream and barracuda from the marine fish.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001054"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03430130"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001570">
+    <rdfs:label>rolled grain</rdfs:label>
+    <obo:IAO_0000115>Rolled grain is grain has been mechanicallly crushed to separate the hull from the endosperm.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001596">
+    <rdfs:label>animal based salad food product</rdfs:label>
+    <obo:IAO_0000115>A salad food product with a prominent animal meat ingredient.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002219"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00004242"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001601">
+    <rdfs:label>animal product based dressing</rdfs:label>
+    <obo:IAO_0000115>A dressing which has an animal product ingredient.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001867"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00004242"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001603">
+    <rdfs:label>animal product dressing</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001867"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001610">
+    <rdfs:label>apple condiment</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001613">
+    <rdfs:label>apple vinegar food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001073"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001610"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001611"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001626">
+    <rdfs:label>bakery food product</rdfs:label>
+    <obo:IAO_0000115>Food material which is output of or is part of a home or commercial bakery process.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001637">
+    <rdfs:label>beet pickle food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001638"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002333"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001648">
+    <rdfs:label>black olive food product</rdfs:label>
+    <obo:IAO_0000115>A food product derived from black olives.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002066"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001649">
+    <rdfs:label>black or white pepper product</rdfs:label>
+    <oboInOwl:hasExactSynonym>pepper</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003287"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001650">
+    <rdfs:label>black pepper food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003287"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001667">
+    <rdfs:label>broiler chicken meat food product</rdfs:label>
+    <obo:IAO_0000115>A food product made from a whole broiler or fryer chicken or part thereof</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001040"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001668">
+    <rdfs:label>broth or stock food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001931"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001681">
+    <rdfs:label>caper food product</rdfs:label>
+    <obo:IAO_0000115>A caper food product is a food product derived from the flower buds or fruit of the caper plant.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>caper</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>capers</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001683">
+    <rdfs:label>cardamom food product</rdfs:label>
+    <obo:IAO_0000115>A cardamom food product is a food product derived from a black or green cardamom plant.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cardamon</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>cardamum</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001716">
+    <rdfs:label>chemical sweetener product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03411041"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001732">
+    <rdfs:label>chive food product</rdfs:label>
+    <obo:IAO_0000115>A food product deriving from the chive plant.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001738">
+    <rdfs:label>cinnamon food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001741">
+    <rdfs:label>citrus nectar beverage</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001156"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03306363"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001745">
+    <rdfs:label>clove food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>cloves</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001761">
+    <rdfs:label>condiment sauce</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001931"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001763">
+    <rdfs:label>coriander food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001800">
+    <rdfs:label>dairy dessert food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303220"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001811">
+    <rdfs:label>dill food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>dill</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001813">
+    <rdfs:label>diluted citrus fruit beverage</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001156"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001814"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001840">
+    <rdfs:label>field corn based bakery food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001845"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001917"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001848">
+    <rdfs:label>field corn sweetener product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002157"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001859">
+    <rdfs:label>flaxseed food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>linseed food product</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001873">
+    <rdfs:label>food spread</rdfs:label>
+    <obo:IAO_0000115>A spread is a food that is spread, generally with a knife, onto foods such as bread and crackers.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>spread</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001867"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001879">
+    <rdfs:label>frozen dairy food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001256"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001896">
+    <rdfs:label>chickpea (whole or pieces)</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001199"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001901">
+    <rdfs:label>ginger food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>ginger</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001904">
+    <rdfs:label>ginseng food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001919">
+    <rdfs:label>grain based vinegar food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001073"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001920">
+    <rdfs:label>grape spread or sauce</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001170"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03302441"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001928">
+    <rdfs:label>grape vinegar food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001073"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001170"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001936">
+    <rdfs:label>green olive food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002066"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001956">
+    <rdfs:label>hot pepper food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>red pepper</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002111"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001959">
+    <rdfs:label>hungarian wax pepper food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00001978">
+    <rdfs:label>jelly condiment</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002002">
+    <rdfs:label>lime preserve or jam food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001742"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002460"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002019">
+    <rdfs:label>mandarin orange juice</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001156"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002018"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002023">
+    <rdfs:label>marjoram food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>marjoram</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002031">
+    <rdfs:label>milk based gravy or sauce food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001931"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002057">
+    <rdfs:label>nonalcoholic beverage</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301977"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002061">
+    <rdfs:label>nutmeg food product</rdfs:label>
+    <obo:IAO_0000115>Nutmeg food product is a product made from the nutmeg seed or seed skin.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002065">
+    <rdfs:label>olive fat or oil refined food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002139"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002067">
+    <rdfs:label>onion flavouring food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002069"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002073">
+    <rdfs:label>oregano food product</rdfs:label>
+    <obo:IAO_0000115>A spice or herb which derives from one or more oregano leaves.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002078">
+    <rdfs:label>palm fat or oil refined food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002139"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002084">
+    <rdfs:label>parsley food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002098">
+    <rdfs:label>peanut fat or oil refined food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002139"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03420190"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002110">
+    <rdfs:label>green or red pepper pickle food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002111"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002333"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002112">
+    <rdfs:label>peppermint food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002128">
+    <rdfs:label>plant based gravy or sauce food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001931"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002132">
+    <rdfs:label>plant based salad food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002219"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03316579"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002146">
+    <rdfs:label>plant product dressing</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001867"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03316579"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002151">
+    <rdfs:label>plant seed based bakery food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002125"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002152">
+    <rdfs:label>plant seed cereal food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002153">
+    <rdfs:label>plant seed vegetable food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001261"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002158">
+    <rdfs:label>food (preserved)</rdfs:label>
+    <obo:IAO_0000115>Food material which is the output of a food preservation process.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>preserved</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002186">
+    <rdfs:label>rape fat or oil refined food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002139"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002198">
+    <rdfs:label>relish food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002205">
+    <rdfs:label>rice cereal food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001185"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001709"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002207">
+    <rdfs:label>rice flour</rdfs:label>
+    <obo:IAO_0000115>Flour made from rice.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001056"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001185"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002210">
+    <rdfs:label>rock cornish fowl meat food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001040"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002212">
+    <rdfs:label>rosemary food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002213">
+    <rdfs:label>rye based bakery food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001917"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002217">
+    <rdfs:label>sage food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>sage</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002253">
+    <rdfs:label>soft drink food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301977"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002257">
+    <rdfs:label>soup food product</rdfs:label>
+    <obo:IAO_0000115>A multi-component food product which is soup.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002501"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03430130"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002262">
+    <rdfs:label>soybean condiment</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002263">
+    <rdfs:label>soybean dressing food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002146"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002287">
+    <rdfs:label>sugar based vinegar food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001073"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002288">
+    <rdfs:label>sugar beet sweetener food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03316271"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002289">
+    <rdfs:label>sugar beet food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001638"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002291">
+    <rdfs:label>sugar cane food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03316271"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002293">
+    <rdfs:label>sugar palm sweetener food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03316271"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002300">
+    <rdfs:label>sweetener food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001857"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002311">
+    <rdfs:label>tarragon food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002312">
+    <rdfs:label>thyme food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>thyme</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003042"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002315">
+    <rdfs:label>tomato condiment</rdfs:label>
+    <obo:IAO_0000115>A condiment which has tomato as a defining ingredient.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002323">
+    <rdfs:label>turmeric food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>Curcuma</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002327">
+    <rdfs:label>uncured cow milk cheese food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001127"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002326"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002328">
+    <rdfs:label>vanilla bean food product</rdfs:label>
+    <obo:IAO_0000115>A vanilla bean food product is derived from the fruit, a seed capsule, of a vanilla plant.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>vanilla</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002340">
+    <rdfs:label>water food product</rdfs:label>
+    <obo:IAO_0000115>A water food product is a food product derived from H20 (water) in its liquid form.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>water</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301977"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002347">
+    <rdfs:label>wheat based bakery food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001917"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002361">
+    <rdfs:label>white pepper food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003287"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002436">
+    <rdfs:label>white vegetable (whole or pieces)</rdfs:label>
+    <obo:IAO_0000115>The term white vegetables refers to vegetables that are white or near white in color and includes potatoes, cauliflowers, turnips, onions, parsnips, white corn, kohlrabi, and mushrooms (technically fungi but generally considered a vegetable).</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03315308"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002472">
+    <rdfs:label>fruit (fresh)</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002457"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03302008"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03315615"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002492">
+    <rdfs:label>sarsaparilla food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002496">
+    <rdfs:label>licorice plant food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002500">
+    <rdfs:label>spice rub</rdfs:label>
+    <obo:IAO_0000115>Spice rub is any mixture of ground spices that is made for the purpose of being rubbed on raw food before the food is cooked. The spice rub forms a coating on the food. The food can be marinated in the spice rub for some time for the flavors to incorporate into the food or it can be cooked immediately after it is coated in the rub. The spice rub can be left on or partially removed before cooking.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002563">
+    <rdfs:label>chipotle</rdfs:label>
+    <obo:IAO_0000115>A chipotle is a smoke-dried ripe jalapeño chili pepper used for seasoning.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001976"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002568">
+    <rdfs:label>grape seed</rdfs:label>
+    <obo:IAO_0000115>Grapeseed refers to the seeds of grapes, from which oil can be extracted</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001170"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002642">
+    <rdfs:label>food (chilled)</rdfs:label>
+    <obo:IAO_0000115>Food material which is chilled.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>chilled</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002454"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002644">
+    <rdfs:label>food (filled)</rdfs:label>
+    <obo:IAO_0000115>Food material which contains an outer layer and inner core of different food materials, and which is the output of a food filling process.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>filled</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>stuffed</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002646">
+    <rdfs:label>food (flavored)</rdfs:label>
+    <obo:IAO_0000115>Food material which has its flavour or taste enhanced by some process which may include the addition of flavourings.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>flavoured</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002649">
+    <rdfs:label>food (milled)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been milled.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>milled</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00004509"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002650">
+    <rdfs:label>food (colored)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been colored.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>colored</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>coloured</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002653">
+    <rdfs:label>food (hydrolized)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been hydrolized.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>hydrolized</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002654">
+    <rdfs:label>food (pasteurized)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been pasteurized.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>pasteurized</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002655">
+    <rdfs:label>food (peeled)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been peeled.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>peeled</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002656">
+    <rdfs:label>food (puffed)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been puffed.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>puffed</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002658">
+    <rdfs:label>food (textured)</rdfs:label>
+    <obo:IAO_0000115>Food material which is made from various nutritional components to resemble conventional protein-source foods in texture such as meat, seafood, or poultry.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>textured</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002661">
+    <rdfs:label>food (breaded)</rdfs:label>
+    <obo:IAO_0000115>Food material which is breaded.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>breaded</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002662">
+    <rdfs:label>food (batter-coated)</rdfs:label>
+    <obo:IAO_0000115>Food material which is batter-coated.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>batter-coated</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>battered</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002667">
+    <rdfs:label>allspice</rdfs:label>
+    <obo:IAO_0000115>Allspice is the dried unripe fruit (berries, used as a spice) of Pimenta dioica, a midcanopy tree native to the Greater Antilles, southern Mexico, and Central America, now cultivated in many warm parts of the world.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Jamaica pepper</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Jamaica pimento</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>myrtle pepper</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>pimenta</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>pimento</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002672">
+    <rdfs:label>chicken nugget</rdfs:label>
+    <obo:IAO_0000115>A chicken nugget is a chicken product made from chicken meat that is breaded or battered, then deep-fried or baked.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001040"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002700">
+    <rdfs:label>canola plant food product</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001173"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002708">
+    <rdfs:label>food (cleaned)</rdfs:label>
+    <obo:IAO_0000115>Food material which is the output of a cleaning process.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cleaned</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00002713">
+    <rdfs:label>food (ground)</rdfs:label>
+    <obo:IAO_0000115>Food material which has been ground into smaller pieces.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>ground</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002645"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003013">
+    <rdfs:label>bell pepper food product</rdfs:label>
+    <obo:IAO_0000115>A bell pepper is a fruits in different colours - including red, yellow, orange, green, white, and purple - from a bell pepper plant cultivar.  Bell peppers are sometimes grouped with less pungent pepper varieties as "sweet peppers".</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>pepper</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002111"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003016">
+    <rdfs:label>orange bell pepper (raw)</rdfs:label>
+    <oboInOwl:hasExactSynonym>orange bell pepper</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>orange pepper</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003550"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003024">
+    <rdfs:label>cumin seed (dried)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * seed (anatomical part) FOODON:03420155 * water removal process FOODON:03460138 * preservation by dehydration or drying FOODON:03470116</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cumin</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003396"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003049">
+    <rdfs:label>hummus</rdfs:label>
+    <obo:IAO_0000115>Hummus is a Levantine dip or spread made from cooked, mashed chickpeas or other beans, blended with tahini, olive oil, lemon juice, salt, and garlic.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>حمص بالطحينة‎</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>ḥummuṣ bi-ṭaḥini</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001199"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003247">
+    <rdfs:label>parmesan cheese food product</rdfs:label>
+    <oboInOwl:hasExactSynonym>parmesan</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001946"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003396">
+    <rdfs:label>cumin seed</rdfs:label>
+    <obo:IAO_0000115>A seed of a cumin plant (Cuminum cyminum).</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cumin</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03311872"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0009010"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003406">
+    <rdfs:label>cabbage head</rdfs:label>
+    <obo:IAO_0000115>A rosette of a cabbage plant (Brassica oleracea var. capitata).</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cabbage</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001677"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0025615"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003417">
+    <rdfs:label>grape</rdfs:label>
+    <obo:IAO_0000115>A berry fruit of a grape plant.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>de-stemmed grape</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001170"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003521"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0030108"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003494">
+    <rdfs:label>jalapeno pepper</rdfs:label>
+    <obo:IAO_0000115>A berry fruit of a jalapeno pepper plant (Capsicum annuum).</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001976"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003545"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003520">
+    <rdfs:label>pepper</rdfs:label>
+    <obo:IAO_0000115>A berry fruit of a pepper plant (Capsicum)</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002111"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0030108"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003523">
+    <rdfs:label>almond</rdfs:label>
+    <obo:IAO_0000115>A drupe fruit of an almond plant (Prunus dulcis).</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001587"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0030103"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003582">
+    <rdfs:label>garlic bulb</rdfs:label>
+    <obo:IAO_0000115>A bulb of a garlic plant (Allium sativum)</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>garlic</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001895"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0025356"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003661">
+    <rdfs:label>lime</rdfs:label>
+    <obo:IAO_0000115>A hesperidium fruit of a lime plant.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002460"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003324"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003816">
+    <rdfs:label>vegetable</rdfs:label>
+    <obo:IAO_0000115>An anatomical part of a plant that is consumed by humans or other animals as food.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03315308"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0025496"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_00003855">
+    <rdfs:label>tahini</rdfs:label>
+    <obo:IAO_0000115>A condiment made from toasted ground hulled sesame.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>tahina</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001133"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301116">
+    <rdfs:label>white wheat flour (not heat treated)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * finely ground FOODON:03430106 * not heat-treated FOODON:03440003 * seed, skin removed, germ removed (endosperm) FOODON:03420208 * water removal process FOODON:03460138 * preservation by dehydration or drying FOODON:03470116</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>flour</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03302339"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301123">
+    <rdfs:label>grape (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>grape</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003417"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301175">
+    <rdfs:label>cinnamon</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * bark FOODON:03420264</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001738"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301224">
+    <rdfs:label>cinnamon stick</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * divided into pieces FOODON:03430152 * not heat-treated FOODON:03440003 * bark FOODON:03420264 * water removal process FOODON:03460138 * preservation by dehydration or drying FOODON:03470116</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301175"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301326">
+    <rdfs:label>cabbage head (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * head (plant) FOODON:03420151</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cabbage</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003406"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03302008"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301355">
+    <rdfs:label>almond (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * seed (anatomical part) FOODON:03420155</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>almond</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001587"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301440">
+    <rdfs:label>mayonnaise</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * semisolid with smooth consistency FOODON:03430119 * partially heat-treated FOODON:03440018 * fat or oil FOODON:03420190 * acidified FOODON:03460200 * ingredient: spice or herb added FOODON:03460151</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001234"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301441">
+    <rdfs:label>lemon (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>lemon</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301337"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03315104"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301554">
+    <rdfs:label>allspice (ground)</rdfs:label>
+    <obo:IAO_0000115>Ground allspice is a powder consisting of dried and ground allspice berry.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>allspice</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002667"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301641">
+    <rdfs:label>rice kernel food product</rdfs:label>
+    <obo:IAO_0000115>A rice food product consisting of hulled rice kernels.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>rice</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001185"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301704">
+    <rdfs:label>onion (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * solid FOODON:03430151 * not heat-treated FOODON:03440003 * root, tuber or bulb, with peel FOODON:03420239</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>onion</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03316347"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301705">
+    <rdfs:label>vinegar</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, low viscosity, with no visible particles FOODON:03430123 * not heat-treated FOODON:03440003 * alcohol-acetic acid fermentation process FOODON:03460123 * curing or aging process FOODON:03460253 * preservation by heat treatment FOODON:03470120</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001073"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301826">
+    <rdfs:label>olive oil</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, high viscosity, with no visible particles FOODON:03430139 * fat or oil FOODON:03420190</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002065"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03301889">
+    <rdfs:label>cream cheese</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * semisolid with smooth consistency FOODON:03430119 * curd FOODON:03420245 * lactic acid fermentation process FOODON:03460101</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>philadelphia cream cheese</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002327"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03302034">
+    <rdfs:label>beet juice</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, low viscosity, with no visible particles FOODON:03430123 * not heat-treated FOODON:03440003 * root, tuber or bulb, with peel FOODON:03420239</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001638"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03302458">
+    <rdfs:label>cheddar cheese</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * solid FOODON:03430151 * curd FOODON:03420245 * curing or aging process FOODON:03460253 * interior bacteria curing process FOODON:03460328</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001778"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03302916">
+    <rdfs:label>provolone cheese</rdfs:label>
+    <obo:IAO_0000115>An italian, semi-hard cheese made from cow's milk, aged for a minimum of four months with a very sharp taste.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>provolone</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002230"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03303578">
+    <rdfs:label>mozzarella cheese</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * solid FOODON:03430151 * partially heat-treated FOODON:03440018 * curd FOODON:03420245 * lactic acid-other agent fermentation process FOODON:03460107 * pasteurization by heating FOODON:03470135</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002326"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03305003">
+    <rdfs:label>worcestershire sauce</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, low viscosity, with small particles FOODON:03430114 * partially heat-treated FOODON:03440018 * sugar FOODON:03420108 * alcohol-acetic acid fermentation process FOODON:03460123 * alcoholated FOODON:03460160 * curing or aging 12 months or over FOODON:03460294 * pasteurization by heating FOODON:03470135 * ingredient: flavoring, spice or herb added FOODON:03460227</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001761"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03305086">
+    <rdfs:label>lime (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>lime</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003661"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03305208">
+    <rdfs:label>garlic bulb (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * root, tuber or bulb FOODON:03420238</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>garlic</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003582"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03305263">
+    <rdfs:label>vegetable oil</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, high viscosity, with no visible particles FOODON:03430139 * fat or oil FOODON:03420190</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001087"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002139"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03305428">
+    <rdfs:label>lemon juice</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, low viscosity FOODON:03430109 * fruit, peel present, core, pit or seed present FOODON:03420140</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001156"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03302386"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03306160">
+    <rdfs:label>lime juice</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, low viscosity FOODON:03430109 * fruit, peel present, core, pit or seed present FOODON:03420140</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001156"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002460"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03306696">
+    <rdfs:label>beet (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * root, tuber or bulb, with peel FOODON:03420239</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>beet</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001638"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03306726">
+    <rdfs:label>sweet green pepper (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * unripe or immature FOODON:03530051 * pod containing small, immature seed FOODON:03420169</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>green bell pepper</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>green pepper</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003547"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03307668">
+    <rdfs:label>tortilla</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, shape achieved by forming, thickness &lt;0.3 cm. FOODON:03430153 * fully heat-treated FOODON:03440014 * seed (anatomical part) FOODON:03420155</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001917"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03309928">
+    <rdfs:label>pepper (raw)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * pod or seed FOODON:03420158</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>pepper</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002111"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03310387">
+    <rdfs:label>oil</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid, high viscosity, with no visible particles FOODON:03430139 * fat or oil FOODON:03420190</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002664"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03310943">
+    <rdfs:label>zucchini squash</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>green zucchini</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>zucchini</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002448"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003539"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03311146">
+    <rdfs:label>sauce</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * liquid FOODON:03430130</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001931"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03430130"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03311872">
+    <rdfs:label>cumin food product</rdfs:label>
+    <obo:IAO_0000115>A cumin food product is derived from the seed of a cumin plant.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>cumin</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03303380"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03315106">
+    <rdfs:label>orange</rdfs:label>
+    <obo:IAO_0000115>A hesperidium fruit of an orange tree (Citrus sinensis).</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002479"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00003324"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03315145">
+    <rdfs:label>olive (ripe)</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * whole, natural shape FOODON:03430150 * ripe or mature FOODON:03530052 * fruit, peel present FOODON:03420137 * curing or aging process FOODON:03460253</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>olive</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03317509"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03315498">
+    <rdfs:label>dressing</rdfs:label>
+    <obo:IAO_0000115>SIREN DB annotation: * ingredient: fat or oil added FOODON:03460221</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001867"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03315552">
+    <rdfs:label>juice beverage</rdfs:label>
+    <oboInOwl:hasExactSynonym>juice</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301977"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03316042">
+    <rdfs:label>salad</rdfs:label>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002219"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03316764">
+    <rdfs:label>vanilla bean extract</rdfs:label>
+    <obo:IAO_0000115>Vanilla extract is a solution containing the flavor compound vanillin as the primary ingredient.  It is made by macerating and percolating vanilla pods in a solution of ethanol and water.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>natural vanilla</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>vanilla</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002328"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03317254">
+    <rdfs:label>beetroot</rdfs:label>
+    <obo:IAO_0000115>A primary root of a commonbeet plant (Beta vulgaris).</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>beet</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001638"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0020127"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03317509">
+    <rdfs:label>olive</rdfs:label>
+    <obo:IAO_0000115>A drupe fruit of an olive tree (Olea europaea).</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>ripe olive</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00002066"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/obo_PO_0030103"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03411355">
+    <rdfs:label>vanilla plant</rdfs:label>
+    <obo:IAO_0000115>Vanilla, the vanilla orchids, forms a flowering plant genus of about 110 species in the orchid family (*Orchidaceae*). The most widely known member is the flat-leaved vanilla (*V. planifolia*), native to Mexico, from which commercial vanilla flavoring is derived.   The fruit is termed "vanilla bean", though true beans are fabaceaen eudicots not at all closely related to orchids. Rather, the vanilla fruit is technically an elongate, fleshy and later dehiscent capsule 10-20 cm long. It ripens gradually for 8 to 9 months after flowering, eventually turning black in color and giving off a strong aroma. Each pod contains thousands of minute seeds, and both the pods and seeds within are used to create vanilla flavoring. Vanilla beans are harvested by hand from commercial orchards. [https://en.wikipedia.org/wiki/Vanilla_(genus)]</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Vanilla</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Vanilla Mill.</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Vanilla planifolia Andr.</oboInOwl:hasExactSynonym>
+    <oboInOwl:hasExactSynonym>Vanilla spp.</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03411179"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03411457">
+    <rdfs:label>chicken</rdfs:label>
+    <obo:IAO_0000115>A whole chicken.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Gallus gallus (Linnaeus, 1758)</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001040"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00004298"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03411669">
+    <rdfs:label>lamb</rdfs:label>
+    <obo:IAO_0000115>A whole lamb.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03411183"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03412974">
+    <rdfs:label>liquid chemical food component</rdfs:label>
+    <obo:IAO_0000115>A chemical food component in liquid form.</obo:IAO_0000115>
+    <oboInOwl:hasExactSynonym>Liquid as food source</oboInOwl:hasExactSynonym>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03411041"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03420108">
+    <rdfs:label>sugar</rdfs:label>
+    <obo:IAO_0000115>A broad term that includes the nutritive sweeteners dextrose, fructose, galactose, lactose, maltose and sucrose, which are simple carbohydrates with molecules composed of one or two saccharide units. Note that on a product label or in a recipe, 'sugar' means *SUCROSE* and should be so indexed. Use the broad term *SUGAR* only if the specific sugar used is not known or not listed in the vocabulary.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03420152"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03420156">
+    <rdfs:label>brown sugar</rdfs:label>
+    <obo:IAO_0000115>Soft sugar whose crystals are covered by a film of refined dark syrup that imparts color, flavor, and moisture.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301073"/>
+  </owl:Class>
+  <owl:Class rdf:about="http://purl.obolibrary.org/obo/FOODON_03420157">
+    <rdfs:label>white sugar</rdfs:label>
+    <obo:IAO_0000115>White sugar is highly refined crystalline sugar, mostly sucrose, that appears white in color.  White sugar is commonly used in North America and Europe, made either of beet sugar or cane sugar, that has undergone a refining process which removes molasses.</obo:IAO_0000115>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_00001083"/>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/FOODON_03301073"/>
+  </owl:Class>
+</rdf:RDF>

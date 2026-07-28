@@ -1,0 +1,48 @@
+# Paths resolve against this file's directory.
+name: ncbi_disease
+templates:
+  query: "{{ mention }}"
+  context: "{{ context_left }}[{{ mention }}]{{ context_right }}"
+  doc: "{{ label }} {{ synonyms | join(' ') }} {{ definition }}"
+  candidate: |
+    ID: {{ id }}
+    Label: {{ label }}
+    {% if synonyms %}Synonyms: {{ synonyms | join('; ') }}{% endif %}
+    {% if definition %}Definition: {{ definition }}{% endif %}
+
+target:
+  kind: tsv
+  path: sample/targets.tsv
+  id_column: id
+  multivalue_columns: [synonyms]
+
+source:
+  kind: jsonl
+  path: sample/mentions.jsonl
+  id_field: mention_id
+
+retrievers:
+  - kind: bm25
+    name: bm25
+    limit: 30
+    exact_fields: [label, synonyms]
+
+llm:
+  kind: openai_compat
+  model: gpt-4o-mini
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY
+  profile: openai
+
+prompts:
+  slots: slots.yaml
+
+policy:
+  max_attempts: 3
+  accept_at: 0.6
+  review_floor: 0.4
+  verify_band: [0.6, 0.8]
+  concurrency: 8
+
+selector:
+  max_candidates: 25

@@ -1,0 +1,38 @@
+entity_noun: disease or syndrome mention
+target_noun: CTD disease record (MESH or OMIM)
+domain_brief: >-
+  clinical disease nomenclature, where the same condition appears as a common name, an
+  eponym, an acronym, and a formal MeSH heading, and where the same concept can carry
+  both a MESH and an OMIM identifier
+rubric:
+  - score: 1.0
+    name: Certain
+    when: the mention is the term's heading or one of its exact synonyms
+    example: "Wilson disease -> Hepatolenticular Degeneration"
+  - score: 0.8
+    name: Confident
+    when: the same condition under a different naming convention or an acronym
+    example: "AT -> Ataxia Telangiectasia"
+  - score: 0.5
+    name: Plausible
+    when: >-
+      a specific subtype is mentioned and only the parent condition is available, or
+      the reverse
+    example: "familial breast cancer -> Breast Neoplasms"
+  - score: 0.2
+    name: Speculative
+    when: only the affected organ or broad category is shared
+    example: "liver disorder -> Hepatolenticular Degeneration"
+hard_rules:
+  - >-
+    A disease and its causative gene are different entities. A mention of an inherited
+    condition names the condition, not the locus.
+  - >-
+    A syndrome that includes a feature is not that feature. Do not match a component
+    symptom to the syndrome or the reverse.
+  - >-
+    If no candidate names the same condition, abstain.
+disambiguation_steps: >-
+  Where a mention is an acronym, look for its expansion in the surrounding sentence
+  before choosing; clinical acronyms collide freely across specialities. Prefer the more
+  specific term only when the context states the qualifier.
