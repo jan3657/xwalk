@@ -10,6 +10,7 @@ from xwalk.evaluate.ceiling import (
     ceiling_report,
     classify_ceiling,
 )
+from xwalk.evaluate.failures import FailureCase, PromptRole, render_failure, select_failures
 from xwalk.evaluate.gold import GoldSet, load_gold_csv, load_gold_jsonl
 from xwalk.evaluate.metrics import (
     EvalReport,
@@ -19,19 +20,37 @@ from xwalk.evaluate.metrics import (
     evaluate_run,
     threshold_curve,
 )
+from xwalk.evaluate.partition import (
+    Partition,
+    Partitioner,
+    ids_in,
+    load_partition_file,
+    partition_of,
+    write_partition_file,
+)
 
 __all__ = [
     "CeilingBucket",
     "CeilingReport",
     "EvalReport",
+    "FailureCase",
     "GoldSet",
+    "Partition",
+    "Partitioner",
+    "PromptRole",
     "ThresholdPoint",
     "calibration_warning",
     "ceiling_report",
     "classify_ceiling",
     "evaluate_results",
     "evaluate_run",
+    "ids_in",
     "load_gold_csv",
     "load_gold_jsonl",
+    "load_partition_file",
+    "partition_of",
+    "render_failure",
+    "select_failures",
     "threshold_curve",
+    "write_partition_file",
 ]
