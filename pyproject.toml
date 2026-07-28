@@ -72,6 +72,11 @@ xwalk = "xwalk.cli.main:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/xwalk"]
 
+[tool.hatch.build.targets.sdist]
+# `_env.sh` hardcodes this developer's Ceph paths -- useless to anyone else and a
+# needless disclosure of a directory layout. `data/` and `runs/` are run output.
+exclude = ["_env.sh", "data/", "runs/", ".venv/"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

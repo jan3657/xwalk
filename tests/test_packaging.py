@@ -183,3 +183,10 @@ def test_the_release_document_warns_against_delete_and_reupload():
     text = (ROOT / "docs" / "releasing.md").read_text("utf-8").lower()
     assert "yank" in text
     assert "do not delete" in text or "never delete" in text
+
+
+def test_the_sdist_excludes_developer_scaffolding():
+    """`_env.sh` hardcodes one machine's absolute paths. Shipping it to PyPI is both
+    useless to the recipient and a needless disclosure."""
+    assert "[tool.hatch.build.targets.sdist]" in PYPROJECT
+    assert '"_env.sh"' in PYPROJECT
