@@ -90,6 +90,11 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Ruff formats fenced Python inside Markdown. Prose is not source: the snippets here are
+# written for a reader, with aligned trailing comments and deliberately compact calls that
+# the formatter would explode. Excluding `.md` also keeps a bare `ruff format` at the repo
+# root agreeing with the narrower paths CI lints.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

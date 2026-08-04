@@ -28,6 +28,12 @@ All notable changes to this project are documented here. The format follows
   builds as `dense:<model>`. Every row was measured against a configuration missing that
   retriever, with no error. Names now come from the built retrievers.
 
+### Added
+
+- Full documentation under [`docs/`](docs/README.md): guides for getting started,
+  evaluation, review, prompt optimisation, extending, and troubleshooting; a
+  component-by-component map; and API reference pages for every subsystem.
+
 ## [0.1.0] — 2026-07-28
 
 First public release. The API is expected to move before 1.0.0.

@@ -2,6 +2,17 @@
 
 Match records from any collection to any other, using retrieval plus an LLM.
 
+Retrieval alone gives you a shortlist and no decision. An LLM alone cannot see a
+collection that does not fit in a context window. xwalk is the loop between them: a
+resumable, auditable pipeline that ends with every source record in one of four states —
+matched, needs review, unmatched, or failed — and an evaluation report that tells you
+which part to fix next.
+
+**[Full documentation →](docs/README.md)** · [Getting
+started](docs/guide/getting-started.md) · [Concepts](docs/concepts.md) · [What each
+component does](docs/components.md) · [API reference](docs/README.md#reference) ·
+[Troubleshooting](docs/guide/troubleshooting.md)
+
 ## Install
 
 ```bash
@@ -206,3 +217,15 @@ names an environment variable, and an inline `api_key` is rejected at load time.
 | [`examples/ncbi_disease`](examples/ncbi_disease) | user-supplied gold alias expansion, living in your code |
 | [`examples/nlm_gene`](examples/nlm_gene) | numeric target IDs — the case opaque candidate keys exist for |
 | [`examples/cafeteria_fcd`](examples/cafeteria_fcd) | a second OWL domain; only `slots.yaml` differs from `chebi` |
+
+## Documentation
+
+| | |
+|---|---|
+| **Guides** | [Getting started](docs/guide/getting-started.md) · [Concepts](docs/concepts.md) · [Components](docs/components.md) · [Evaluation](docs/guide/evaluation.md) · [Review](docs/guide/review.md) · [Prompt optimisation](docs/guide/prompt-optimisation.md) · [Extending](docs/guide/extending.md) · [Troubleshooting](docs/guide/troubleshooting.md) |
+| **Reference** | [Core types](docs/reference/core-types.md) · [Pipeline](docs/reference/pipeline.md) · [Retrieval](docs/reference/retrieval.md) · [Sources](docs/reference/sources.md) · [LLM clients](docs/reference/llm.md) · [Prompts](docs/reference/prompts.md) · [Evaluation](docs/reference/evaluation.md) · [Job file](docs/reference/job-file.md) · [CLI](docs/reference/cli.md) |
+| **Operations** | [Platforms](docs/platforms.md) · [Contributing](CONTRIBUTING.md) · [Releasing](docs/releasing.md) · [Changelog](CHANGELOG.md) |
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
