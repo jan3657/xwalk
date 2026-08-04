@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-08-04
+
+The first release published to PyPI. 0.1.0 was tagged but never uploaded, and its tree
+carries the three bugs below; install 0.1.1 or later.
+
 ### Fixed
 
 - `BM25Retriever.build` appended to an existing index directory instead of replacing it,
@@ -113,5 +118,6 @@ First public release. The API is expected to move before 1.0.0.
   yet executed.
 - Pre-1.0: expect the API to change.
 
-[Unreleased]: https://github.com/jan3657/xwalk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jan3657/xwalk/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jan3657/xwalk/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jan3657/xwalk/releases/tag/v0.1.0
