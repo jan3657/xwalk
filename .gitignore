@@ -26,3 +26,9 @@ data/
 
 # Example extraction scratch; the committed sample/ slices are the artefact.
 runs/
+
+# Per-site shell scaffolding: absolute home paths, an institutional proxy, and GPU
+# indices for one machine. Useless to anyone else and a needless disclosure of a
+# directory layout. Keep it local; document the variables it sets instead.
+_env.sh
+scripts/_env.sh

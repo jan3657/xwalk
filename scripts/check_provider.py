@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Check that the configured live provider actually answers.
 
-    source ./_env.sh && python scripts/check_provider.py
+    set -a; source .env; set +a && python scripts/check_provider.py
 
 Exercises the same client the integration test uses, so a pass here means
 `pytest -m integration` will pass too. Never prints the API key.
@@ -47,7 +47,7 @@ async def main() -> int:
     ]
     if missing:
         print(f"not configured: {', '.join(missing)} unset")
-        print("fill them in .env, then `source ./_env.sh`")
+        print("fill them in .env, then `set -a; source .env; set +a`")
         print("(the integration test skips in this state, which is green, not broken)")
         return 2
     assert key and base and model
