@@ -135,6 +135,38 @@ def test_records_with_empty_rendered_docs_are_reported(tmp_path):
     assert r.empty_doc_count == 1
 
 
+async def test_rebuilding_over_an_existing_index_replaces_it(targets_csv, tmp_path):
+    """`xwalk match` rebuilds into `<out>/index` on every invocation, so appending
+    instead of replacing would duplicate every document on the second run. The
+    fingerprint hashes records, not the index, so nothing downstream would notice."""
+    records = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
+    for _ in range(3):
+        retriever = BM25Retriever.build(
+            records, DOC_TEMPLATES, tmp_path / "idx", exact_fields=EXACT_FIELDS
+        )
+
+    hits = await retriever.search(SearchRequest(text="glucose", limit=20))
+    assert len({h.record_id for h in hits}) == len(hits), "the same record was returned twice"
+
+
+async def test_a_rebuild_does_not_spend_the_retrieval_limit_on_duplicates(
+    targets_eval_csv, tmp_path
+):
+    """The duplicate hit itself is harmless -- fusion collapses it. The harm is that
+    duplicates consume the `limit`, so fewer distinct records reach the model and recall
+    drops with nothing in the run reporting it."""
+    records = list(csv_source(targets_eval_csv, id_column="id", multivalue_columns=["synonyms"]))
+    request = SearchRequest(text="sugar", limit=10)
+
+    first = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "idx")
+    before = {h.record_id for h in await first.search(request)}
+
+    second = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "idx")
+    after = {h.record_id for h in await second.search(request)}
+
+    assert after == before
+
+
 def test_bm25_satisfies_the_retriever_protocol(retriever):
     from xwalk.retrieval.base import Retriever
 

@@ -221,7 +221,11 @@ def _cmd_ablate(args: argparse.Namespace) -> int:
 
     base = MatcherConfig(
         name="baseline",
-        retriever_names=tuple(s.name or s.kind for s in job.retrievers),
+        # From the built retrievers, not from the specs: `factory` filters `all_retrievers`
+        # on `r.name`, and a retriever can name itself something the spec does not say. An
+        # unnamed `kind: dense` spec reads as "dense" but builds as "dense:<model>", so
+        # spec-derived names would silently drop it from the baseline and every variant.
+        retriever_names=tuple(r.name for r in all_retrievers),
         policy=job.build_policy(),
         selector_policy=job.build_selector_policy(),
     )

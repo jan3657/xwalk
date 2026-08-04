@@ -124,6 +124,12 @@ class BM25Retriever:
         index_dir.mkdir(parents=True, exist_ok=True)
         index = tantivy.Index(_build_schema(), path=str(index_dir))
         writer = index.writer(heap_size=writer_heap_bytes, num_threads=writer_threads)
+        # `tantivy.Index` on an existing path opens it, and the writer appends. Building
+        # is a replace, not an append: `xwalk match` rebuilds into `<out>/index` on every
+        # invocation, so appending would duplicate every document on the second run --
+        # and the fingerprint hashes records rather than the index, so nothing downstream
+        # would notice. Duplicates then spend the retrieval limit, costing recall.
+        writer.delete_all_documents()
 
         digests: list[str] = []
         empty = 0

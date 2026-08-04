@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from tests.test_matcher import (
     PROMPTS,
     STORE,
@@ -71,6 +73,20 @@ def test_each_retriever_ablation_drops_its_own_retriever():
     for name in ("bm25", "dense"):
         ablation = next(a for a in standard_ablations(("bm25", "dense")) if a.name == f"no_{name}")
         assert name not in ablation.apply(BASE).retriever_names
+
+
+def test_the_sole_retriever_is_never_ablated():
+    """Dropping the only retriever leaves no pipeline to measure, and `Matcher` rejects
+    an empty retriever list -- so the variant does not answer "what did bm25 add?", it
+    just kills the whole ablation run before any variant reports."""
+    assert "no_bm25" not in {a.name for a in standard_ablations(("bm25",))}
+
+
+def test_no_standard_ablation_ever_empties_the_retriever_set():
+    for names in (("bm25",), ("bm25", "dense")):
+        config = replace(BASE, retriever_names=names)
+        for ablation in standard_ablations(names):
+            assert ablation.apply(config).retriever_names, ablation.name
 
 
 def test_disabling_the_verifier_clears_the_band():

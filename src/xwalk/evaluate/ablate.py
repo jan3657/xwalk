@@ -51,13 +51,17 @@ def _drop_retriever(name: str) -> Callable[[MatcherConfig], MatcherConfig]:
 
 
 def standard_ablations(retriever_names: Sequence[str]) -> list[Ablation]:
+    # Only when there is another retriever left to answer with. "What did bm25 add?" is
+    # not a question a run with no retrieval at all can answer, and `Matcher` rejects an
+    # empty retriever list -- so on a single-retriever job this variant would not report
+    # a bad score, it would abort the whole ablation before any variant reported.
     ablations: list[Ablation] = [
         Ablation(
             name=f"no_{name}",
             description=f"drop the {name} retriever",
             apply=_drop_retriever(name),
         )
-        for name in retriever_names
+        for name in (retriever_names if len(retriever_names) > 1 else ())
     ]
 
     ablations.append(

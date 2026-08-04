@@ -7,6 +7,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `BM25Retriever.build` appended to an existing index directory instead of replacing it,
+  so every rebuild added a second copy of every document. `xwalk match` rebuilds into
+  `<out>/index` on each invocation, so this triggered on the second run of any job.
+  Fusion collapses the duplicate hits, which is why it was invisible — but the duplicates
+  still spend the retrieval `limit`, so fewer distinct records reach the model and recall
+  silently drops. The retriever fingerprint hashes records rather than the index, so
+  nothing downstream detected it either. Building now replaces the index contents.
+- `xwalk ablate` aborted with "at least one retriever is required" on any job configuring
+  a single retriever. `standard_ablations` emitted a `no_<name>` variant that dropped the
+  sole retriever, leaving `Matcher` nothing to build with, and the failure killed the
+  whole run before any variant reported. Retriever-drop variants are now generated only
+  when more than one retriever is configured — dropping the only one does not answer
+  "what did this retriever add?", it removes retrieval entirely.
+- `xwalk ablate` silently excluded any retriever whose built name differs from its job
+  spec. The baseline took names from the spec (`name or kind`) while the factory filtered
+  on the built retriever's `name`, and an unnamed `kind: dense` spec reads as `dense` but
+  builds as `dense:<model>`. Every row was measured against a configuration missing that
+  retriever, with no error. Names now come from the built retrievers.
+
 ## [0.1.0] — 2026-07-28
 
 First public release. The API is expected to move before 1.0.0.
