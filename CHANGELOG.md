@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The CI platform matrix now executes rather than merely being declared. macOS 14,
+  Windows, and Linux on 3.10/3.11/3.12, plus aarch64 and each optional extra, all pass
+  as of v0.1.1 — which retires the second of the limitations listed under 0.1.0.
+- README badges, and a release runbook that covers a dropped tag trigger and a refused
+  trusted-publisher exchange.
+
 ## [0.1.1] — 2026-08-04
 
 The first release published to PyPI. 0.1.0 was tagged but never uploaded, and its tree

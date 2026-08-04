@@ -1,5 +1,10 @@
 # xwalk
 
+[![CI](https://github.com/jan3657/xwalk/actions/workflows/ci.yml/badge.svg)](https://github.com/jan3657/xwalk/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/xwalk.svg)](https://pypi.org/project/xwalk/)
+[![Python](https://img.shields.io/pypi/pyversions/xwalk.svg)](https://pypi.org/project/xwalk/)
+[![Licence](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 Match records from any collection to any other, using retrieval plus an LLM.
 
 Retrieval alone gives you a shortlist and no decision. An LLM alone cannot see a

@@ -7,11 +7,14 @@ project owner.
 
 ### 1. The GitHub repository
 
+Done: <https://github.com/jan3657/xwalk>, created 2026-08-04 with `main` as the default
+branch. For reference, the equivalent from a fresh clone is:
+
 ```bash
 gh repo create jan3657/xwalk --public --source=. --remote=origin --push
 # or create it in the web UI, then:
-git remote add origin git@github.com:jan3657/xwalk.git
-git push -u origin master
+git remote add origin https://github.com/jan3657/xwalk.git
+git push -u origin main
 ```
 
 ### 2. The `pypi` environment
@@ -66,14 +69,34 @@ The first successful publish converts the pending publisher into a real one.
 4. **Commit, tag, push.**
 
    ```bash
-   git commit -am "release: 0.1.0"
-   git tag -a v0.1.0 -m "xwalk 0.1.0"
-   git push origin master --follow-tags
+   git commit -am "release: 0.1.1"
+   git tag -a v0.1.1 -m "xwalk 0.1.1"
+   git push origin main --follow-tags
    ```
 
 The tag push triggers `.github/workflows/release.yml`, which builds, verifies the tag
 matches the packaged version, checks the wheel's contents, installs it into a clean
 environment, and only then publishes.
+
+### If the tag push does not start a run
+
+A tag pushed within seconds of the branch that first registered the workflows can be
+dropped — GitHub had not finished registering `release.yml` when the tag event arrived.
+The workflow also accepts `workflow_dispatch`, so re-running it needs no new tag:
+
+```bash
+gh workflow run release.yml --ref v0.1.1
+```
+
+The tag-matches-version check reads `GITHUB_REF_NAME`, which is the tag name under a
+dispatch on a tag ref, so the check still holds.
+
+### If the publish step fails with `invalid-publisher`
+
+The build verified; only the upload was refused. It means PyPI has no trusted publisher
+matching this repository — register it as in **One-time setup** above, then re-run just
+the failed job from the run page (or dispatch the workflow again). Nothing needs
+rebuilding and the version is not burned, because nothing was uploaded.
 
 ## When a release is wrong
 
