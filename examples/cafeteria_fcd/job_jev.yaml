@@ -40,7 +40,11 @@ prompts:
   slots: slots.yaml
 
 policy:
-  accept_at: 0.85
+  # Fitted on sample/gold.csv at 95% target precision (see the spec's Results section):
+  # 41 of 50 rows accepted, 40 correct, and only 2 rows within the jitter margin of
+  # accept_at. The 0.85 default was too conservative here by 20 points of coverage.
+  accept_at: 0.50
+  property_floor: 0.70
   screen_floor: 0.30
   chunk_size: 50
   max_candidates: 300

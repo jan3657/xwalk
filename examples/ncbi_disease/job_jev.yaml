@@ -1,0 +1,45 @@
+name: ncbi_disease_jev
+templates:
+  context: '{{ context_left }}[{{ mention }}]{{ context_right }}'
+  doc: '{{ label }} {{ synonyms | join('' '') }} {{ definition }}'
+  candidate: 'ID: {{ id }}
+
+    Label: {{ label }}
+
+    {% if synonyms %}Synonyms: {{ synonyms | join(''; '') }}{% endif %}
+
+    {% if definition %}Definition: {{ definition }}{% endif %}
+
+    '
+  queries:
+  - '{{ mention }}'
+target:
+  kind: tsv
+  path: sample/targets.tsv
+  id_column: id
+  multivalue_columns:
+  - synonyms
+source:
+  kind: jsonl
+  path: sample/mentions.jsonl
+  id_field: mention_id
+retrievers:
+- kind: bm25
+  name: bm25
+  limit: 200
+  exact_fields:
+  - label
+  - synonyms
+prompts:
+  slots: slots.yaml
+policy:
+  accept_at: 0.85
+  screen_floor: 0.3
+  chunk_size: 50
+  max_candidates: 300
+  concurrency: 16
+decider:
+  kind: jev
+  model: ~typesafe/jev-latest
+  base_url: https://openrouter.ai/api/alpha/decisions
+  api_key_env: XWALK_TEST_API_KEY

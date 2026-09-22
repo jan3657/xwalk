@@ -36,3 +36,19 @@ disambiguation_steps: >-
   Where a mention is an acronym, look for its expansion in the surrounding sentence
   before choosing; clinical acronyms collide freely across specialities. Prefer the more
   specific term only when the context states the qualifier.
+# Used only by the decider path (see docs/reference/decide.md); the LLM skeletons
+# ignore this block. Each property restates a hard rule as a yes/no question the
+# gate can score independently of the rubric.
+properties:
+  - name: condition_not_locus
+    question: >-
+      Do the source and the candidate both name a condition, rather than one of them
+      naming a causative gene, locus, or protein?
+  - name: specificity
+    question: >-
+      Do the source and the candidate agree on how specific the condition is, rather
+      than one naming a subtype and the other only its parent category?
+  - name: organ_or_system
+    question: >-
+      Do the source and the candidate agree on the affected organ or body system
+      wherever either states one?

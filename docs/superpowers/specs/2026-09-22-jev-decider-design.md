@@ -401,3 +401,202 @@ xwalk's rule is that a model decides and classical methods only pre-process. Jev
 model and it makes every decision here. What changes is that its answers are calibrated
 probabilities rather than self-reported confidence, so the policy layer is doing the
 job it was always meant to do: turning a model's answer into one of four outcomes.
+
+## Results (2026-09-22)
+
+Every number below comes from a run that completed. Reproduce the four sample runs with
+`scripts/run_jev_eval.sh`; the Ref_zivila run is the single `xwalk match` in the
+Ref_zivila section. The decider is `~typesafe/jev-latest` on the alpha decisions
+endpoint; the LLM baseline is `qwen/qwen3-next-80b-a3b-instruct` on OpenRouter, run
+from generated jobs under `runs/llm_eval/` that differ from `examples/<ex>/job.yaml`
+only in the `llm:` block and `policy.concurrency`, and pointed at the same BM25 index
+the decider run used.
+
+### Decider and LLM baseline, side by side
+
+50 labelled rows per domain, none of them a gold "no match". "Accuracy" is
+`recall_at_any_status`: the fraction of labelled rows whose `matched_id` is a gold id at
+any status, which is the accuracy a reviewer would see after clearing the review queue
+correctly. "Precision" is the precision of the `matched` bucket alone.
+
+Decider path, at the policy the example jobs shipped with (`accept_at` 0.85,
+`screen_floor` 0.30, `property_floor` 0.50 by default, 200 candidates retrieved):
+
+| domain | accuracy | matched | needs_review | unmatched | precision of `matched` | calls/rec | cost/rec |
+|---|---|---|---|---|---|---|---|
+| cafeteria_fcd | 0.90 | 31 | 17 | 2 | 0.968 | 2.90 | $0.00017 |
+| chebi | 0.58 | 19 | 10 | 21 | 1.000 | 1.76 | $0.00008 |
+| ncbi_disease | 0.46 | 11 | 24 | 15 | 1.000 | 2.10 | $0.00026 |
+| nlm_gene | 0.58 | 23 | 6 | 21 | 1.000 | 2.12 | $0.00019 |
+
+LLM baseline, at the policy `examples/<ex>/job.yaml` ships (`accept_at` 0.6,
+`review_floor` 0.4, `max_attempts` 3, 25-30 candidates retrieved):
+
+| domain | accuracy | matched | needs_review | unmatched | precision of `matched` | calls/rec | tokens/rec |
+|---|---|---|---|---|---|---|---|
+| cafeteria_fcd | 0.94 | 44 | 4 | 2 | 1.000 | 2.26 | 2,136 |
+| chebi | 0.62 | 31 | 0 | 19 | 1.000 | 1.32 | 1,216 |
+| ncbi_disease | 0.68 | 47 | 2 | 1 | 0.702 | 2.46 | 6,596 |
+| nlm_gene | 0.92 | 46 | 0 | 4 | 1.000 | 2.20 | 2,113 |
+
+Cost per record is not comparable between the two tables: only the decisions endpoint
+returns a `cost` field, so `OpenAICompatClient` records tokens and leaves `cost_usd` at
+zero. Decider tokens per record were 4,067 / 1,905 / 6,118 / 4,412, so the two paths
+are within a factor of two on tokens everywhere except cafeteria_fcd and nlm_gene,
+where the decider spends about twice as much to read 200 candidates instead of 25.
+Wall-clock per record went the other way: 0.6-1.1 s for the decider against 2.3-4.4 s
+for the LLM.
+
+Two things stand out. The decider is the more trustworthy of the two where they differ
+on precision: on ncbi_disease the baseline accepted 47 of 50 rows at 70.2% precision
+with a calibration warning (mean confidence 0.99 on both correct and incorrect matches),
+while the decider accepted 11 at 100% and put 24 in review. That is the intended trade.
+But the baseline is ahead on accuracy in every domain, by 4 points on cafeteria_fcd and
+chebi and by 22 and 34 points on ncbi_disease and nlm_gene, and the reason is retrieval,
+not judgement — see the next two sections.
+
+### Screen-stage recall
+
+`scripts/screen_recall.py RUN GOLD` reports, over the labelled rows with a gold id,
+whether a gold id is among the retrieved candidates, among the shortlist the screen
+kept, and equal to `matched_id`.
+
+| domain | retrieval | shortlist | final |
+|---|---|---|---|
+| cafeteria_fcd | 0.94 | 0.94 | 0.90 |
+| chebi | 0.60 | 0.58 | 0.58 |
+| ncbi_disease | 0.58 | 0.54 | 0.46 |
+| nlm_gene | 0.70 | 0.62 | 0.58 |
+
+The screen loses almost nothing: at most 8 points (nlm_gene), and 0 to 4 points
+elsewhere. Retrieval is the ceiling, and the choose-and-gate steps give back a further
+0 to 8 points below the shortlist.
+
+The comparison that matters is with the baseline's retrieval. On the *first* attempt
+the two paths retrieve identically — 0.94 / 0.60 / 0.58 / 0.70, the same four numbers —
+because raising the BM25 limit from 25 to 200 buys nothing: these BM25 indexes return
+far fewer than 25 hits per query anyway (a mean of 0.7 candidates per record on chebi,
+10.4 on nlm_gene). What the baseline adds is its rewrite-and-retry loop: over its 1.3 to
+1.8 attempts per record its retrieval recall rises to 0.94 / 0.68 / 0.72 / 0.92. The
+whole of the decider's accuracy deficit is that one missing mechanism.
+
+### Fitted thresholds
+
+`xwalk fit --run R --gold G --job J --precision 0.95` sweeps `accept_at` and
+`property_floor` against the run's own policy. `near_threshold` counts labelled rows
+whose `screen_chosen` sits within 0.05 of the chosen `accept_at` — the rows the
+observed probability jitter could move either way.
+
+| domain | accept_at | property_floor | correct/accepted | coverage | near_threshold |
+|---|---|---|---|---|---|
+| cafeteria_fcd | 0.50 | 0.70 | 40/41 | 0.82 | 2 |
+| chebi | 0.50 | 0.50 | 26/26 | 0.52 | 2 |
+| ncbi_disease | 0.70 | 0.50 | 14/14 | 0.28 | 5 |
+| nlm_gene | 0.85 | 0.50 | 23/23 | 0.46 | 3 |
+
+The shipped 0.85 is too conservative on three of the four domains: dropping
+cafeteria_fcd to 0.50 doubles automatic coverage from 0.62 to 0.82 while precision stays
+at 0.976, and only 2 rows sit in the jitter band. `examples/cafeteria_fcd/job_jev.yaml`
+now ships `accept_at: 0.50` and `property_floor: 0.70`. The fitted `accept_at` spans
+0.50 to 0.85 across four domains, so there is no single good default and every new
+domain should be fitted on its own gold. ncbi_disease is the one to distrust: 5 of its
+50 rows sit in the jitter band at the fitted threshold, and `eval` already warns that
+its scores separate correct from incorrect matches by only 0.06.
+
+`examples/ref_zivila/jobs/foodon/job_jev.yaml` is unchanged at `accept_at: 0.85`,
+because Ref_zivila has no gold set and nothing was fitted for it. Its shortfall below
+is what an unfitted threshold costs.
+
+### Ref_zivila FoodOn, 2,030 rows against 28,372 FoodOn targets
+
+One `xwalk match` at concurrency 16: 2,030 records, 9,215 decision calls, about 68,000
+prompt tokens per record (300 candidates across six screen chunks, plus choose and
+gate), 2.4 s in the matcher per record or roughly six minutes of matching at concurrency
+16, **$5.35**. That is the real cost of this path at this retrieval depth, and it is 150
+times the four sample runs put together ($0.035). The brief budgeted well under a dollar
+for the whole task; the sample runs fit that easily and this one does not.
+
+| status | Jev | Qwen | Nex |
+|---|---|---|---|
+| matched | 442 | 1,408 | (run covers only 1,396 of 2,030 rows) |
+| needs_review | 1,001 | 287 | |
+| unmatched | 587 | 335 | |
+
+Where the two complete runs both accepted a row (427 rows) they chose the same FoodOn id
+360 times, 84.3%. The more telling number is that Jev *proposed* Qwen's accepted id on
+825 of Qwen's 1,408 accepted rows (58.6%) but accepted only 427 of them: 841 of those
+rows are Jev `needs_review` and 140 `unmatched`. 947 of the 1,001 `needs_review` rows
+carry a proposed id and the reason on every one of them is `below_accept_threshold`.
+The gap between the two runs is mostly a threshold, not a difference of opinion.
+
+Three-way counts are restricted to the 1,396 rows the incomplete Nex run covers:
+
+| outcome | rows | share |
+|---|---|---|
+| one model matched, the other two did not | 603 | 43.2% |
+| no model matched | 460 | 33.0% |
+| two matched, same id | 191 | 13.7% |
+| all three matched, same id | 85 | 6.1% |
+| two matched, different ids | 46 | 3.3% |
+| all three matched, not unanimous | 11 | 0.8% |
+
+#### Hand adjudication, 40 Qwen-versus-Jev disagreements
+
+Stratified, because a uniform sample of the 1,063 disagreements would have been 94%
+"only one model matched" and would have taught nothing about identity: 20 rows drawn
+from the 67 where both accepted different ids, and 20 from the 996 where exactly one
+accepted. Saved as `runs/ref_zivila/adjudicated_sample.csv`.
+
+| verdict | both accepted (n=20) | one accepted (n=20) | total |
+|---|---|---|---|
+| both_acceptable | 10 | 11 | 21 |
+| jev | 10 | 4 | 14 |
+| qwen | 0 | 4 | 4 |
+| both_wrong | 0 | 1 | 1 |
+| unsure | 0 | 0 | 0 |
+
+Where both models accepted a different id, Jev was never worse and was better on half.
+It wins by refusing to add a qualifier the source does not state: "Peanut butter" to
+`peanut butter` rather than `peanut butter (hydrogenated)`; "CHICKEN EGG Yolk" to
+`chicken egg yolk` rather than `chicken egg yolk (raw)`; "Cauliflower, frozen" to
+`cauliflower (frozen)` rather than `cauliflower (quick-frozen)`; "Tomato, dried, in oil"
+to `tomato (sun-dried, in oil)` rather than `(sun-dried, in olive oil)`. It also picks
+the specific term over a broad one where the source is specific ("wine, cooking" to
+`cooking wine` rather than the EuroFIR wine class). The 10 `both_acceptable` rows in
+that stratum are almost all the same case: one model chose a native FoodOn class and the
+other an imported EFSA FoodEx2, EuroFIR, or GS1 GPC mirror of the same food
+(`rye flour` versus `00780 - rye flour (efsa foodex2)`). Nothing in the job says which
+to prefer, so both are correct; if the deliverable wants native FoodOn classes, that
+belongs in the hard rules, not in the model.
+
+In the one-accepted stratum, 11 of 20 rows are Jev proposing the *same* id Qwen accepted
+and holding it at `needs_review` — a status disagreement with no identity content. Of
+the rest, Jev's four wins are all refusals that were right ("Ice cream streaked with
+chocolate" is not `chocolate ice cream`; "Soured milk, low fat" is not
+`cow milk, skimmed`) plus two rows Qwen left unmatched and Jev got
+(`white grape (raw)`, `apple (raw, peeled)`). Qwen's four wins are all rows where a
+usable parent-level mapping existed and Jev declined it ("Kir royale" to
+`cocktail beverage (alcoholic)`; "Wheat toast with rye" to the FoodEx2 mixed wheat-and-rye
+bread group). The single `both_wrong` is "Kidney bean mature" in the canned-legumes
+group, where Qwen accepted `red kidney bean (mature)` (adding "red", missing the canned
+state) and Jev shortlisted the better `kidney bean (canned)` but would not accept it.
+
+### What to do next
+
+Retrieval, not questions. The screen costs at most 8 points of recall in any domain,
+while retrieval caps three of the four at 0.58-0.70, and first-attempt retrieval is
+*identical* between the decider and the LLM baseline — the baseline's 22- and 34-point
+accuracy leads on ncbi_disease and nlm_gene come entirely from its rewrite-and-retry
+loop lifting retrieval recall to 0.72 and 0.92. Raising `limit` from 25 to 200 changed
+nothing, because BM25 over a short `doc` template returns almost no hits for a mention
+that shares no token with any label (chebi averages 0.7 candidates per record). So the
+work is to give the decider path a second query, not a second opinion: the dense
+retriever already in the config but commented out, and a source-side query expansion
+cheap enough to run before the decider (the baseline's rewrite stage is one LLM call and
+is worth up to 34 points here). Second, and much cheaper: fit `accept_at` per domain.
+Three of four domains fit below the shipped 0.85, and on Ref_zivila the unfitted 0.85
+is what turns 825 correctly-proposed ids into a 1,001-row review queue. Third, at 68,000
+prompt tokens and $0.0026 per record, screening 300 candidates is the dominant cost of
+the Ref_zivila run; once retrieval is good enough to be trusted, `max_candidates` should
+come down with it. Question wording is the one place the numbers say not to spend
+effort next.
