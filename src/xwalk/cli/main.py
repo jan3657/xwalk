@@ -69,6 +69,11 @@ def _build_parser() -> argparse.ArgumentParser:
     fit.add_argument("--run", required=True)
     fit.add_argument("--gold", required=True)
     fit.add_argument("--precision", type=float, default=0.95)
+    fit.add_argument(
+        "--job",
+        default=None,
+        help="the job the run used, so the gates that are not swept match the run",
+    )
 
     comp = sub.add_parser("compare", help="compare completed runs")
     comp.add_argument("--gold", required=True)
@@ -201,10 +206,23 @@ def _cmd_eval(args: argparse.Namespace) -> int:
 
 
 def _cmd_fit(args: argparse.Namespace) -> int:
+    from xwalk.config import load_job
     from xwalk.decide.fit import fit_thresholds, render_fit
     from xwalk.decide.policy import DecisionPolicy
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.ledger import Ledger
+
+    # Only accept_at and property_floor are swept. Every other gate -- screen_floor,
+    # choose_at, none_at, rubric_floor, shortlist_floor -- has to be the one the run
+    # actually used, or the fitted pair is tuned against a policy nobody ran.
+    if args.job is not None:
+        job = load_job(args.job)
+        if job.decider is None:
+            raise ValueError(f"{args.job} has no decider: block; fit works on the decider path")
+        base = job.build_decision_policy()
+    else:
+        base = DecisionPolicy()
+        print("note: --job not given; fitting against default policy thresholds", file=sys.stderr)
 
     run_dir = Path(args.run)
     gold = load_gold_csv(args.gold)
@@ -213,7 +231,7 @@ def _cmd_fit(args: argparse.Namespace) -> int:
         results = list(ledger.iter_results(_run_fingerprint_of(run_dir)))
     finally:
         ledger.close()
-    report = fit_thresholds(results, gold, base=DecisionPolicy(), target_precision=args.precision)
+    report = fit_thresholds(results, gold, base=base, target_precision=args.precision)
     print(render_fit(report))
     return EXIT_OK if report.recommended is not None else EXIT_ATTENTION
 

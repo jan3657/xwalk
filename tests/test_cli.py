@@ -654,14 +654,81 @@ def test_prompts_optimize_refuses_a_decider_job(tmp_path, capsys):
     assert "the job has a decider: block" in capsys.readouterr().err
 
 
-def test_fit_command_runs_on_a_decider_run(tmp_path, monkeypatch):
+_JEV_JOB = "job_tiny_jev.yaml"
+_FIT_NOTE = "note: --job not given"
+
+
+def _decider_run(tmp_path, monkeypatch):
+    """A finished decider run, offline, for the fit tests to read back."""
     from xwalk.cli import main as cli
     from xwalk.decide.fake import FakeDecider
 
     monkeypatch.setattr(cli, "_build_decider", lambda job: FakeDecider())
     out = tmp_path / "run"
-    cli.main(["match", "--job", str(FIXTURES / "job_tiny_jev.yaml"), "--out", str(out)])
+    cli.main(["match", "--job", str(FIXTURES / _JEV_JOB), "--out", str(out)])
+    return out
+
+
+def test_fit_command_runs_on_a_decider_run(tmp_path, monkeypatch, capsys):
+    from xwalk.cli import main as cli
+
+    out = _decider_run(tmp_path, monkeypatch)
+    capsys.readouterr()  # drop the match output
+    code = cli.main(
+        [
+            "fit",
+            "--run",
+            str(out),
+            "--gold",
+            str(FIXTURES / "gold_tiny.csv"),
+            "--precision",
+            "0.5",
+            "--job",
+            str(FIXTURES / _JEV_JOB),
+        ]
+    )
+    assert code in (cli.EXIT_OK, cli.EXIT_ATTENTION)
+    assert _FIT_NOTE not in capsys.readouterr().err
+
+
+def test_fit_without_a_job_says_it_is_using_the_default_thresholds(tmp_path, monkeypatch, capsys):
+    from xwalk.cli import main as cli
+
+    out = _decider_run(tmp_path, monkeypatch)
+    capsys.readouterr()
     code = cli.main(
         ["fit", "--run", str(out), "--gold", str(FIXTURES / "gold_tiny.csv"), "--precision", "0.5"]
     )
     assert code in (cli.EXIT_OK, cli.EXIT_ATTENTION)
+    assert _FIT_NOTE in capsys.readouterr().err
+
+
+def test_fit_sweeps_from_the_jobs_own_decision_policy(tmp_path, monkeypatch):
+    """The gates fit does not sweep must be the run's, not the library defaults."""
+    from xwalk.cli import main as cli
+    from xwalk.decide import fit as fit_module
+
+    out = _decider_run(tmp_path, monkeypatch)
+    seen = []
+    real = fit_module.fit_thresholds
+
+    def spy(results, gold, **kwargs):
+        seen.append(kwargs["base"])
+        return real(results, gold, **kwargs)
+
+    monkeypatch.setattr(fit_module, "fit_thresholds", spy)
+    cli.main(
+        [
+            "fit",
+            "--run",
+            str(out),
+            "--gold",
+            str(FIXTURES / "gold_tiny.csv"),
+            "--job",
+            str(FIXTURES / _JEV_JOB),
+        ]
+    )
+    (base,) = seen
+    # The fixture sets chunk_size: 2 and screen_floor: 0.1; the defaults are 50 and 0.30.
+    assert base.chunk_size == 2
+    assert base.screen_floor == 0.1
