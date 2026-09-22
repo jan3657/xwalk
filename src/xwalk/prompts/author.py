@@ -42,6 +42,17 @@ SLOTS_SCHEMA: Mapping[str, Any] = {
         },
         "hard_rules": {"type": "array", "items": {"type": "string"}},
         "disambiguation_steps": {"type": "string"},
+        "properties": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                    "question": {"type": "string"},
+                },
+                "required": ["name", "question"],
+            },
+        },
     },
     "required": ["entity_noun", "target_noun", "domain_brief", "rubric"],
 }
@@ -62,6 +73,9 @@ Describe the matching task below as a set of slots.
 - hard_rules: absolute rules a careful domain expert would insist on; omit if none apply
 - disambiguation_steps: free text, only if this domain has a specific procedure
   (for example, using surrounding context to decide the organism for a gene symbol)
+- properties: optional, used only by the decider path -- the identity-bearing properties
+  a match must agree on, each a snake_case `name` and a yes/no `question` about the pair
+  (for example, `preparation`: "Do both describe the same preparation state?")
 
 Write for a careful annotator who knows nothing about this domain."""
 

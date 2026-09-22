@@ -81,6 +81,39 @@ async def test_samples_are_capped():
     assert "drug0" in prompt and "drug40" not in prompt
 
 
+def test_the_schema_offers_the_decider_paths_properties():
+    """Without it the drafting model cannot return `properties` at all."""
+    from xwalk.prompts.author import SLOTS_SCHEMA
+
+    properties = SLOTS_SCHEMA["properties"]["properties"]
+    assert properties["type"] == "array"
+    assert set(properties["items"]["required"]) == {"name", "question"}
+    assert properties["items"]["properties"]["name"]["pattern"] == "^[a-z][a-z0-9_]*$"
+    assert "properties" not in SLOTS_SCHEMA["required"]
+
+
+async def test_the_drafting_model_is_told_about_properties():
+    llm = FakeLLM([json.dumps(GOOD)])
+    await draft_slots(
+        llm,
+        description="matching drugs to compounds",
+        source_samples=SOURCES,
+        target_samples=TARGETS,
+    )
+    assert "properties" in llm.requests[0].user
+
+
+async def test_drafted_properties_are_kept():
+    payload = {**GOOD, "properties": [{"name": "salt_form", "question": "Same salt form?"}]}
+    draft = await draft_slots(
+        FakeLLM([json.dumps(payload)]),
+        description="matching drugs to compounds",
+        source_samples=SOURCES,
+        target_samples=TARGETS,
+    )
+    assert [p.name for p in draft.slots.properties] == ["salt_form"]
+
+
 async def test_the_model_is_never_asked_for_prompt_text():
     llm = FakeLLM([json.dumps(GOOD)])
     await draft_slots(llm, description="d", source_samples=SOURCES, target_samples=TARGETS)
