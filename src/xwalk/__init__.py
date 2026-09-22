@@ -17,6 +17,8 @@ try:
 except PackageNotFoundError:  # pragma: no cover - only in an uninstalled checkout
     __version__ = "0.0.0.dev0+unknown"
 
+from xwalk.decide.matcher import DecisionMatcher
+from xwalk.decide.policy import DecisionPolicy
 from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
 from xwalk.records import (
@@ -35,6 +37,8 @@ from xwalk.templates import TemplateSet
 __all__ = [
     "Attempt",
     "Candidate",
+    "DecisionMatcher",
+    "DecisionPolicy",
     "DecisionReason",
     "MatchPolicy",
     "MatchResult",
