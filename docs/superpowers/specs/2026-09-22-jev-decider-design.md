@@ -406,7 +406,11 @@ job it was always meant to do: turning a model's answer into one of four outcome
 
 Every number below comes from a run that completed. Reproduce the four sample runs with
 `scripts/run_jev_eval.sh`; the Ref_zivila run is the single `xwalk match` in the
-Ref_zivila section. The decider is `~typesafe/jev-latest` on the alpha decisions
+Ref_zivila section. One caveat on that reproduction: the cafeteria_fcd row below was
+produced before this commit refit `examples/cafeteria_fcd/job_jev.yaml` to
+`accept_at: 0.50` / `property_floor: 0.70`, and both fields are in the run fingerprint,
+so re-running the script with the committed job produces a different fingerprint and
+about 41 matched rows rather than 31. The other three jobs are unchanged. The decider is `~typesafe/jev-latest` on the alpha decisions
 endpoint; the LLM baseline is `qwen/qwen3-next-80b-a3b-instruct` on OpenRouter, run
 from generated jobs under `runs/llm_eval/` that differ from `examples/<ex>/job.yaml`
 only in the `llm:` block and `policy.concurrency`, and pointed at the same BM25 index
@@ -420,7 +424,7 @@ any status, which is the accuracy a reviewer would see after clearing the review
 correctly. "Precision" is the precision of the `matched` bucket alone.
 
 Decider path, at the policy the example jobs shipped with (`accept_at` 0.85,
-`screen_floor` 0.30, `property_floor` 0.50 by default, 200 candidates retrieved):
+`screen_floor` 0.30, `property_floor` 0.50 by default, configured depth 200):
 
 | domain | accuracy | matched | needs_review | unmatched | precision of `matched` | calls/rec | cost/rec |
 |---|---|---|---|---|---|---|---|
@@ -430,7 +434,7 @@ Decider path, at the policy the example jobs shipped with (`accept_at` 0.85,
 | nlm_gene | 0.58 | 23 | 6 | 21 | 1.000 | 2.12 | $0.00019 |
 
 LLM baseline, at the policy `examples/<ex>/job.yaml` ships (`accept_at` 0.6,
-`review_floor` 0.4, `max_attempts` 3, 25-30 candidates retrieved):
+`review_floor` 0.4, `max_attempts` 3, configured depth 25-30):
 
 | domain | accuracy | matched | needs_review | unmatched | precision of `matched` | calls/rec | tokens/rec |
 |---|---|---|---|---|---|---|---|
@@ -442,10 +446,13 @@ LLM baseline, at the policy `examples/<ex>/job.yaml` ships (`accept_at` 0.6,
 Cost per record is not comparable between the two tables: only the decisions endpoint
 returns a `cost` field, so `OpenAICompatClient` records tokens and leaves `cost_usd` at
 zero. Decider tokens per record were 4,067 / 1,905 / 6,118 / 4,412, so the two paths
-are within a factor of two on tokens everywhere except cafeteria_fcd and nlm_gene,
-where the decider spends about twice as much to read 200 candidates instead of 25.
-Wall-clock per record went the other way: 0.6-1.1 s for the decider against 2.3-4.4 s
-for the LLM.
+are within a factor of two on tokens everywhere except cafeteria_fcd and nlm_gene, where
+the decider spends about twice as much. Depth is not the reason: both paths actually
+retrieved the same candidates, a mean of 6.56 / 0.74 / 8.28 / 10.42 per record, far
+below either configured limit. The gap is the screen's per-candidate preamble —
+`QuestionSet.screen_question` inlines `domain_brief` and every hard rule into each noul,
+so the same instruction text is re-sent once per candidate. Wall-clock per record went
+the other way: 0.6-1.1 s for the decider against 2.3-4.4 s for the LLM.
 
 Two things stand out. The decider is the more trustworthy of the two where they differ
 on precision: on ncbi_disease the baseline accepted 47 of 50 rows at 70.2% precision
@@ -495,8 +502,9 @@ observed probability jitter could move either way.
 | nlm_gene | 0.85 | 0.50 | 23/23 | 0.46 | 3 |
 
 The shipped 0.85 is too conservative on three of the four domains: dropping
-cafeteria_fcd to 0.50 doubles automatic coverage from 0.62 to 0.82 while precision stays
-at 0.976, and only 2 rows sit in the jitter band. `examples/cafeteria_fcd/job_jev.yaml`
+cafeteria_fcd to 0.50 lifts automatic coverage from 0.62 to 0.82 — 20 points absolute,
+about 32% relative — while precision stays at 0.976, and only 2 rows sit in the jitter
+band. `examples/cafeteria_fcd/job_jev.yaml`
 now ships `accept_at: 0.50` and `property_floor: 0.70`. The fitted `accept_at` spans
 0.50 to 0.85 across four domains, so there is no single good default and every new
 domain should be fitted on its own gold. ncbi_disease is the one to distrust: 5 of its
@@ -509,18 +517,29 @@ is what an unfitted threshold costs.
 
 ### Ref_zivila FoodOn, 2,030 rows against 28,372 FoodOn targets
 
-One `xwalk match` at concurrency 16: 2,030 records, 9,215 decision calls, about 68,000
-prompt tokens per record (300 candidates across six screen chunks, plus choose and
-gate), 2.4 s in the matcher per record or roughly six minutes of matching at concurrency
-16, **$5.35**. That is the real cost of this path at this retrieval depth, and it is 150
-times the four sample runs put together ($0.035). The brief budgeted well under a dollar
-for the whole task; the sample runs fit that easily and this one does not.
+One `xwalk match` at concurrency 16: 2,030 records, 9,215 decision calls, 127,362,919
+prompt tokens or about 62,700 per record, 2.4 s in the matcher per record or roughly six
+minutes of matching at concurrency 16, **$5.35**. That is 150 times the four sample runs
+put together ($0.035); the brief budgeted well under a dollar for the whole task, which
+the sample runs fit easily and this one does not.
+
+The cost is not what it looks like. Retrieval returned a mean of 144.8 candidates per
+record, not the 300 `max_candidates` cap, and 4.54 calls per record means about three
+screen chunks, not six. The dominant driver is inside the screen question:
+`QuestionSet.screen_question` in `src/xwalk/decide/questions.py` inlines `domain_brief`
+and every hard rule into each per-candidate noul, which for these slots is about 283
+tokens of identical preamble repeated ~145 times per record — roughly 41k of the 62.7k
+tokens, about two thirds of the $5.35, spent re-sending the same paragraph.
 
 | status | Jev | Qwen | Nex |
 |---|---|---|---|
-| matched | 442 | 1,408 | (run covers only 1,396 of 2,030 rows) |
-| needs_review | 1,001 | 287 | |
-| unmatched | 587 | 335 | |
+| matched | 442 | 1,408 | 174 |
+| needs_review | 1,001 | 287 | 206 |
+| unmatched | 587 | 335 | 293 |
+| failed | 0 | 0 | 723 |
+
+The Nex run covers only 1,396 of the 2,030 rows and 723 of those failed, so it is not a
+comparable third run; it appears below only where the three-way table says so.
 
 Where the two complete runs both accepted a row (427 rows) they chose the same FoodOn id
 360 times, 84.3%. The more telling number is that Jev *proposed* Qwen's accepted id on
@@ -529,7 +548,11 @@ rows are Jev `needs_review` and 140 `unmatched`. 947 of the 1,001 `needs_review`
 carry a proposed id and the reason on every one of them is `below_accept_threshold`.
 The gap between the two runs is mostly a threshold, not a difference of opinion.
 
-Three-way counts are restricted to the 1,396 rows the incomplete Nex run covers:
+Three-way counts are restricted to the 1,396 rows the incomplete Nex run covers, and
+that run is worse than incomplete: 723 of its 1,396 rows (52%) are `failed`. A failed
+row can never match, so the "one model matched" and "no model matched" rows below are
+inflated by provider failures rather than by three models declining to match. Read them
+as an upper bound on disagreement, not as a measurement of it:
 
 | outcome | rows | share |
 |---|---|---|
@@ -571,13 +594,14 @@ belongs in the hard rules, not in the model.
 
 In the one-accepted stratum, 11 of 20 rows are Jev proposing the *same* id Qwen accepted
 and holding it at `needs_review` — a status disagreement with no identity content. Of
-the rest, Jev's four wins are all refusals that were right ("Ice cream streaked with
-chocolate" is not `chocolate ice cream`; "Soured milk, low fat" is not
-`cow milk, skimmed`) plus two rows Qwen left unmatched and Jev got
-(`white grape (raw)`, `apple (raw, peeled)`). Qwen's four wins are all rows where a
-usable parent-level mapping existed and Jev declined it ("Kir royale" to
-`cocktail beverage (alcoholic)`; "Wheat toast with rye" to the FoodEx2 mixed wheat-and-rye
-bread group). The single `both_wrong` is "Kidney bean mature" in the canned-legumes
+the rest, Jev's four wins split two and two: two refusals that were right ("Ice cream
+streaked with chocolate" is not `chocolate ice cream`; "Soured milk, low fat" is not
+`cow milk, skimmed`) and two rows Qwen left unmatched that Jev got (`white grape (raw)`,
+`apple (raw, peeled)`). Three of Qwen's four wins are rows where a usable parent-level
+mapping existed and Jev declined it ("Kir royale" to `cocktail beverage (alcoholic)`;
+"Wheat toast with rye" to the FoodEx2 mixed wheat-and-rye bread group); the fourth is
+"Avocado" to `avocado (raw)`, where Qwen added a qualifier the source does not state but
+Jev produced nothing at all. The single `both_wrong` is "Kidney bean mature" in the canned-legumes
 group, where Qwen accepted `red kidney bean (mature)` (adding "red", missing the canned
 state) and Jev shortlisted the better `kidney bean (canned)` but would not accept it.
 
@@ -590,13 +614,17 @@ accuracy leads on ncbi_disease and nlm_gene come entirely from its rewrite-and-r
 loop lifting retrieval recall to 0.72 and 0.92. Raising `limit` from 25 to 200 changed
 nothing, because BM25 over a short `doc` template returns almost no hits for a mention
 that shares no token with any label (chebi averages 0.7 candidates per record). So the
-work is to give the decider path a second query, not a second opinion: the dense
-retriever already in the config but commented out, and a source-side query expansion
-cheap enough to run before the decider (the baseline's rewrite stage is one LLM call and
-is worth up to 34 points here). Second, and much cheaper: fit `accept_at` per domain.
-Three of four domains fit below the shipped 0.85, and on Ref_zivila the unfitted 0.85
-is what turns 825 correctly-proposed ids into a 1,001-row review queue. Third, at 68,000
-prompt tokens and $0.0026 per record, screening 300 candidates is the dominant cost of
-the Ref_zivila run; once retrieval is good enough to be trusted, `max_candidates` should
-come down with it. Question wording is the one place the numbers say not to spend
-effort next.
+work is to give the decider path a second query, not a second opinion: a dense
+retriever (already written into `examples/ref_zivila/jobs/foodon/job_jev.yaml` as a
+commented-out block; the four sample jobs have no such line and would need one), and a
+source-side query expansion cheap enough to run before the decider (the baseline's
+rewrite stage is one LLM call and is worth up to 34 points here). Second, and much
+cheaper: fit `accept_at` per domain. Three of four domains fit below the shipped 0.85,
+and on Ref_zivila the unfitted 0.85 is what turns 825 correctly-proposed ids into a
+1,001-row review queue. Third, on cost: hoist `domain_brief` and the hard rules out of
+the per-candidate screen noul into the shared state or a once-per-chunk instruction.
+That is the first and largest saving — roughly two thirds of the Ref_zivila bill is the
+same 283-token preamble re-sent once per candidate — and it changes no decision the
+model makes. Lowering `max_candidates` is secondary, and worth doing only once retrieval
+is good enough that depth is genuinely surplus. Question wording is the one place the
+numbers say not to spend effort next.
