@@ -69,7 +69,9 @@ def overlap_handler(state: Any, questions: Mapping[str, Question]) -> dict[str, 
                 else {k: 0.0 for k in scores}
             )
             if "NONE" in question.criteria:
-                probabilities["NONE"] = 1.0 - sum(probabilities.values())
+                # max(): float normalisation can leave the remainder a hair below zero,
+                # and `parse_response` rejects a probability outside [0, 1].
+                probabilities["NONE"] = max(0.0, 1.0 - sum(probabilities.values()))
             answers[name] = ChoiceAnswer(
                 choice=best,
                 probabilities=probabilities,
