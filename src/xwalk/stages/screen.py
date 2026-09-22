@@ -14,10 +14,25 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from xwalk.decide.base import DecisionClient, Noul, NoulAnswer
+from xwalk.decide.base import (
+    DecisionClient,
+    DecisionError,
+    DecisionFatalError,
+    Noul,
+    NoulAnswer,
+)
 from xwalk.decide.questions import QuestionSet
 from xwalk.records import Candidate, Record, Usage
 from xwalk.templates import TemplateSet
+
+
+class ScreenFailed(DecisionError):
+    """A screen chunk failed after others had already been paid for."""
+
+    def __init__(self, cause: DecisionError, usage: Usage) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.usage = usage
 
 
 def build_source_state(source: Record, context: str) -> dict[str, Any]:
@@ -40,6 +55,15 @@ class ScreenOutcome:
     @property
     def best(self) -> float | None:
         return max(self.probabilities.values()) if self.probabilities else None
+
+
+async def _cancel(tasks: Sequence[asyncio.Task[Any]]) -> None:
+    """Cancel whatever is still running and await it, so no task is left dangling."""
+    pending = [task for task in tasks if not task.done()]
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 class Screener:
@@ -80,6 +104,13 @@ class Screener:
                 pending[:0] = [chunk[:half], chunk[half:]]
                 notes.append(f"screen: split a chunk of {len(chunk)} to stay under the state cap")
                 continue
+            if size > self._max_state_chars:
+                # One candidate on its own is over the cap. There is nothing left to
+                # split, so it is sent as it is and the note is the only warning.
+                notes.append(
+                    f"screen: candidate {chunk[0][0]} alone exceeds the state cap "
+                    f"({size} > {self._max_state_chars} chars); sent anyway"
+                )
             chunks.append(chunk)
         return chunks, notes
 
@@ -111,7 +142,33 @@ class Screener:
                 probabilities[key] = answer.noul
             return probabilities, response.usage, response.model
 
-        results = await asyncio.gather(*(one(chunk) for chunk in chunks))
+        tasks = [asyncio.create_task(one(chunk)) for chunk in chunks]
+        # FIRST_EXCEPTION, not a plain gather: the moment one chunk fails the rest are
+        # wasted spend, and a batch that is about to stop should not keep paying for them.
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+
+        results: list[tuple[dict[str, float], Usage, str]] = []
+        first_error: BaseException | None = None
+        for task in tasks:
+            if not task.done() or task.cancelled():
+                continue
+            error = task.exception()
+            if error is not None:
+                if first_error is None:
+                    first_error = error
+            else:
+                results.append(task.result())
+
+        if first_error is not None:
+            await _cancel(tasks)
+            if isinstance(first_error, DecisionFatalError):
+                raise first_error  # the batch stops; no attempt survives to be billed
+            if isinstance(first_error, DecisionError):
+                # The sibling chunks were billed before this one failed. Hand the caller
+                # the bill along with the error, so the attempt records what it cost.
+                paid = sum((chunk_usage for _, chunk_usage, _ in results), Usage.zero())
+                raise ScreenFailed(first_error, paid)
+            raise first_error
 
         probabilities: dict[str, float] = {}
         usage = Usage.zero()

@@ -28,7 +28,7 @@ from xwalk.retrieve import retrieve
 from xwalk.stages.choose import ChooseOutcome, Chooser
 from xwalk.stages.keying import Resolution
 from xwalk.stages.property_gate import GateOutcome, PropertyGate
-from xwalk.stages.screen import Screener, ScreenOutcome
+from xwalk.stages.screen import Screener, ScreenFailed, ScreenOutcome
 from xwalk.stores.base import TargetStore
 from xwalk.templates import TemplateSet
 
@@ -111,6 +111,12 @@ class DecisionMatcher:
                         usage = usage + gated.usage
         except DecisionFatalError:
             raise
+        except ScreenFailed as exc:
+            # Sibling chunks were already paid for before the failing one; keep their
+            # usage on the attempt so the run's cost is not understated.
+            usage = usage + exc.usage
+            provider_failed = True
+            error = f"decider: {exc}"
         except DecisionError as exc:
             provider_failed = True
             error = f"decider: {exc}"

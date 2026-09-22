@@ -183,6 +183,31 @@ async def test_a_retryable_provider_error_is_a_failed_result():
     assert "exhausted" in (result.attempts[0].error or "")
 
 
+async def test_a_failed_screen_chunk_still_bills_for_its_siblings():
+    """One chunk of two failed; the other was paid for, and the result must say so."""
+
+    def second_chunk_fails(state, questions):
+        if "n_C003" in questions:
+            raise DecisionRetryableError("busy")
+        return confident(state, questions)
+
+    decider = FakeDecider(handler=second_chunk_fails)
+    result = await _matcher(decider).match(SOURCE)
+    assert result.status is MatchStatus.FAILED and result.reason is DecisionReason.PROVIDER_FAILURE
+    assert result.usage.calls == 1
+    assert "busy" in (result.attempts[0].error or "")
+
+
+async def test_a_fatal_screen_chunk_error_propagates():
+    def second_chunk_is_fatal(state, questions):
+        if "n_C003" in questions:
+            raise DecisionFatalError("bad key")
+        return confident(state, questions)
+
+    with pytest.raises(DecisionFatalError):
+        await _matcher(FakeDecider(handler=second_chunk_is_fatal)).match(SOURCE)
+
+
 async def test_a_fatal_provider_error_propagates():
     decider = FakeDecider(handler=lambda s, q: DecisionFatalError("bad key"))
     with pytest.raises(DecisionFatalError):
