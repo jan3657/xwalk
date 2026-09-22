@@ -560,8 +560,14 @@ returns:
 MAPPING_COLUMNS = (
     "source_id", "matched_id", "confidence", "status", "reason", "explanation",
     "attempts", "prompt_tokens", "completion_tokens", "llm_calls", "elapsed_seconds",
+    "cost_usd",
 )
 ```
+
+`cost_usd` is `MatchResult.usage.cost_usd`, which stays `0.0` unless the provider reports a
+cost — today only the [decision path](decide.md) does. The column set is identical on both
+paths, so a mapping file is readable without knowing which one produced it; on the decision
+path `completion_tokens` is always `0` and `llm_calls` counts decision calls.
 
 ### Export functions
 

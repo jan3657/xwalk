@@ -65,6 +65,16 @@ derive_status(attempts) → one status, one reason, one winning attempt
 The confident case costs two LLM calls: select and score. Everything else is what
 happens when the confident case does not hold.
 
+There is a second loop. A job that declares `decider:` instead of `llm:` runs
+`DecisionMatcher` rather than `Matcher`: it retrieves hundreds of candidates instead of
+twenty-five, asks a decision model one calibrated yes/no per candidate, chooses among the
+survivors, and gates the choice on a rubric and on the identity-bearing properties your
+slots declare. There is no retry loop, no verifier and no generated explanation, because
+deeper retrieval replaces the first and arithmetic over probabilities replaces the rest.
+Everything below this section — the four outcomes, opaque keys, failing toward review,
+fingerprints, the ledger, review, evaluation — applies to both loops unchanged. See
+[decision models](reference/decide.md).
+
 ### Why score separately from select
 
 The selector already reports a confidence. xwalk ignores it for classification and asks

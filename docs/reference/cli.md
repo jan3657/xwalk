@@ -89,13 +89,22 @@ Writes into the run directory:
 
 | File | What it is |
 |---|---|
-| `mapping.csv` | the deliverable: `source_id, matched_id, confidence, status, reason, explanation, attempts, prompt_tokens, completion_tokens, llm_calls, elapsed_seconds` |
+| `mapping.csv` | the deliverable: `source_id, matched_id, confidence, status, reason, explanation, attempts, prompt_tokens, completion_tokens, llm_calls, elapsed_seconds, cost_usd` |
 | `results.jsonl` | one full result per line, attempts and candidates included |
 | `manifest.json` | run fingerprint, library version, target fingerprint, job name, model, status counts, duplicate targets |
 | `ledger.sqlite` | the source of truth; makes the run resumable and evaluation free |
 
 Returns `1` — not `0` — whenever the review bucket is non-empty. That is a healthy outcome,
 not an error; see [Gotchas](#gotchas).
+
+A job that declares `decider:` instead of `llm:` runs the
+[decision-model path](decide.md) here: same flags, same run directory, same exports, same
+resume. Two differences are worth knowing. The manifest records `"path": "decider"` and the
+decider's model rather than the LLM's. And the decider is always wrapped in a ledger-backed
+cache — there is no flag for it — because the model's probabilities jitter by up to about
+0.04 between identical calls, and a resumed run must classify a record the way the first run
+did. A cached answer contributes no tokens and no cost, so a resumed run's `cost_usd` is what
+*it* spent, not what the work was worth.
 
 ## `eval`
 
@@ -159,6 +168,61 @@ the model saw it and chose otherwise, which is a prompt problem. Collapsing trun
 Always returns `0`. A source id absent from the gold file is unlabelled and excluded from
 every metric — it is not a wrong answer.
 
+## `fit`
+
+Fits the two swept decider thresholds on a completed run and its gold labels. Reads the
+ledger and calls nothing — it re-derives every status from the signals already recorded — so
+fitting is free, repeatable, and needs no credentials. Decider path only.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | run directory; its `manifest.json` supplies the run fingerprint |
+| `--gold` | yes | — | the gold CSV; unlabelled source ids are skipped |
+| `--precision` | no | `0.95` | target accepted precision |
+| `--job` | no | none | the job the run used, so the gates that are *not* swept match the run |
+
+```console
+$ xwalk fit --run runs/cfcd_jev --gold examples/cafeteria_fcd/sample/gold.csv \
+    --job examples/cafeteria_fcd/job_jev.yaml --precision 0.95
+labelled rows: 120; target precision: 0.95
+
+accept_at prop_floor accepted correct precision coverage near
+     0.75       0.50       96      85      0.89     0.80   31
+     0.80       0.50       88      82      0.93     0.73   24
+     0.85       0.00       81      76      0.94     0.68   17
+     0.85       0.50       74      72      0.97     0.62   17
+     0.90       0.50       61      61      1.00     0.51    9
+
+recommended: accept_at=0.85 property_floor=0.50 (72/74 correct, coverage 0.62, 17 rows within the jitter margin of accept_at)
+```
+
+Only `accept_at` and `property_floor` are swept, over `0.50`–`0.95` in steps of `0.05` and
+`(0.0, 0.3, 0.5, 0.7)` respectively. Every other gate — `screen_floor`, `choose_at`,
+`none_at`, `rubric_floor`, `shortlist_floor` — must be the one the run actually used, or the
+fitted pair is tuned against a policy nobody ran.
+
+**`--job` is optional and you almost always want it.** Without it the sweep runs against
+`DecisionPolicy()` defaults and prints, on stderr:
+
+```
+note: --job not given; fitting against default policy thresholds
+```
+
+That is correct only for a run whose job overrode none of the unswept gates. Passing a job
+with no `decider:` block is an error: `<path> has no decider: block; fit works on the
+decider path`, exit `3`.
+
+`near` is the column that keeps you honest. It counts labelled rows whose screen probability
+sits within `0.05` of that row's `accept_at` — within the jitter the model itself
+introduces. A high `near` beside a precision that just clears the target means the number is
+an artefact of where the jitter landed, and the same run repeated would give a different one.
+The recommendation is chosen by accepted count alone, so overruling it on `near` is your job.
+
+Returns `0` when a grid point meets the target precision. Returns `1` when none does, after
+printing `no grid point meets the target precision; lower the target or improve the
+questions` — the thresholds are not the problem, the questions are. Writes nothing; copy the
+recommended pair into the job's `policy:` block yourself.
+
 ## `compare`
 
 Puts several completed runs side by side. This is how you actually choose a model.
@@ -205,6 +269,11 @@ $ xwalk ablate --job examples/chebi/job.yaml --gold examples/chebi/sample/gold.c
   no_retries       one attempt only; no reformulation delta -0.024
   half_budget      halve the selector budget          delta -0.012
 ```
+
+**This command works on the LLM path only.** Given a job with a `decider:` block it prints
+`error: this command works on the LLM path; the job has a decider: block` and returns `2`
+before building anything. None of its variants has a meaning there: the decider path has no
+verifier, no retries, and no selector budget.
 
 `half_budget` is in the standard set because the ceiling decomposition separates budget
 misses from retrieval misses — an ablation that confirms a diagnosis is worth more than one
@@ -280,6 +349,13 @@ test accepted precision: 0.9166666666666666
 Writes `<out>/index/`, one `round_NN/` directory per usable round holding `slots.yaml` and
 `validation.json`, `best/slots.yaml` — the file to copy over your job's slots — and
 `report.json`. Returns `0`.
+
+**`prompts` works on the LLM path only** — `draft` and `optimize` alike. The check runs
+before the subcommand branch, so a job with a `decider:` block gets
+`error: this command works on the LLM path; the job has a decider: block` and exit `2` from
+either one. The optimiser measures itself by re-running the LLM matcher with mutated slots
+and there is no decider equivalent yet; edit `slots.yaml` by hand and re-fit with
+[`fit`](#fit).
 
 The job's own LLM plays both parts: it matches *and* it revises the slots. Use a strong
 model as the optimiser and a cheap one for matching by calling `optimize_prompt` from

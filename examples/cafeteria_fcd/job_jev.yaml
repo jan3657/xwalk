@@ -1,0 +1,47 @@
+# The decider-path twin of job.yaml: same data, same slots, Jev instead of an LLM.
+# Run:  set -a; source .env; set +a
+#       xwalk index --job examples/cafeteria_fcd/job_jev.yaml --out runs/cfcd_jev/index
+#       xwalk match --job examples/cafeteria_fcd/job_jev.yaml --out runs/cfcd_jev
+#       xwalk eval  --run runs/cfcd_jev --gold examples/cafeteria_fcd/sample/gold.csv
+name: cafeteria_fcd_jev
+templates:
+  queries:
+    - "{{ mention }}"
+  context: "{{ context_left }}[{{ mention }}]{{ context_right }}"
+  doc: "{{ label }} {{ synonyms | join(' ') }} {{ definition }}"
+  candidate: |
+    ID: {{ id }}
+    Label: {{ label }}
+    {% if synonyms %}Synonyms: {{ synonyms | join('; ') }}{% endif %}
+    {% if definition %}Definition: {{ definition }}{% endif %}
+
+target:
+  kind: owl
+  path: sample/targets.owl
+
+source:
+  kind: jsonl
+  path: sample/mentions.jsonl
+  id_field: mention_id
+
+retrievers:
+  - kind: bm25
+    name: bm25
+    limit: 200
+    exact_fields: [label, synonyms]
+
+decider:
+  kind: jev
+  model: "~typesafe/jev-latest"      # pin typesafe/jev-1.13 for a reproducible run
+  base_url: https://openrouter.ai/api/alpha/decisions
+  api_key_env: XWALK_TEST_API_KEY
+
+prompts:
+  slots: slots.yaml
+
+policy:
+  accept_at: 0.85
+  screen_floor: 0.30
+  chunk_size: 50
+  max_candidates: 300
+  concurrency: 16

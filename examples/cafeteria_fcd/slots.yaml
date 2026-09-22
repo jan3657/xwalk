@@ -39,3 +39,18 @@ disambiguation_steps: >-
   Decide first whether the mention names an ingredient or a prepared dish, then match
   within that kind. Only when the mention itself states a processing state should a
   state-qualified term be preferred over the plain one.
+# Used only by the decider path (see docs/reference/decide.md); the LLM skeletons
+# ignore this block.
+properties:
+  - name: processing_state
+    question: >-
+      Do the source and the candidate agree on processing state (raw, cooked, dried,
+      canned, frozen, smoked, fermented, juice, oil, flour, jam) wherever either states one?
+  - name: species_or_ingredient
+    question: >-
+      Do the source and the candidate agree on the source species or main ingredient
+      wherever either states one?
+  - name: part_or_form
+    question: >-
+      Do the source and the candidate agree on the anatomical part or product form
+      (whole, pieces, fillet, leg, powder, paste) wherever either states one?

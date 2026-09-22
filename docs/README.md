@@ -32,6 +32,7 @@ Complete API documentation. Every signature and default here is taken from the s
 | [Retrieval](reference/retrieval.md) | The `Retriever` protocol, BM25, dense, fusion, target stores. |
 | [Loading records](reference/sources.md) | CSV, JSONL, OBO, OWL and SQL loaders; writing your own; optional extras. |
 | [LLM clients](reference/llm.md) | The `LLMClient` protocol, the two adapters, `FakeLLM`, caching, output parsing. |
+| [Decision models](reference/decide.md) | The decider path: Jev, questions from slots, screen/choose/gate, thresholds, fitting. |
 | [Prompts](reference/prompts.md) | The slots contract, `PromptSet`, the four skeletons, drafting and optimisation. |
 | [Evaluation and review](reference/evaluation.md) | Gold labels, every metric, the failure decomposition, ablation, the review overlay. |
 | [The job file](reference/job-file.md) | Every key in `job.yaml`, with types and defaults. |
@@ -56,6 +57,10 @@ Runnable, in `examples/`. Each is a complete job you can copy and point at your 
 | [`ncbi_disease`](../examples/ncbi_disease) | User-supplied gold alias expansion, living in your code. |
 | [`nlm_gene`](../examples/nlm_gene) | Numeric target ids — the case opaque candidate keys exist for. |
 | [`cafeteria_fcd`](../examples/cafeteria_fcd) | A second OWL domain; only `slots.yaml` differs from `chebi`. |
+
+Two of them ship a `job_jev.yaml` beside the LLM job: `cafeteria_fcd` and `ref_zivila`.
+Same data, same `slots.yaml`, a decision model instead of an LLM — see
+[decision models](reference/decide.md).
 
 ## The five things to know
 

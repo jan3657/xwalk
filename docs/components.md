@@ -84,6 +84,34 @@ qualify equally.
 | `llm/cache.py` | `CachingLLM` — serves an identical repeated request from the ledger. Delegates its identity to the wrapped client, so caching changes how an answer was obtained and never what it means. |
 | `llm/parsing.py` | Getting JSON out of what a model actually returns: thinking blocks (including the truncated and dangling-tag cases), fenced code blocks, trailing commas. Anything unsalvageable raises, and the matcher routes it to review — a malformed answer is a signal, not a non-match. |
 
+## Decision models — [reference](reference/decide.md)
+
+The second path, selected by a job that declares `decider:` instead of `llm:`. A decision
+model takes a state and a set of typed questions and returns a probability per question;
+it never returns text, so there is no output to parse and nothing to salvage. That buys
+depth: instead of showing one model twenty-five candidates and reading its prose, the
+screen stage asks one calibrated yes/no about each of three hundred, fifty at a time. The
+choose and gate stages then narrow that to one record and check it against the rubric and
+against the identity-bearing properties the slots declare, and `DecisionPolicy` thresholds
+the resulting numbers into the same four statuses. Everything downstream — the ledger,
+resume, batching, review, every export and the whole of evaluation — is shared, because
+`DecisionMatcher` satisfies the same protocol `run_batch` takes.
+
+| Module | What it does |
+|---|---|
+| `decide/base.py` | The `DecisionClient` protocol, the three question types (`Noul`, `Choice`, `Score`) and their answers, the error hierarchy, and `parse_response`, which types every answer against the question that was asked. A response that breaks the contract is fatal, not data. |
+| `decide/jev.py` | `JevClient` — TypeSafe's Jev over HTTP, through OpenRouter or the vendor endpoint. Posts to the URL exactly as given, retries the same status set the LLM adapter does, and keeps the API key out of its fingerprint. |
+| `decide/fake.py` | `FakeDecider` and `overlap_handler`. The reason the whole decider loop is testable offline, with no credentials and no network. |
+| `decide/cache.py` | `CachingDecider` — replays responses from the ledger. On by default in the CLI and not as an optimisation: Jev's probabilities jitter between identical calls, and a resumed run must see the answers the first run saw. |
+| `decide/questions.py` | `QuestionSet` — composes the screen, choose, rubric and property questions from the same `slots.yaml` the LLM path uses. No skeleton file is involved; the instructions name the state fields they refer to, because the model is literal. |
+| `decide/policy.py` | `DecisionPolicy`, `Signals`, `derive_status` and `render_explanation`. Where "what counts as a match" is decided on this path, and the only place. The explanation is rendered from numbers, so it is the same on every run. |
+| `decide/matcher.py` | `DecisionMatcher` — the loop: retrieve wide, screen everything, choose among the survivors, gate the choice. One attempt per record; there is no retry. |
+| `decide/fit.py` | `fit_thresholds` and `render_fit` — sweeps `accept_at` and `property_floor` over a finished run's recorded signals. Calls nothing, and reports how many labelled rows sit within the jitter margin of each threshold. |
+| `stages/screen.py` | `Screener` — one `noul` per candidate, in chunks, all against the same source. This is where the path gets its recall, and it halves a chunk rather than overflow the state cap. |
+| `stages/choose.py` | `Chooser` — the comparative question over the survivors, plus a `NONE` option. Returns `p_choice` and `p_none`, neither of which is the number the policy accepts on. |
+| `stages/property_gate.py` | `PropertyGate` — the rubric score and one agreement probability per declared property, on the chosen record alone. Those per-property numbers are what replaces a generated explanation. |
+| `retrieve.py` | Shared by both matchers: every retriever × every query, fused by reciprocal rank. A record surfaced by several queries accumulates several votes. |
+
 ## Prompts — [reference](reference/prompts.md)
 
 | Module | What it does |
@@ -115,7 +143,7 @@ makes scoring a run free, repeatable, and runnable on a machine with no credenti
 | Module | What it does |
 |---|---|
 | `config.py` | `JobSpec` — a job file is serialized constructor arguments and nothing more. Every field maps to something you would otherwise pass by hand, no config field gates behaviour the SDK cannot express, and credentials are environment variable *names*, never values. |
-| `cli/main.py` | Argument parsing and dispatch for the nine subcommands. Each one parses, calls one library function, prints, and returns an exit code. |
+| `cli/main.py` | Argument parsing and dispatch for the subcommands. Each one parses, calls one library function, prints, and returns an exit code. `ablate` and `prompts` refuse a decider job rather than half-work on it. |
 
 ---
 

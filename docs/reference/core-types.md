@@ -75,12 +75,18 @@ attempt and per-attempt usages sum into a result.
 | `prompt_tokens` | `int` | `0` | prompt tokens consumed |
 | `completion_tokens` | `int` | `0` | completion tokens consumed |
 | `calls` | `int` | `0` | number of provider calls |
+| `cost_usd` | `float` | `0.0` | cost reported by the provider, in US dollars |
 
-No validation. Methods and properties:
+No validation. `cost_usd` is whatever the provider stated; a provider that reports no cost
+leaves it `0.0`, so it is a record of what was billed and never an estimate. A cached
+response contributes `Usage.zero()`, which is why a resumed run's cost is what *that*
+invocation spent.
+
+Methods and properties:
 
 ```python
 @classmethod
-def zero(cls) -> Usage          # Usage(0, 0, 0)
+def zero(cls) -> Usage          # Usage(0, 0, 0, 0.0)
 
 @property
 def total_tokens(self) -> int   # prompt_tokens + completion_tokens
@@ -169,10 +175,18 @@ here. Nothing an attempt learned is discarded when the loop moves on.
 | `usage` | `Usage` | tokens and calls spent in this attempt |
 | `elapsed_seconds` | `float` | wall time for this attempt |
 | `finish_reason` | `str \| None` | `finish_reason` of the **last** provider response in the attempt |
+| `signals` | `Mapping[str, float]` | calibrated numbers from a decision model; `{}` on the LLM path |
 
 `finish_reason` earns its place: `"length"` is the tell for a truncated answer — the
 provider stopped mid-JSON, which surfaces as `UNRESOLVED_OUTPUT` and is otherwise
 indistinguishable from a model that simply answered badly.
+
+`signals` defaults to `{}` and is filled only by the [decider path](decide.md), with
+`Signals.flat()`: `screen_best`, `screen_chosen`, `p_choice`, `p_none`,
+`choice_confidence`, `rubric`, `rubric_levels`, `rubric_confidence`, one `prop_<name>` per
+declared property, and one `screen_<key>` per shortlisted candidate. Everything the policy
+thresholds is in there, which is what makes `xwalk fit` free: a finished run can be
+re-classified from the ledger without calling anything.
 
 ## MatchResult
 
@@ -196,6 +210,7 @@ are the evidence, and nothing summarised is unrecoverable from them.
 | `usage` | `Usage` | sum of all attempts' usage |
 | `elapsed_seconds` | `float` | wall time for the whole match |
 | `run_fingerprint` | `str` | the run configuration this result belongs to |
+| `signals` | `Mapping[str, float]` | the winning attempt's `signals`; `{}` on the LLM path |
 
 ## MatchPolicy
 
