@@ -109,6 +109,7 @@ render identically.
 | `duplicate_target_conflicts` | Target ids selected by more than one source record (an `int`, over **all** results) | Possible many-to-one collisions worth auditing |
 | `mean_llm_calls` | Mean `usage.calls` per completed (non-FAILED) result, over all results | Cost per record |
 | `mean_tokens` | Mean `usage.total_tokens` per completed result | Cost per record |
+| `mean_cost_usd` | Mean `usage.cost_usd` per completed result, in USD | Cost per record |
 | `mean_seconds` | Mean `elapsed_seconds` per completed result | Latency per record |
 | `status_counts` | `{status value: count}` over all results | Raw distribution |
 | `reason_counts` | `{reason value: count}` over all results | Raw distribution |
@@ -217,7 +218,7 @@ exists to answer, and it must not be buried:
 3. `## No-match handling` — no-match precision and recall
 4. `## Failure decomposition` — found / misjudged / truncated / never_retrieved
    counts, and which retrievers surfaced gold
-5. `## Cost` — calls, tokens, seconds per record, duplicate targets
+5. `## Cost` — model calls, tokens, cost, seconds per record, duplicate targets
 6. `## Partitions` — only when a partitioner was given
 7. `## Calibration warning` — only when it fired
 

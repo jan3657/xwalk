@@ -38,6 +38,14 @@ async def test_the_rendered_report_names_every_headline_metric(ledger):
         assert label in text.lower()
 
 
+async def test_the_cost_block_reports_money_not_just_calls(ledger):
+    """A run's bill is the question the cost block exists to answer."""
+    text = render_report(evaluate(ledger, "fp1", GOLD))
+    assert "model calls / record" in text
+    assert "cost / record" in text
+    assert "$" in text.split("## Cost")[1]
+
+
 async def test_the_rendered_report_states_when_a_metric_is_undefined(ledger):
     """A blank is ambiguous; 'n/a (no gold no-match labels)' is not."""
     text = render_report(evaluate(ledger, "fp1", GOLD))

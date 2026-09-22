@@ -148,8 +148,9 @@ $ xwalk eval --run runs/chebi --gold examples/chebi/sample/gold.csv --out runs/c
   gold surfaced by   : bm25 (45)
 
 ## Cost
-  llm calls / record   : 2.14
+  model calls / record : 2.14
   tokens / record      : 1834.00
+  cost / record        : $0.000171
   seconds / record     : 1.91
   duplicate targets    : 2
 ```

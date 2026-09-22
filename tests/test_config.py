@@ -310,3 +310,13 @@ def test_decision_fingerprint_moves_with_policy_and_model(tmp_path):
         _jev_job(tmp_path, lambda d: d["policy"].update({"accept_at": 0.7}))
     ).decision_run_fingerprint(store=store, retrievers=retrievers, decider=FakeDecider(model="a"))
     assert a != b and a != c
+
+
+def test_decision_policy_spec_defaults_match_the_policy():
+    """Two declarations of the same defaults; a silent drift would ship two policies."""
+    from dataclasses import asdict
+
+    from xwalk.config import DecisionPolicySpec
+    from xwalk.decide.policy import DecisionPolicy
+
+    assert DecisionPolicySpec().model_dump() == asdict(DecisionPolicy())

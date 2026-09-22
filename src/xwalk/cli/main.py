@@ -153,7 +153,9 @@ def _cmd_match(args: argparse.Namespace) -> int:
     try:
         if job.decider is not None:
             # The cache lives in the run's own ledger. run_batch opens the same file
-            # again; SQLite in WAL mode allows both connections.
+            # again; two connections are safe because every ledger write is a single
+            # autocommit statement issued from one thread, so neither holds a
+            # transaction open across the other's writes.
             cache_ledger = Ledger.open(Path(args.out) / "ledger.sqlite")
             decider = CachingDecider(_build_decider(job), cache_ledger)
             matcher: MatcherLike = job.build_decision_matcher(

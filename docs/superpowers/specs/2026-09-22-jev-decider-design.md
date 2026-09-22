@@ -568,7 +568,7 @@ as an upper bound on disagreement, not as a measurement of it:
 Stratified, because a uniform sample of the 1,063 disagreements would have been 94%
 "only one model matched" and would have taught nothing about identity: 20 rows drawn
 from the 67 where both accepted different ids, and 20 from the 996 where exactly one
-accepted. Saved as `runs/ref_zivila/adjudicated_sample.csv`.
+accepted. Saved as `docs/superpowers/specs/2026-09-22-jev-adjudicated-sample.csv`.
 
 | verdict | both accepted (n=20) | one accepted (n=20) | total |
 |---|---|---|---|
@@ -624,7 +624,12 @@ and on Ref_zivila the unfitted 0.85 is what turns 825 correctly-proposed ids int
 1,001-row review queue. Third, on cost: hoist `domain_brief` and the hard rules out of
 the per-candidate screen noul into the shared state or a once-per-chunk instruction.
 That is the first and largest saving — roughly two thirds of the Ref_zivila bill is the
-same 283-token preamble re-sent once per candidate — and it changes no decision the
-model makes. Lowering `max_candidates` is secondary, and worth doing only once retrieval
-is good enough that depth is genuinely surplus. Question wording is the one place the
+same 283-token preamble re-sent once per candidate. It is expected to change no
+decision the model makes, but that has to be re-measured on the four gold samples
+before it is adopted (about $0.04 in total): Jev is literal, and moving text out of
+the instruction and into the state changes what it attends to. The per-noul
+`criteria: {true, false}` block is duplicated per candidate in the same way, about 60
+tokens each, and should be hoisted with the preamble. Lowering `max_candidates` is
+secondary, and worth doing only once retrieval is good enough that depth is genuinely
+surplus. Question wording is the one place the
 numbers say not to spend effort next.

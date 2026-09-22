@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A decider path: a `decider:` block on a job routes matching through a decision model
+  that answers typed yes/no questions instead of writing prose — screen every retrieved
+  candidate, choose among the survivors, then gate the choice on the identity-bearing
+  properties declared in `properties:`. `xwalk fit` fits the acceptance thresholds on a
+  gold sample, results carry their `signals`, and the written output has a `cost_usd`
+  column, so a run's bill is a number in the results rather than an estimate.
+
 ### Changed
 
 - The CI platform matrix now executes rather than merely being declared. macOS 14,
@@ -14,6 +23,10 @@ All notable changes to this project are documented here. The format follows
   as of v0.1.1 — which retires the second of the limitations listed under 0.1.0.
 - README badges, and a release runbook that covers a dropped tag trigger and a refused
   trusted-publisher exchange.
+- `TemplateSet.fingerprint` and `PromptSet.fingerprint` now cover their newly defaulted
+  fields (`queries` and `properties`). Runs recorded before this change have a different
+  fingerprint, so they will not resume and will re-run from the start; a version bump
+  would have had the same effect.
 
 ## [0.1.1] — 2026-08-04
 

@@ -107,7 +107,7 @@ fix was raising one integer.
 | `recall_at_any_status` | The fraction where the correct target was chosen at *any* status. This is the ceiling perfect threshold tuning could reach. |
 | `no_match_precision` / `no_match_recall` | How well abstention works, scored only against rows explicitly labelled as no-match. |
 | `unresolved_rate` | Model output that could not be resolved to a record. Reported separately from the review rate because the fix is different. |
-| `mean_llm_calls` / `mean_tokens` / `mean_seconds` | Cost and latency per record. |
+| `mean_llm_calls` / `mean_tokens` / `mean_cost_usd` / `mean_seconds` | Cost and latency per record. |
 | `duplicate_target_conflicts` | Targets chosen by more than one source record. |
 
 Every ratio with a zero denominator is `None`, never `0.0`, and renders as `n/a` with a

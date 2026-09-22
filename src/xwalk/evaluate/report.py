@@ -87,6 +87,12 @@ def _num(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}"
 
 
+def _usd(value: float | None) -> str:
+    # Six places: a per-record cost of a hundredth of a cent is normal, and rounding it
+    # to two would print every decider run as $0.00.
+    return "n/a" if value is None else f"${value:.6f}"
+
+
 def render_report(report: FullReport) -> str:
     m = report.metrics
     c = report.ceiling
@@ -127,8 +133,9 @@ def render_report(report: FullReport) -> str:
     lines += [
         "",
         "## Cost",
-        f"  llm calls / record   : {_num(m.mean_llm_calls)}",
+        f"  model calls / record : {_num(m.mean_llm_calls)}",
         f"  tokens / record      : {_num(m.mean_tokens)}",
+        f"  cost / record        : {_usd(m.mean_cost_usd)}",
         f"  seconds / record     : {_num(m.mean_seconds)}",
         f"  duplicate targets    : {m.duplicate_target_conflicts}",
     ]
