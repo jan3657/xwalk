@@ -59,3 +59,15 @@ def test_usage_adds_componentwise():
 def test_usage_sum_starts_from_zero():
     parts = [Usage(prompt_tokens=1, completion_tokens=1, calls=1) for _ in range(3)]
     assert sum(parts, Usage.zero()) == Usage(prompt_tokens=3, completion_tokens=3, calls=3)
+
+
+def test_usage_adds_cost():
+    total = Usage(prompt_tokens=1, completion_tokens=0, calls=1, cost_usd=0.001) + Usage(
+        prompt_tokens=2, completion_tokens=0, calls=1, cost_usd=0.002
+    )
+    assert total.cost_usd == 0.003
+    assert total.calls == 2
+
+
+def test_usage_cost_defaults_to_zero():
+    assert Usage().cost_usd == 0.0

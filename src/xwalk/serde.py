@@ -35,6 +35,7 @@ def _usage_to_dict(usage: Usage) -> dict[str, Any]:
         "prompt_tokens": usage.prompt_tokens,
         "completion_tokens": usage.completion_tokens,
         "calls": usage.calls,
+        "cost_usd": usage.cost_usd,
     }
 
 
@@ -95,6 +96,7 @@ def _attempt_to_dict(attempt: Attempt) -> dict[str, Any]:
         "usage": _usage_to_dict(attempt.usage),
         "elapsed_seconds": attempt.elapsed_seconds,
         "finish_reason": attempt.finish_reason,
+        "signals": dict(attempt.signals),
     }
 
 
@@ -122,6 +124,7 @@ def _attempt_from_dict(data: Mapping[str, Any]) -> Attempt:
         usage=Usage(**data["usage"]),
         elapsed_seconds=data["elapsed_seconds"],
         finish_reason=data["finish_reason"],
+        signals=dict(data.get("signals") or {}),
     )
 
 
@@ -143,6 +146,7 @@ def result_to_dict(result: MatchResult) -> dict[str, Any]:
         "usage": _usage_to_dict(result.usage),
         "elapsed_seconds": result.elapsed_seconds,
         "run_fingerprint": result.run_fingerprint,
+        "signals": dict(result.signals),
     }
 
 
@@ -164,4 +168,5 @@ def result_from_dict(data: Mapping[str, Any]) -> MatchResult:
         usage=Usage(**data["usage"]),
         elapsed_seconds=data["elapsed_seconds"],
         run_fingerprint=data["run_fingerprint"],
+        signals=dict(data.get("signals") or {}),
     )

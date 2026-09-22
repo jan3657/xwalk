@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
@@ -61,11 +61,12 @@ class Candidate:
 
 @dataclass(frozen=True)
 class Usage:
-    """Token and call accounting. Additive so attempts can be summed into a result."""
+    """Token, call, and cost accounting. Additive so attempts can be summed into a result."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
     calls: int = 0
+    cost_usd: float = 0.0
 
     @classmethod
     def zero(cls) -> Usage:
@@ -82,6 +83,7 @@ class Usage:
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
             calls=self.calls + other.calls,
+            cost_usd=self.cost_usd + other.cost_usd,
         )
 
     def __radd__(self, other: Any) -> Usage:
@@ -153,6 +155,8 @@ class Attempt:
     # UNRESOLVED_OUTPUT and is otherwise indistinguishable from a model that simply
     # answered badly.
     finish_reason: str | None
+    # Calibrated signals from a decision model. Empty on the LLM path.
+    signals: Mapping[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -171,3 +175,5 @@ class MatchResult:
     usage: Usage
     elapsed_seconds: float
     run_fingerprint: str
+    # Calibrated signals from a decision model. Empty on the LLM path.
+    signals: Mapping[str, float] = field(default_factory=dict)
