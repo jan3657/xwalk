@@ -74,3 +74,26 @@ async def test_a_hanging_retriever_times_out():
     slow = Scripted({}, name="slow", hang=True)
     _, notes, all_failed = await retrieve(["q"], SOURCE, [slow], STORE, timeout=0.05)
     assert notes == ["slow: timed out after 0.05s"] and all_failed is True
+
+
+async def test_two_queries_both_vote_but_the_evidence_names_the_retriever_once():
+    """The per-query fusion tag buys the second vote; it must not reach the trace."""
+    r = Scripted({"a": ["T2", "T1"], "b": ["T1"]})
+    candidates, _, _ = await retrieve(["a", "b"], SOURCE, [r], STORE, timeout=1.0)
+    by_id = {c.id: c for c in candidates}
+    assert by_id["T1"].fused_score == 1 / 62 + 1 / 61  # rank 2 on "a", rank 1 on "b"
+    assert by_id["T1"].fused_score > by_id["T2"].fused_score
+    assert [(h.retriever, h.rank) for h in by_id["T1"].evidence] == [("r", 1)]
+
+
+async def test_multi_query_evidence_keeps_one_untagged_entry_per_retriever():
+    one = Scripted({"a": ["T1"], "b": ["T1"]}, name="zeta")
+    two = Scripted({"a": ["T1"], "b": ["T1"]}, name="alpha")
+    candidates, _, _ = await retrieve(["a", "b"], SOURCE, [one, two], STORE, timeout=1.0)
+    assert [h.retriever for h in candidates[0].evidence] == ["alpha", "zeta"]
+
+
+async def test_a_single_query_leaves_the_evidence_untouched():
+    r = Scripted({"q": ["T1"]})
+    candidates, _, _ = await retrieve(["q"], SOURCE, [r], STORE, timeout=1.0)
+    assert [(h.retriever, h.rank, h.raw_score) for h in candidates[0].evidence] == [("r", 1, 1.0)]
