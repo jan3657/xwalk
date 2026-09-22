@@ -100,7 +100,7 @@ resume, batching, review, every export and the whole of evaluation — is shared
 | Module | What it does |
 |---|---|
 | `decide/base.py` | The `DecisionClient` protocol, the three question types (`Noul`, `Choice`, `Score`) and their answers, the error hierarchy, and `parse_response`, which types every answer against the question that was asked. A response that breaks the contract is fatal, not data. |
-| `decide/jev.py` | `JevClient` — TypeSafe's Jev over HTTP, through OpenRouter or the vendor endpoint. Posts to the URL exactly as given, retries the same status set the LLM adapter does, and keeps the API key out of its fingerprint. |
+| `decide/jev.py` | `JevClient` — TypeSafe's Jev over HTTP, through OpenRouter or the vendor endpoint. Posts to the URL exactly as given, retries `408, 429, 500, 502, 503, 504, 529` and transport errors, and keeps the API key out of its fingerprint. |
 | `decide/fake.py` | `FakeDecider` and `overlap_handler`. The reason the whole decider loop is testable offline, with no credentials and no network. |
 | `decide/cache.py` | `CachingDecider` — replays responses from the ledger. On by default in the CLI and not as an optimisation: Jev's probabilities jitter between identical calls, and a resumed run must see the answers the first run saw. |
 | `decide/questions.py` | `QuestionSet` — composes the screen, choose, rubric and property questions from the same `slots.yaml` the LLM path uses. No skeleton file is involved; the instructions name the state fields they refer to, because the model is literal. |

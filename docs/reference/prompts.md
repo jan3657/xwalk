@@ -18,7 +18,7 @@ skeletons and asserts the contract survived, and it runs before anything reaches
 
 ## The slots file
 
-Six slots, loaded by `load_slots(path)` into a `PromptSlots` pydantic model. The right-hand
+Seven slots, loaded by `load_slots(path)` into a `PromptSlots` pydantic model. The right-hand
 columns say which of the four prompts each slot actually reaches — several templates
 deliberately ignore slots you might expect them to use.
 
@@ -30,6 +30,11 @@ deliberately ignore slots you might expect them to use.
 | `rubric` | `list[RubricRow]` | yes | — | no | yes | no | no |
 | `hard_rules` | `list[str]` | no | `[]` | yes | yes | yes | no |
 | `disambiguation_steps` | `str` | no | `""` | yes | no | no | no |
+| `properties` | `list[PropertyQuestion]` | no | `[]` | no | no | no | no |
+
+`properties` reaches none of the four skeletons: it is read only by the decider path, where
+each `{name, question}` entry becomes one agreement question about the chosen candidate. See
+[the `properties` block](decide.md#the-properties-block).
 
 `RubricRow`:
 

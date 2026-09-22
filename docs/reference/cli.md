@@ -22,7 +22,7 @@ a library function and never raises `SystemExit` at you.
 | Code | Name | Meaning |
 |---|---|---|
 | `0` | success | the command did what it said |
-| `1` | attention | the run completed, but something needs a human: a non-empty review bucket, or rejected review rows |
+| `1` | attention | the command completed, but something needs a human: a non-empty review bucket, rejected review rows, or a `fit` sweep in which no grid point met the target precision |
 | `2` | usage | bad invocation: no command, an unknown command, a missing subcommand, a malformed `--run` |
 | `3` | runtime | a real failure: missing key, unreadable file, stale review snapshot, unsupported platform |
 

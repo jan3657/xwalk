@@ -58,9 +58,11 @@ Runnable, in `examples/`. Each is a complete job you can copy and point at your 
 | [`nlm_gene`](../examples/nlm_gene) | Numeric target ids — the case opaque candidate keys exist for. |
 | [`cafeteria_fcd`](../examples/cafeteria_fcd) | A second OWL domain; only `slots.yaml` differs from `chebi`. |
 
-Two of them ship a `job_jev.yaml` beside the LLM job: `cafeteria_fcd` and `ref_zivila`.
-Same data, same `slots.yaml`, a decision model instead of an LLM — see
-[decision models](reference/decide.md).
+[`cafeteria_fcd`](../examples/cafeteria_fcd) also ships a `job_jev.yaml` beside its LLM
+job — same sample data, same `slots.yaml`, a decision model instead of an LLM; see
+[decision models](reference/decide.md). `examples/ref_zivila/jobs/foodon/job_jev.yaml` is a
+second one, for the full Slovenian food-reference mapping, but it reads target and source
+CSVs you prepare locally rather than anything in this repository.
 
 ## The five things to know
 

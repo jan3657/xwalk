@@ -10,7 +10,11 @@ neither.
 A decision model answers typed questions about a state and returns probabilities, never
 text. You hand it a JSON-shaped state and a named set of questions — a yes/no `Noul`, a
 `Choice` over at most 255 options, or a `Score` over 2 to 10 ordered levels — and it
-returns one answer per question, each a number in `[0, 1]`. Nothing parses prose: there is
+returns one answer per question, each of them numbers: a `Noul` answers with the
+probability that the answer is yes, a `Choice` with an option key plus a probability
+distribution over the options and a confidence, and a `Score` with a level index (`0`
+worst, `rubric_levels - 1` best) plus a distribution and a confidence. Nothing parses
+prose: there is
 no JSON to salvage out of a fenced block, no explanation to read, and no way for a
 malformed sentence to become a match. What replaces the model's reasoning is arithmetic —
 `DecisionPolicy` thresholds those probabilities into the same four statuses the LLM path
