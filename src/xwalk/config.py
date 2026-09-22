@@ -37,10 +37,17 @@ from xwalk.templates import TemplateSet
 
 
 class TemplateSpec(BaseModel):
-    query: str
+    query: str | None = None
+    queries: list[str] = Field(default_factory=list)
     context: str = ""
     doc: str
     candidate: str
+
+    @model_validator(mode="after")
+    def _need_a_query(self) -> TemplateSpec:
+        if not self.query and not self.queries:
+            raise ValueError("templates need a query or a non-empty queries list")
+        return self
 
 
 class RecordSpec(BaseModel):
@@ -179,7 +186,13 @@ class JobSpec(BaseModel):
     # --- builders ---------------------------------------------------------------
 
     def build_templates(self) -> TemplateSet:
-        return TemplateSet(**self.templates.model_dump())
+        return TemplateSet(
+            query=self.templates.query or self.templates.queries[0],
+            queries=tuple(self.templates.queries),
+            context=self.templates.context,
+            doc=self.templates.doc,
+            candidate=self.templates.candidate,
+        )
 
     def build_target_records(self) -> Iterator[Record]:
         return self.target.build(self.base_dir)

@@ -188,3 +188,24 @@ def test_build_matcher_accepts_overridden_prompts(monkeypatch, tmp_path):
     assert matcher.run_fingerprint != job.run_fingerprint(
         store=store, retrievers=retrievers, llm=job.build_llm()
     )
+
+
+def test_templates_accept_a_queries_list(tmp_path):
+    from xwalk.records import Record
+
+    def mutate(data):
+        del data["templates"]["query"]
+        data["templates"]["queries"] = ["{{ mention }}", "{{ context_left }}"]
+
+    templates = load_job(_job_copy(tmp_path, mutate)).build_templates()
+    record = Record(id="s", fields={"mention": "glucose", "context_left": "blood"})
+    assert templates.render_query(record) == "glucose"
+    assert templates.render_queries(record) == ["glucose", "blood"]
+
+
+def test_templates_need_a_query_or_queries(tmp_path):
+    def mutate(data):
+        del data["templates"]["query"]
+
+    with pytest.raises(ValueError, match="query"):
+        load_job(_job_copy(tmp_path, mutate))
