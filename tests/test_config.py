@@ -209,3 +209,104 @@ def test_templates_need_a_query_or_queries(tmp_path):
 
     with pytest.raises(ValueError, match="query"):
         load_job(_job_copy(tmp_path, mutate))
+
+
+def _jev_job(tmp_path, extra_mutate=None):
+    def mutate(data):
+        del data["llm"]
+        del data["selector"]
+        data["decider"] = {
+            "kind": "jev",
+            "model": "~typesafe/jev-latest",
+            "base_url": "https://openrouter.ai/api/alpha/decisions",
+            "api_key_env": "XWALK_TEST_API_KEY",
+        }
+        data["policy"] = {"accept_at": 0.9, "chunk_size": 25, "concurrency": 4}
+        # The copy lives in tmp_path, so the job's relative paths have to be re-anchored
+        # on the fixture directory or the builders below have nothing to read.
+        data["target"]["path"] = str(FIXTURES / "targets_tiny.csv")
+        data["source"]["path"] = str(FIXTURES / "sources_tiny.csv")
+        data["prompts"]["slots"] = str((FIXTURES / data["prompts"]["slots"]).resolve())
+        if extra_mutate:
+            extra_mutate(data)
+
+    return _job_copy(tmp_path, mutate)
+
+
+def test_a_decider_job_loads_and_routes_policy(tmp_path):
+    job = load_job(_jev_job(tmp_path))
+    assert job.llm is None and job.decider is not None
+    assert job.decider.model == "~typesafe/jev-latest"
+    policy = job.build_decision_policy()
+    assert (policy.accept_at, policy.chunk_size, policy.concurrency) == (0.9, 25, 4)
+    assert policy.screen_floor == 0.30  # untouched default
+
+
+def test_llm_and_decider_are_mutually_exclusive(tmp_path):
+    def keep_llm(data):
+        data["llm"] = {
+            "kind": "openai_compat",
+            "model": "m",
+            "base_url": "https://x",
+            "api_key_env": "K",
+        }
+
+    with pytest.raises(ValueError, match="exactly one"):
+        load_job(_jev_job(tmp_path, keep_llm))
+
+
+def test_neither_llm_nor_decider_is_an_error(tmp_path):
+    def drop(data):
+        del data["decider"]
+
+    with pytest.raises(ValueError, match="exactly one"):
+        load_job(_jev_job(tmp_path, drop))
+
+
+def test_decider_rejects_inline_keys(tmp_path):
+    def inline(data):
+        data["decider"]["api_key"] = "sk-live"
+
+    with pytest.raises(ValueError, match="api_key_env"):
+        load_job(_jev_job(tmp_path, inline))
+
+
+def test_build_decider_needs_the_env_var(tmp_path, monkeypatch):
+    monkeypatch.delenv("XWALK_TEST_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="XWALK_TEST_API_KEY"):
+        load_job(_jev_job(tmp_path)).build_decider()
+
+
+def test_build_decision_matcher(tmp_path, monkeypatch):
+    from xwalk.decide.fake import FakeDecider
+    from xwalk.decide.matcher import DecisionMatcher
+
+    job = load_job(_jev_job(tmp_path))
+    store = job.build_store()
+    retrievers = job.build_retrievers(
+        list(job.build_target_records()), job.build_templates(), tmp_path / "idx"
+    )
+    matcher = job.build_decision_matcher(store=store, retrievers=retrievers, decider=FakeDecider())
+    assert isinstance(matcher, DecisionMatcher)
+    assert matcher.policy.concurrency == 4
+    assert len(matcher.run_fingerprint) == 16
+
+
+def test_decision_fingerprint_moves_with_policy_and_model(tmp_path):
+    from xwalk.decide.fake import FakeDecider
+
+    job = load_job(_jev_job(tmp_path))
+    store = job.build_store()
+    retrievers = job.build_retrievers(
+        list(job.build_target_records()), job.build_templates(), tmp_path / "idx"
+    )
+    a = job.decision_run_fingerprint(
+        store=store, retrievers=retrievers, decider=FakeDecider(model="a")
+    )
+    b = job.decision_run_fingerprint(
+        store=store, retrievers=retrievers, decider=FakeDecider(model="b")
+    )
+    c = load_job(
+        _jev_job(tmp_path, lambda d: d["policy"].update({"accept_at": 0.7}))
+    ).decision_run_fingerprint(store=store, retrievers=retrievers, decider=FakeDecider(model="a"))
+    assert a != b and a != c

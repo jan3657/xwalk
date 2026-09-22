@@ -11,13 +11,15 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from xwalk import __version__
+from xwalk.decide.base import DecisionClient
+from xwalk.decide.policy import DecisionPolicy
+from xwalk.decide.questions import QuestionSet
 from xwalk.fingerprint import hash_record, hash_value, result_key
 from xwalk.ledger import Ledger
 from xwalk.llm.base import LLMClient
-from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
 from xwalk.prompts.contract import PromptSet
 from xwalk.records import MatchResult, MatchStatus, Record, Usage
@@ -40,7 +42,21 @@ MAPPING_COLUMNS = (
     "completion_tokens",
     "llm_calls",
     "elapsed_seconds",
+    "cost_usd",
 )
+
+
+class MatcherLike(Protocol):
+    @property
+    def run_fingerprint(self) -> str: ...
+
+    @property
+    def policy(self) -> Any: ...  # anything with a `.concurrency: int`
+
+    @property
+    def store_fingerprint(self) -> str: ...
+
+    async def match(self, source: Record) -> MatchResult: ...
 
 
 def build_run_fingerprint(
@@ -95,6 +111,50 @@ def build_run_fingerprint(
     )
 
 
+def build_decision_run_fingerprint(
+    *,
+    templates: TemplateSet,
+    questions: QuestionSet,
+    store: TargetStore,
+    retrievers: Sequence[Retriever],
+    decider: DecisionClient,
+    policy: DecisionPolicy,
+    rrf_k: int = 60,
+) -> str:
+    """The decider path's counterpart of `build_run_fingerprint`.
+
+    Concurrency, timeouts, and credentials are excluded for the same reason as on the
+    LLM path: they change how fast an answer arrives, never what it means.
+    """
+    return hash_value(
+        {
+            "library_version": __version__,
+            "path": "decider",
+            "templates": templates.fingerprint,
+            "questions": questions.fingerprint,
+            "target": store.fingerprint,
+            "retrievers": sorted(f"{r.name}:{r.fingerprint}" for r in retrievers),
+            "retrieval": {
+                "depths": sorted(f"{r.name}:{getattr(r, 'default_limit', 20)}" for r in retrievers),
+                "rrf_k": rrf_k,
+                "max_candidates": policy.max_candidates,
+            },
+            "decider": decider.fingerprint,
+            "policy": {
+                "screen_floor": policy.screen_floor,
+                "shortlist_size": policy.shortlist_size,
+                "shortlist_floor": policy.shortlist_floor,
+                "none_at": policy.none_at,
+                "choose_at": policy.choose_at,
+                "accept_at": policy.accept_at,
+                "rubric_floor": policy.rubric_floor,
+                "property_floor": policy.property_floor,
+                "chunk_size": policy.chunk_size,
+            },
+        }
+    )
+
+
 @dataclass(frozen=True)
 class BatchReport:
     run_fingerprint: str
@@ -133,7 +193,7 @@ class BatchReport:
 
 
 async def run_batch(
-    matcher: Matcher,
+    matcher: MatcherLike,
     source: Iterable[Record],
     *,
     out: str | Path,
@@ -205,7 +265,7 @@ async def run_batch(
 
 
 def run_batch_sync(
-    matcher: Matcher,
+    matcher: MatcherLike,
     source: Iterable[Record],
     *,
     out: str | Path,
@@ -267,6 +327,7 @@ def export_mapping_csv(
                         "completion_tokens": "",
                         "llm_calls": "",
                         "elapsed_seconds": "",
+                        "cost_usd": "",
                     }
                 )
                 written += 1
@@ -286,6 +347,7 @@ def export_mapping_csv(
                     "completion_tokens": result.usage.completion_tokens,
                     "llm_calls": result.usage.calls,
                     "elapsed_seconds": round(result.elapsed_seconds, 3),
+                    "cost_usd": result.usage.cost_usd,
                 }
             )
             written += 1

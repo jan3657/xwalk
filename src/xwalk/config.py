@@ -18,7 +18,12 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from xwalk.batch import build_run_fingerprint
+from xwalk.batch import build_decision_run_fingerprint, build_run_fingerprint
+from xwalk.decide.base import DecisionClient
+from xwalk.decide.jev import JevClient
+from xwalk.decide.matcher import DecisionMatcher
+from xwalk.decide.policy import DecisionPolicy
+from xwalk.decide.questions import QuestionSet
 from xwalk.llm.base import LLMClient
 from xwalk.llm.openai_compat import OpenAICompatClient
 from xwalk.matcher import Matcher
@@ -28,8 +33,11 @@ from xwalk.records import Record
 from xwalk.retrieval.base import Retriever
 from xwalk.retrieval.bm25 import BM25Retriever
 from xwalk.sources.tabular import csv_source, jsonl_source
+from xwalk.stages.choose import Chooser
 from xwalk.stages.gate import Scorer, Verifier
+from xwalk.stages.property_gate import PropertyGate
 from xwalk.stages.rewrite import QueryRewriter
+from xwalk.stages.screen import Screener
 from xwalk.stages.select import Selector, SelectorPolicy
 from xwalk.stores.base import TargetStore
 from xwalk.stores.memory import MemoryStore
@@ -150,6 +158,40 @@ class LLMSpec(BaseModel):
         return self
 
 
+class DeciderSpec(BaseModel):
+    kind: Literal["jev"] = "jev"
+    model: str
+    base_url: str = "https://openrouter.ai/api/alpha/decisions"
+    api_key_env: str | None = None
+    api_key: str | None = None  # present only so it can be rejected
+    timeout: float = 60.0
+    max_retries: int = 5
+
+    @model_validator(mode="after")
+    def _no_inline_secrets(self) -> DeciderSpec:
+        if self.api_key is not None:
+            raise ValueError(
+                "api_key must not appear in a job file; use api_key_env with the name of "
+                "an environment variable"
+            )
+        return self
+
+
+class DecisionPolicySpec(BaseModel):
+    screen_floor: float = 0.30
+    shortlist_size: int = 15
+    shortlist_floor: float = 0.20
+    none_at: float = 0.70
+    choose_at: float = 0.50
+    accept_at: float = 0.85
+    rubric_floor: float | None = None
+    property_floor: float = 0.50
+    chunk_size: int = 50
+    max_candidates: int = 300
+    concurrency: int = 32
+    retriever_timeout: float = 60.0
+
+
 class PolicySpec(BaseModel):
     max_attempts: int = 4
     accept_at: float = 0.6
@@ -176,12 +218,29 @@ class JobSpec(BaseModel):
     target: RecordSpec
     source: RecordSpec
     retrievers: list[RetrieverSpec] = Field(min_length=1)
-    llm: LLMSpec
+    llm: LLMSpec | None = None
+    decider: DeciderSpec | None = None
     prompts: PromptSpec
     policy: PolicySpec = PolicySpec()
+    decision_policy: DecisionPolicySpec = DecisionPolicySpec()
     selector: SelectorSpec = SelectorSpec()
 
     base_dir: Path = Path(".")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _route_policy(cls, data: Any) -> Any:
+        # One YAML key, `policy:`, on both paths. Which model parses it depends on the path.
+        if isinstance(data, dict) and data.get("decider") is not None and "policy" in data:
+            data = dict(data)
+            data["decision_policy"] = data.pop("policy")
+        return data
+
+    @model_validator(mode="after")
+    def _exactly_one_decision_maker(self) -> JobSpec:
+        if (self.llm is None) == (self.decider is None):
+            raise ValueError("a job needs exactly one of `llm:` or `decider:`")
+        return self
 
     # --- builders ---------------------------------------------------------------
 
@@ -250,6 +309,8 @@ class JobSpec(BaseModel):
         return built
 
     def build_llm(self) -> LLMClient:
+        if self.llm is None:
+            raise ValueError("this job has no llm: block")
         api_key = None
         if self.llm.api_key_env:
             api_key = os.environ.get(self.llm.api_key_env)
@@ -277,6 +338,31 @@ class JobSpec(BaseModel):
 
     def build_prompts(self) -> PromptSet:
         return PromptSet.from_slots(load_slots(self.base_dir / self.prompts.slots))
+
+    def build_decider(self) -> DecisionClient:
+        if self.decider is None:
+            raise ValueError("this job has no decider: block")
+        api_key = None
+        if self.decider.api_key_env:
+            api_key = os.environ.get(self.decider.api_key_env)
+            if not api_key:
+                raise ValueError(
+                    f"environment variable {self.decider.api_key_env} is not set; "
+                    f"export it or change decider.api_key_env in the job file"
+                )
+        return JevClient(
+            self.decider.base_url,
+            self.decider.model,
+            api_key=api_key,
+            timeout=self.decider.timeout,
+            max_retries=self.decider.max_retries,
+        )
+
+    def build_questions(self) -> QuestionSet:
+        return QuestionSet.from_slots(load_slots(self.base_dir / self.prompts.slots))
+
+    def build_decision_policy(self) -> DecisionPolicy:
+        return DecisionPolicy(**self.decision_policy.model_dump())
 
     def build_policy(self) -> MatchPolicy:
         return MatchPolicy(**self.policy.model_dump())
@@ -337,6 +423,44 @@ class JobSpec(BaseModel):
                 store=store, retrievers=retrievers, llm=llm, prompts=resolved
             ),
             retriever_limit=max(spec.limit for spec in self.retrievers),
+        )
+
+    def decision_run_fingerprint(
+        self, *, store: TargetStore, retrievers: Sequence[Retriever], decider: DecisionClient
+    ) -> str:
+        return build_decision_run_fingerprint(
+            templates=self.build_templates(),
+            questions=self.build_questions(),
+            store=store,
+            retrievers=retrievers,
+            decider=decider,
+            policy=self.build_decision_policy(),
+        )
+
+    def build_decision_matcher(
+        self, *, store: TargetStore, retrievers: Sequence[Retriever], decider: DecisionClient
+    ) -> DecisionMatcher:
+        templates = self.build_templates()
+        questions = self.build_questions()
+        policy = self.build_decision_policy()
+        return DecisionMatcher(
+            templates=templates,
+            retrievers=list(retrievers),
+            store=store,
+            screener=Screener(
+                decider,
+                questions,
+                templates,
+                chunk_size=policy.chunk_size,
+                shortlist_size=policy.shortlist_size,
+                shortlist_floor=policy.shortlist_floor,
+            ),
+            chooser=Chooser(decider, questions, templates),
+            gate=PropertyGate(decider, questions, templates),
+            policy=policy,
+            run_fingerprint=self.decision_run_fingerprint(
+                store=store, retrievers=retrievers, decider=decider
+            ),
         )
 
 

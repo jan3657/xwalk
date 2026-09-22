@@ -137,7 +137,7 @@ def _cmd_match(args: argparse.Namespace) -> int:
             records,
             out=args.out,
             resume=args.resume,
-            manifest_extra={"job": job.name, "model": job.llm.model},
+            manifest_extra={"job": job.name, "model": llm.model},
         )
     )
     print(f"matched {report.total} records into {report.out_dir}")
