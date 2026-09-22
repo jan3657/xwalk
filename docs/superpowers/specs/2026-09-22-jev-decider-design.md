@@ -1,6 +1,6 @@
 # The Jev decider — design
 
-Date: 2026-09-22. Status: draft for review. Branch: `jev-decider`.
+Date: 2026-09-22. Status: draft for review. Branch: `jev-decider`. Plan: `../plans/2026-09-22-jev-decider.md`.
 
 ## Purpose
 
@@ -207,8 +207,9 @@ candidates plus `NONE`. Returns `ChooseOutcome(record_id | None, p_choice, p_non
 confidence, usage)`. A `choice` value that is not an issued key or `NONE` is
 `Resolution.UNRESOLVED`, which the policy routes to review, exactly as today.
 
-`stages/gate.py` gains `PropertyGate(decider, questions, templates)`. State is the
-source plus the one chosen candidate. Questions: a `score` whose criteria are the
+`stages/property_gate.py` — `PropertyGate(decider, questions, templates)`, its own
+module so `gate.py` keeps importing only LLM types. State is the source plus the one
+chosen candidate. Questions: a `score` whose criteria are the
 rubric levels in ascending order, and one `noul` per declared property. Returns
 `GateOutcome(rubric_score, rubric_confidence, properties: Mapping[str, float], usage)`.
 
@@ -287,8 +288,9 @@ with the flat set above (`screen`, `p_choice`, `p_none`, `choice_confidence`,
 `rubric`, `rubric_confidence`, and one `prop_<name>` per property) and renders
 `explanation` from them deterministically. `raw_selection` holds the JSON of the
 choose and gate answers plus the served model version. `candidates` in the trace keeps
-the fused list as today; screen probabilities for non-chosen candidates live in
-`signals` under `screen_<key>` only for the shortlist, to keep the blob small.
+the fused list as today; screen probabilities live in `signals` under `screen_<key>`
+for the shortlist only, to keep the blob small. That is enough to measure shortlist
+recall from the ledger.
 
 ### Matcher
 
