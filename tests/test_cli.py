@@ -581,3 +581,74 @@ def test_an_unexpected_error_is_reported_without_a_traceback(tmp_path, monkeypat
     err = capsys.readouterr().err
     assert "RuntimeError: provider exploded" in err
     assert "Traceback" not in err
+
+
+def test_match_runs_the_decider_path_offline(tmp_path, monkeypatch):
+    import json
+
+    from xwalk.cli import main as cli
+    from xwalk.decide.fake import FakeDecider
+
+    monkeypatch.setattr(cli, "_build_decider", lambda job: FakeDecider())
+    out = tmp_path / "run"
+    code = cli.main(["match", "--job", str(FIXTURES / "job_tiny_jev.yaml"), "--out", str(out)])
+    # EXIT_ATTENTION, not a usage error: a non-empty review bucket is a completed run.
+    assert code in (cli.EXIT_OK, cli.EXIT_ATTENTION)
+    rows = (out / "mapping.csv").read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 5  # header + 4 sources
+    first = json.loads((out / "results.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert "signals" in first and first["attempts"][0]["signals"] is not None
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["path"] == "decider" and manifest["model"] == "fake-decider"
+
+
+def test_a_resumed_decider_run_replays_from_the_cache(tmp_path, monkeypatch):
+    from xwalk.cli import main as cli
+    from xwalk.decide.fake import FakeDecider
+
+    fakes: list[FakeDecider] = []
+
+    def build(job):
+        fakes.append(FakeDecider())
+        return fakes[-1]
+
+    monkeypatch.setattr(cli, "_build_decider", build)
+    out = tmp_path / "run"
+    args = ["match", "--job", str(FIXTURES / "job_tiny_jev.yaml"), "--out", str(out)]
+    cli.main(args)
+    cli.main(args + ["--no-resume"])
+    assert len(fakes[0].calls) > 0
+    assert fakes[1].calls == []  # every decision came back from the ledger cache
+
+
+def test_ablate_refuses_a_decider_job(tmp_path, capsys):
+    code = main(
+        [
+            "ablate",
+            "--job",
+            str(FIXTURES / "job_tiny_jev.yaml"),
+            "--gold",
+            str(FIXTURES / "gold_tiny.csv"),
+            "--out",
+            str(tmp_path / "abl"),
+        ]
+    )
+    assert code == 2
+    assert "the job has a decider: block" in capsys.readouterr().err
+
+
+def test_prompts_optimize_refuses_a_decider_job(tmp_path, capsys):
+    code = main(
+        [
+            "prompts",
+            "optimize",
+            "--job",
+            str(FIXTURES / "job_tiny_jev.yaml"),
+            "--gold",
+            str(FIXTURES / "gold_tiny.csv"),
+            "--out",
+            str(tmp_path / "opt"),
+        ]
+    )
+    assert code == 2
+    assert "the job has a decider: block" in capsys.readouterr().err

@@ -23,6 +23,9 @@ from typing import TYPE_CHECKING, Any
 from xwalk import __version__
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from xwalk.batch import MatcherLike
+    from xwalk.config import JobSpec
+    from xwalk.decide.base import DecisionClient
     from xwalk.evaluate.ablate import MatcherConfig
     from xwalk.matcher import Matcher
     from xwalk.prompts.contract import PromptSet
@@ -114,9 +117,16 @@ def _cmd_index(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _build_decider(job: JobSpec) -> DecisionClient:
+    """Module-level so a test can swap in a FakeDecider without an API key."""
+    return job.build_decider()
+
+
 def _cmd_match(args: argparse.Namespace) -> int:
     from xwalk.batch import run_batch
     from xwalk.config import load_job
+    from xwalk.decide.cache import CachingDecider
+    from xwalk.ledger import Ledger
 
     job = load_job(args.job)
     index_dir = Path(args.index or Path(args.out) / "index")
@@ -124,22 +134,36 @@ def _cmd_match(args: argparse.Namespace) -> int:
     targets = list(job.build_target_records())
     store = job.build_store()
     retrievers = job.build_retrievers(targets, templates, index_dir)
-    llm = job.build_llm()
-    matcher = job.build_matcher(store=store, retrievers=retrievers, llm=llm)
 
     records = list(job.build_source_records())
     if args.limit is not None:
         records = records[: args.limit]
 
-    report = asyncio.run(
-        run_batch(
-            matcher,
-            records,
-            out=args.out,
-            resume=args.resume,
-            manifest_extra={"job": job.name, "model": llm.model},
+    cache_ledger: Ledger | None = None
+    try:
+        if job.decider is not None:
+            # The cache lives in the run's own ledger. run_batch opens the same file
+            # again; SQLite in WAL mode allows both connections.
+            cache_ledger = Ledger.open(Path(args.out) / "ledger.sqlite")
+            decider = CachingDecider(_build_decider(job), cache_ledger)
+            matcher: MatcherLike = job.build_decision_matcher(
+                store=store, retrievers=retrievers, decider=decider
+            )
+            manifest_extra = {"job": job.name, "model": decider.model, "path": "decider"}
+        else:
+            llm = job.build_llm()
+            matcher = job.build_matcher(store=store, retrievers=retrievers, llm=llm)
+            manifest_extra = {"job": job.name, "model": llm.model, "path": "llm"}
+
+        report = asyncio.run(
+            run_batch(
+                matcher, records, out=args.out, resume=args.resume, manifest_extra=manifest_extra
+            )
         )
-    )
+    finally:
+        if cache_ledger is not None:
+            cache_ledger.close()
+
     print(f"matched {report.total} records into {report.out_dir}")
     for status, count in sorted(report.by_status().items(), key=lambda kv: kv[0].value):
         print(f"  {status.value:<14}: {count}")
@@ -201,6 +225,12 @@ def _cmd_ablate(args: argparse.Namespace) -> int:
     from xwalk.evaluate.gold import load_gold_csv
 
     job = load_job(args.job)
+    if job.decider is not None:
+        print(
+            "error: this command works on the LLM path; the job has a decider: block",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
     gold = load_gold_csv(args.gold)
     templates = job.build_templates()
     targets = list(job.build_target_records())
@@ -251,6 +281,12 @@ def _cmd_prompts(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     job = load_job(args.job)
+    if job.decider is not None:
+        print(
+            "error: this command works on the LLM path; the job has a decider: block",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
 
     if args.prompts_command == "draft":
         from xwalk.prompts.author import draft_slots, slots_diff, write_slots
