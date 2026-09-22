@@ -652,3 +652,16 @@ def test_prompts_optimize_refuses_a_decider_job(tmp_path, capsys):
     )
     assert code == 2
     assert "the job has a decider: block" in capsys.readouterr().err
+
+
+def test_fit_command_runs_on_a_decider_run(tmp_path, monkeypatch):
+    from xwalk.cli import main as cli
+    from xwalk.decide.fake import FakeDecider
+
+    monkeypatch.setattr(cli, "_build_decider", lambda job: FakeDecider())
+    out = tmp_path / "run"
+    cli.main(["match", "--job", str(FIXTURES / "job_tiny_jev.yaml"), "--out", str(out)])
+    code = cli.main(
+        ["fit", "--run", str(out), "--gold", str(FIXTURES / "gold_tiny.csv"), "--precision", "0.5"]
+    )
+    assert code in (cli.EXIT_OK, cli.EXIT_ATTENTION)

@@ -65,6 +65,11 @@ def _build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--gold", required=True)
     ev.add_argument("--out", default=None, help="write <out>.json and <out>.txt")
 
+    fit = sub.add_parser("fit", help="fit decider thresholds on a completed run and gold labels")
+    fit.add_argument("--run", required=True)
+    fit.add_argument("--gold", required=True)
+    fit.add_argument("--precision", type=float, default=0.95)
+
     comp = sub.add_parser("compare", help="compare completed runs")
     comp.add_argument("--gold", required=True)
     comp.add_argument("--run", action="append", required=True, help="LABEL=PATH, repeatable")
@@ -193,6 +198,24 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     if args.out:
         write_report(report, args.out)
     return EXIT_OK
+
+
+def _cmd_fit(args: argparse.Namespace) -> int:
+    from xwalk.decide.fit import fit_thresholds, render_fit
+    from xwalk.decide.policy import DecisionPolicy
+    from xwalk.evaluate.gold import load_gold_csv
+    from xwalk.ledger import Ledger
+
+    run_dir = Path(args.run)
+    gold = load_gold_csv(args.gold)
+    ledger = Ledger.open(run_dir / "ledger.sqlite")
+    try:
+        results = list(ledger.iter_results(_run_fingerprint_of(run_dir)))
+    finally:
+        ledger.close()
+    report = fit_thresholds(results, gold, base=DecisionPolicy(), target_precision=args.precision)
+    print(render_fit(report))
+    return EXIT_OK if report.recommended is not None else EXIT_ATTENTION
 
 
 def _cmd_compare(args: argparse.Namespace) -> int:
@@ -389,6 +412,7 @@ _DISPATCH: dict[str, Any] = {
     "index": _cmd_index,
     "match": _cmd_match,
     "eval": _cmd_eval,
+    "fit": _cmd_fit,
     "compare": _cmd_compare,
     "ablate": _cmd_ablate,
     "prompts": _cmd_prompts,
