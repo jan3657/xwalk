@@ -79,6 +79,13 @@ class RubricRow(BaseModel):
     example: str = ""
 
 
+class PropertyQuestion(BaseModel):
+    """One identity-bearing property the decider path checks on the chosen candidate."""
+
+    name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    question: str = Field(min_length=1)
+
+
 class PromptSlots(BaseModel):
     entity_noun: str
     target_noun: str
@@ -86,6 +93,8 @@ class PromptSlots(BaseModel):
     rubric: list[RubricRow] = Field(min_length=1)
     hard_rules: list[str] = Field(default_factory=list)
     disambiguation_steps: str = ""
+    # Used only by the decider path; the LLM skeletons ignore it.
+    properties: list[PropertyQuestion] = Field(default_factory=list)
 
     @field_validator("rubric")
     @classmethod
