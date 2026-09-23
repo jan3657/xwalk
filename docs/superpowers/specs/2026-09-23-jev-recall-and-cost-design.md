@@ -279,3 +279,10 @@ Ref_zivila (up to 300 per record) spends. The alternative (per-noul `criteria` h
 `same` / `different`, `runs/jev_eval_v2b`) scored worse on both counts (ratios 0.82 / 1.03 /
 0.85 / 0.83, mean accuracy -0.005), so the committed variant is the plain short question.
 The gate runs cost $0.028 (v2) and $0.030 (v2b); the baseline run cost $0.035.
+
+Ruling: B1 ships as committed (v2). The token condition failed as written on the four samples
+(ratios 0.77 / 1.01 / 0.81 / 0.72) because they screen 0.74 to 10.4 candidates per record,
+where Ref_zivila screens up to 300. At about one candidate per record the per-chunk `rules` block
+roughly cancels the per-question saving (chebi). The at-least-50% tokens-per-record condition is
+re-hosted on Task 9's Ref_zivila re-run, measured against the recorded 62,740 prompt tokens per
+record.
