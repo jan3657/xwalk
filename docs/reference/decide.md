@@ -316,6 +316,7 @@ class QuestionSet:
     @property
     def fingerprint(self) -> str
 
+    def rules_state(self) -> dict[str, Any]
     def screen_question(self, key: str) -> Noul
     def choose_question(self, criteria: Mapping[str, str]) -> Choice
     def rubric_question(self) -> Score
@@ -324,7 +325,8 @@ class QuestionSet:
 
 | Question | Built from | Shape |
 |---|---|---|
-| `screen_question(key)` | `entity_noun`, `target_noun`, `domain_brief`, every `hard_rules` entry | a `Noul` naming `candidates.<key>` explicitly, with `true` / `false` criteria spelling out what each verdict means |
+| `rules_state()` | `entity_noun`, `target_noun`, `domain_brief`, every `hard_rules` entry verbatim, and fixed "same" / "different" definitions | a dict with keys `entity`, `target`, `domain`, `hard_rules`, `same`, `different`, sent once per screen chunk as the state's `rules` |
+| `screen_question(key)` | nothing from the slots | a short `Noul` with no `criteria`, naming `candidates.<key>`, `source`, `rules.entity`, `rules.target`, `rules.domain`, `rules.hard_rules`, `rules.same` and `rules.different` |
 | `choose_question(criteria)` | `entity_noun`, `target_noun`, `disambiguation_steps`, `hard_rules` | a `Choice` over the shortlist plus a `NONE` option described as "no candidate denotes the same entity" |
 | `rubric_question()` | `rubric`, sorted **ascending** by score, each row rendered `"<name>: <when>"` | a `Score`; raises `ValueError` outside 2 to 10 rows |
 | `property_questions()` | `properties` | one `Noul` per entry, named `prop_<name>` |
@@ -333,7 +335,14 @@ Jev is literal, which is why every instruction states the exact condition, names
 fields it refers to in backticks, and says what true and false mean rather than leaving it
 to be inferred.
 
-`fingerprint` digests the whole slots file, so editing a hard rule changes the run
+The screen question is the one asked once per candidate, so it carries no preamble of its
+own: the domain brief, the hard rules and what true and false mean travel once per chunk
+in the state (`rules_state()`), and each question refers to them by path. Repeating them
+per candidate was about two thirds of a Ref_zivila run's tokens. Choose, gate, rubric and property
+questions run once per record and keep their preamble inline.
+
+`fingerprint` digests the whole slots file plus a `questions_version` (2 since the screen
+preamble moved into the state), so editing a hard rule changes the run
 fingerprint and a resumed run re-matches rather than mixing results decided under different
 rules.
 
@@ -392,6 +401,11 @@ class ScreenOutcome:
     def best(self) -> float | None
 
 
+class ScreenFailed(DecisionError):
+    cause: DecisionError  # the chunk's own error
+    usage: Usage  # what the sibling chunks that finished had already cost
+
+
 class Screener:
     def __init__(
         self,
@@ -413,8 +427,29 @@ class Screener:
 This is where the path gets its recall. Candidates are rendered with the job's `candidate`
 template and given opaque keys `C001`, `C002`, … — the same invariant as the LLM path, for
 the same reason. Chunks of `chunk_size` go out concurrently, one `Noul` per candidate named
-`n_<key>`; a chunk whose serialised state would exceed `max_state_chars` is halved until it
-fits, and each split is recorded in `notes` rather than silently dropped.
+`n_<key>`. Each chunk's state is
+
+```json
+{"source": {"fields": {...}, "context": "..."},
+ "rules": {"entity": "...", "target": "...", "domain": "...", "hard_rules": ["..."],
+           "same": "...", "different": "..."},
+ "candidates": {"C001": "...", "C002": "..."}}
+```
+
+with `source` and `rules` built once per record and shared by every chunk.
+
+A chunk whose serialised state (source, rules and candidates together) would exceed
+`max_state_chars` is halved until it fits, and each split is recorded in `notes` rather
+than silently dropped. A single candidate that is over the cap on its own cannot be split
+further: it is sent anyway, and a note (`candidate C… alone exceeds the state cap`) is the
+only warning.
+
+**Failures.** The first chunk to fail cancels the chunks still in flight, since they are
+wasted spend once the record is going to fail. A `DecisionFatalError` propagates as
+itself. Any other `DecisionError` is raised as `ScreenFailed`, which carries the original
+error as `cause` and, as `usage`, what the chunks that had already finished cost, so the
+caller can bill the failed attempt for it. Cancelling `screen()` itself cancels and awaits
+every chunk task, so none is left running.
 
 `shortlist` is the top `shortlist_size` record ids by probability that also clear
 `shortlist_floor`. `best` is the highest probability seen over **all** candidates, not just

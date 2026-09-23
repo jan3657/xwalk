@@ -870,8 +870,13 @@ def test_write_job_refuses_when_nothing_is_recommended(tmp_path, monkeypatch, ca
 
 def test_fit_holdout_prints_the_holdout_line(tmp_path, monkeypatch, capsys):
     from xwalk.cli import main as cli
+    from xwalk.decide import fit as fit_module
 
     out = _confident_decider_run(tmp_path, monkeypatch)
+    # Four gold rows split two and two by a draw salted with the run fingerprint, so any
+    # change to the questions can land every recommendable row in the holdout half. Pin
+    # the split: this test is about the line fit prints, not about which rows fall where.
+    monkeypatch.setattr(fit_module, "holdout_split", lambda ids, seed: (["s1", "s3"], ["s2", "s4"]))
     capsys.readouterr()
     code = cli.main(_fit_args(out, "--job", str(FIXTURES / _JEV_JOB), "--holdout"))
     assert code == cli.EXIT_OK

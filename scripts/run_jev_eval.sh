@@ -3,8 +3,11 @@
 #
 # Idempotent: an index directory that already exists is reused, and a job_jev.yaml
 # that already exists is never regenerated. Needs XWALK_TEST_API_KEY in .env.
+# OUT_DIR (default runs/jev_eval) names the output directory, so a candidate change can be
+# run beside the recorded baseline: OUT_DIR=runs/jev_eval_v2 scripts/run_jev_eval.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+out="${OUT_DIR:-runs/jev_eval}"
 set -a
 # shellcheck disable=SC1091
 source .env
@@ -50,14 +53,14 @@ pathlib.Path(f"examples/{ex}/job_jev.yaml").write_text(yaml.safe_dump(data, sort
 EOF
   fi
   echo "=== $ex ==="
-  if [ ! -d "runs/jev_eval/$ex/index" ]; then
-    .venv/bin/xwalk index --job "$job" --out "runs/jev_eval/$ex/index"
+  if [ ! -d "$out/$ex/index" ]; then
+    .venv/bin/xwalk index --job "$job" --out "$out/$ex/index"
   else
-    echo "index runs/jev_eval/$ex/index already built; reusing"
+    echo "index $out/$ex/index already built; reusing"
   fi
-  .venv/bin/xwalk match --job "$job" --out "runs/jev_eval/$ex" --index "runs/jev_eval/$ex/index" || true
-  .venv/bin/xwalk eval  --run "runs/jev_eval/$ex" --gold "examples/$ex/sample/gold.csv" --out "runs/jev_eval/$ex/eval"
+  .venv/bin/xwalk match --job "$job" --out "$out/$ex" --index "$out/$ex/index" || true
+  .venv/bin/xwalk eval  --run "$out/$ex" --gold "examples/$ex/sample/gold.csv" --out "$out/$ex/eval"
   # fit exits 1 when no grid point reaches the target precision; that is a result, not a crash.
-  { .venv/bin/xwalk fit --run "runs/jev_eval/$ex" --gold "examples/$ex/sample/gold.csv" \
+  { .venv/bin/xwalk fit --run "$out/$ex" --gold "examples/$ex/sample/gold.csv" \
       --job "$job" --precision 0.95 || true; } | tail -3
 done

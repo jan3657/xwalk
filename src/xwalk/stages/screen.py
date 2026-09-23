@@ -89,10 +89,14 @@ class Screener:
         self._max_state_chars = max_state_chars
 
     def _chunks(
-        self, keyed: list[tuple[str, str]], source_state: Mapping[str, Any]
+        self, keyed: list[tuple[str, str]], shared_state: Mapping[str, Any]
     ) -> tuple[list[list[tuple[str, str]]], list[str]]:
-        """Fixed-size chunks, halved while a chunk's state would exceed the size cap."""
-        base = len(json.dumps(source_state, ensure_ascii=False))
+        """Fixed-size chunks, halved while a chunk's state would exceed the size cap.
+
+        `shared_state` is what every chunk carries besides its candidates: the source and
+        the rules.
+        """
+        base = len(json.dumps(shared_state, ensure_ascii=False))
         chunks: list[list[tuple[str, str]]] = []
         notes: list[str] = []
         pending = [keyed[i : i + self._chunk_size] for i in range(0, len(keyed), self._chunk_size)]
@@ -126,11 +130,16 @@ class Screener:
             for i, c in enumerate(candidates, start=1)
         ]
         issued = {key: c.id for (key, _), c in zip(keyed, candidates, strict=True)}
-        source_state = build_source_state(source, context)
-        chunks, notes = self._chunks(keyed, source_state)
+        # The rules go in the state once per chunk; each candidate's question only refers
+        # to them, which is most of what a screen call used to cost.
+        shared = {
+            "source": build_source_state(source, context),
+            "rules": self._questions.rules_state(),
+        }
+        chunks, notes = self._chunks(keyed, shared)
 
         async def one(chunk: list[tuple[str, str]]) -> tuple[dict[str, float], Usage, str]:
-            state = {"source": source_state, "candidates": dict(chunk)}
+            state = {**shared, "candidates": dict(chunk)}
             questions: dict[str, Noul] = {
                 f"n_{key}": self._questions.screen_question(key) for key, _ in chunk
             }
@@ -145,7 +154,13 @@ class Screener:
         tasks = [asyncio.create_task(one(chunk)) for chunk in chunks]
         # FIRST_EXCEPTION, not a plain gather: the moment one chunk fails the rest are
         # wasted spend, and a batch that is about to stop should not keep paying for them.
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        except BaseException:
+            # The screen itself was cancelled (or interrupted): take the chunks down with it
+            # rather than leave them running and billing.
+            await _cancel(tasks)
+            raise
 
         results: list[tuple[dict[str, float], Usage, str]] = []
         first_error: BaseException | None = None

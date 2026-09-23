@@ -256,3 +256,26 @@ The gate (mean >= 0.735, no sample below baseline) failed by 0.005. The whole li
 on chebi. Fuzzy terms added nothing because the misses are ids BM25 never returns at any depth
 (Task 1 found recall flat from k=10 to k=200), not near-miss spellings. Both options ship opt-in,
 the sample jobs keep the defaults, and `test_stem_and_fuzzy_lift_recall` is a strict xfail.
+
+### B1. The screen preamble in the state
+
+The size test (50-candidate Ref_zivila chunk) gives new/old = 26,613 / 92,156 = 0.29 of the
+version-1 request. A live probe on one screen call with the Ref_zivila slots agrees: 40
+candidates cost 14,805 prompt tokens before and 4,346 after (10 candidates: 3,915 / 1,556).
+Live gate, `runs/jev_eval` against `runs/jev_eval_v2` (`scripts/compare_gates.py`):
+
+| Domain | Accuracy before / after | Tokens per record before / after (ratio) |
+|---|---|---|
+| cafeteria_fcd | 0.90 / 0.92 | 4067 / 3124 (0.77) |
+| chebi | 0.58 / 0.58 | 1905 / 1923 (1.01) |
+| ncbi_disease | 0.46 / 0.44 | 6118 / 4953 (0.81) |
+| nlm_gene | 0.58 / 0.58 | 4412 / 3188 (0.72) |
+
+Mean accuracy delta +0.000, every domain within -0.02: accuracy holds. The token condition
+(at least 50% lower) fails. These samples screen few candidates per record (6.6 / 0.7 / 8.3
+/ 10.4 on average), so choose and gate dominate their cost, and on chebi the `rules` block
+costs more than it saves. The saving scales with the candidates screened, which is where
+Ref_zivila (up to 300 per record) spends. The alternative (per-noul `criteria` holding
+`same` / `different`, `runs/jev_eval_v2b`) scored worse on both counts (ratios 0.82 / 1.03 /
+0.85 / 0.83, mean accuracy -0.005), so the committed variant is the plain short question.
+The gate runs cost $0.028 (v2) and $0.030 (v2b); the baseline run cost $0.035.

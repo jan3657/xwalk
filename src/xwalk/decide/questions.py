@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from xwalk.decide.base import Choice, Noul, Score
 from xwalk.fingerprint import hash_value
@@ -16,6 +17,14 @@ from xwalk.prompts.contract import PromptSlots
 NONE_KEY = "NONE"
 _MAX_LEVELS = 10
 _MIN_LEVELS = 2
+_SCREEN_SAME = (
+    "the candidate denotes the same entity as `source`, with every identity-bearing property "
+    "that either side states compatible"
+)
+_SCREEN_DIFFERENT = (
+    "the candidate denotes a different entity, a broader or narrower one, or a related "
+    "concept that is not the same entity"
+)
 
 
 @dataclass(frozen=True)
@@ -33,24 +42,26 @@ class QuestionSet:
     def _rules(self) -> str:
         return " ".join(rule.strip() for rule in self.slots.hard_rules)
 
-    def screen_question(self, key: str) -> Noul:
+    def rules_state(self) -> dict[str, Any]:
+        """The screen's preamble, sent once per chunk in the state rather than per candidate."""
         s = self.slots
+        return {
+            "entity": s.entity_noun,
+            "target": s.target_noun,
+            "domain": s.domain_brief,
+            "hard_rules": list(s.hard_rules),
+            "same": _SCREEN_SAME,
+            "different": _SCREEN_DIFFERENT,
+        }
+
+    def screen_question(self, key: str) -> Noul:
         return Noul(
             instructions=(
-                f"Does `candidates.{key}` denote the same entity as the {s.entity_noun} "
-                f"described in `source`? The candidate is a {s.target_noun}. "
-                f"Domain: {s.domain_brief.strip()} {self._rules()}"
-            ).strip(),
-            criteria={
-                "true": (
-                    f"`candidates.{key}` denotes the same entity as `source`, with every "
-                    "identity-bearing property that either side states compatible"
-                ),
-                "false": (
-                    f"`candidates.{key}` denotes a different entity, a broader or narrower "
-                    "one, or a related concept that is not the same entity"
-                ),
-            },
+                f"Does `candidates.{key}` denote the same entity as the `rules.entity` "
+                "described in `source`? The candidate is a `rules.target` from the domain in "
+                "`rules.domain`. Apply every rule in `rules.hard_rules`. True means "
+                "`rules.same`; false means `rules.different`."
+            )
         )
 
     def choose_question(self, criteria: Mapping[str, str]) -> Choice:
@@ -103,4 +114,4 @@ class QuestionSet:
 
     @property
     def fingerprint(self) -> str:
-        return hash_value({"questions_version": 1, "slots": self.slots.model_dump(mode="json")})
+        return hash_value({"questions_version": 2, "slots": self.slots.model_dump(mode="json")})

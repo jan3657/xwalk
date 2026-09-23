@@ -1,11 +1,18 @@
 import asyncio
+import json
+from pathlib import Path
 
 import pytest
 
-from xwalk.decide.base import DecisionFatalError, DecisionRetryableError, Noul
+from xwalk.decide.base import (
+    DecisionFatalError,
+    DecisionRetryableError,
+    Noul,
+    question_to_dict,
+)
 from xwalk.decide.fake import FakeDecider, overlap_handler
 from xwalk.decide.questions import QuestionSet
-from xwalk.prompts.contract import PromptSlots
+from xwalk.prompts.contract import PromptSlots, load_slots
 from xwalk.records import Candidate, Record, RetrievalHit
 from xwalk.stages.screen import Screener, ScreenFailed, build_source_state
 from xwalk.templates import TemplateSet
@@ -61,6 +68,7 @@ async def test_one_noul_per_candidate_with_keys_numbered_across_chunks():
     assert set(first_questions) == {"n_C001", "n_C002"} and set(second_questions) == {"n_C003"}
     assert all(isinstance(q, Noul) for q in first_questions.values())
     assert first_state["source"] == {"fields": dict(SOURCE.fields), "context": "in blood"}
+    assert first_state["rules"] == QUESTIONS.rules_state() == second_state["rules"]
     assert first_state["candidates"]["C001"] == "ID: T0 Label: glucose"
     assert outcome.issued == {"C001": "T0", "C002": "T1", "C003": "T2"}
     assert outcome.usage.calls == 2
@@ -164,3 +172,135 @@ async def test_a_single_candidate_over_the_cap_is_sent_with_a_note():
     outcome = await screener.screen(SOURCE, "", _cands("glucose"))
     assert outcome.chunks == 1 and len(fake.calls) == 1
     assert any("exceeds" in note for note in outcome.notes)
+
+
+async def test_the_state_cap_counts_the_rules_block():
+    """The rules travel in every chunk's state, so the split must budget for them."""
+    fake = FakeDecider()
+    with_rules = len(json.dumps(QUESTIONS.rules_state()))
+    source = len(json.dumps(build_source_state(SOURCE, "")))
+    # Room for the source and both candidates, but not once the rules are counted too.
+    cap = source + 2 * 40 + with_rules // 2
+    screener = Screener(fake, QUESTIONS, TEMPLATES, chunk_size=2, max_state_chars=cap)
+    outcome = await screener.screen(SOURCE, "", _cands("glucose", "fructose"))
+    assert outcome.chunks == 2
+    assert any("split" in note for note in outcome.notes)
+
+
+async def test_cancelling_the_screen_cancels_the_chunks_in_flight():
+    """A cancelled screen() must not leave its chunk tasks running and billing."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    cancelled: list[str] = []
+
+    class BlockingDecider(FakeDecider):
+        async def decide(self, state, questions):
+            started.set()
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                cancelled.extend(state["candidates"])
+                raise
+            return await super().decide(state, questions)
+
+    screener = Screener(BlockingDecider(), QUESTIONS, TEMPLATES, chunk_size=1)
+    outer = asyncio.create_task(screener.screen(SOURCE, "", _cands("glucose", "fructose")))
+    await started.wait()
+    await asyncio.sleep(0)  # let the second chunk start as well
+    outer.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await outer
+    assert sorted(cancelled) == ["C001", "C002"]
+    leftovers = [
+        task
+        for task in asyncio.all_tasks()
+        if task is not asyncio.current_task() and not task.done()
+    ]
+    assert leftovers == []
+
+
+REF_ZIVILA_SLOTS = Path(__file__).parent.parent / "examples/ref_zivila/jobs/foodon/slots.yaml"
+
+
+def legacy_screen_question(questions: QuestionSet, key: str) -> Noul:
+    """The version-1 screen question, which repeated the whole preamble per candidate."""
+    s = questions.slots
+    rules = " ".join(rule.strip() for rule in s.hard_rules)
+    return Noul(
+        instructions=(
+            f"Does `candidates.{key}` denote the same entity as the {s.entity_noun} "
+            f"described in `source`? The candidate is a {s.target_noun}. "
+            f"Domain: {s.domain_brief.strip()} {rules}"
+        ).strip(),
+        criteria={
+            "true": (
+                f"`candidates.{key}` denotes the same entity as `source`, with every "
+                "identity-bearing property that either side states compatible"
+            ),
+            "false": (
+                f"`candidates.{key}` denotes a different entity, a broader or narrower "
+                "one, or a related concept that is not the same entity"
+            ),
+        },
+    )
+
+
+def _request(state, questions) -> str:
+    """The body the Jev client posts, minus the model name both versions share."""
+    return json.dumps(
+        {
+            "state": state,
+            "questions": {name: question_to_dict(q) for name, q in questions.items()},
+        },
+        ensure_ascii=False,
+    )
+
+
+async def test_a_fifty_candidate_request_is_less_than_half_the_version_one_size():
+    questions = QuestionSet.from_slots(load_slots(REF_ZIVILA_SLOTS))
+    source = Record(
+        id="1042",
+        fields={
+            "mention_en": "Pineapple, canned in light syrup",
+            "name_slo": "Ananas, konzerviran v lahkem sirupu",
+            "fgnm": "Fruit and fruit products",
+        },
+    )
+    context = "English name: Pineapple, canned in light syrup\nFood group: Fruit"
+    candidates = [
+        Candidate(
+            record=Record(
+                id=f"FOODON_0330{i:04d}",
+                fields={
+                    "label": f"pineapple food product {i} (canned, in syrup)",
+                    "synonyms": f"ananas {i}; canned pineapple {i}",
+                    "definition": "A food product made from the fruit of Ananas comosus.",
+                },
+            ),
+            fused_score=1.0 / i,
+            evidence=(),
+        )
+        for i in range(1, 51)
+    ]
+    templates = TemplateSet(
+        query="{{ mention_en }}",
+        context="{{ mention_en }}",
+        doc="{{ label }}",
+        candidate=(
+            "ID: {{ id }}\nLabel: {{ label }}\nSynonyms: {{ synonyms }}\n"
+            "Definition: {{ definition }}"
+        ),
+    )
+    fake = FakeDecider()
+    await Screener(fake, questions, templates, chunk_size=50).screen(source, context, candidates)
+    assert len(fake.calls) == 1
+    state, new_questions = fake.calls[0]
+    new = _request(state, new_questions)
+
+    old_state = {"source": state["source"], "candidates": state["candidates"]}
+    old_questions = {
+        f"n_{key}": legacy_screen_question(questions, key) for key in old_state["candidates"]
+    }
+    old = _request(old_state, old_questions)
+
+    assert len(new) <= 0.45 * len(old), f"new/old = {len(new) / len(old):.3f}"

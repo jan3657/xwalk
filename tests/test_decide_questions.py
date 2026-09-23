@@ -1,9 +1,14 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from xwalk.decide.base import Choice, Noul, Score
 from xwalk.decide.questions import NONE_KEY, QuestionSet
-from xwalk.prompts.contract import PromptSlots
+from xwalk.fingerprint import hash_value
+from xwalk.prompts.contract import PromptSlots, load_slots
+
+REF_ZIVILA_SLOTS = Path(__file__).parent.parent / "examples/ref_zivila/jobs/foodon/slots.yaml"
 
 SLOTS = PromptSlots(
     entity_noun="food record",
@@ -24,15 +29,50 @@ SLOTS = PromptSlots(
 )
 
 
-def test_screen_question_names_the_candidate_and_carries_every_hard_rule():
+def test_screen_question_refers_to_the_shared_rules_instead_of_repeating_them():
     q = QuestionSet.from_slots(SLOTS).screen_question("C007")
     assert isinstance(q, Noul)
     text = str(q.instructions)
-    assert "`candidates.C007`" in text
-    assert "`source`" in text
+    for reference in (
+        "`candidates.C007`",
+        "`source`",
+        "`rules.entity`",
+        "`rules.hard_rules`",
+        "`rules.same`",
+        "`rules.different`",
+    ):
+        assert reference in text
+    assert SLOTS.domain_brief not in text
     for rule in SLOTS.hard_rules:
-        assert rule in text
-    assert q.criteria is not None and set(q.criteria) == {"true", "false"}
+        assert rule not in text
+    assert q.criteria is None
+
+
+def test_rules_state_carries_the_nouns_the_brief_and_every_hard_rule_verbatim():
+    rules = QuestionSet.from_slots(SLOTS).rules_state()
+    assert set(rules) == {"entity", "target", "domain", "hard_rules", "same", "different"}
+    assert rules["entity"] == SLOTS.entity_noun
+    assert rules["target"] == SLOTS.target_noun
+    assert rules["domain"] == SLOTS.domain_brief
+    assert rules["hard_rules"] == SLOTS.hard_rules
+    assert "same entity" in rules["same"]
+    assert "different entity" in rules["different"]
+
+
+def test_rules_state_keeps_the_real_slots_hard_rules_verbatim():
+    slots = load_slots(REF_ZIVILA_SLOTS)
+    rules = QuestionSet.from_slots(slots).rules_state()
+    assert rules["hard_rules"] == list(slots.hard_rules)
+    assert len(rules["hard_rules"]) == 5
+
+
+def test_fingerprint_moves_with_the_questions_version():
+    """Version 2 hoisted the screen preamble; a cached version-1 answer must not be reused."""
+    questions = QuestionSet.from_slots(SLOTS)
+    version_one = hash_value({"questions_version": 1, "slots": SLOTS.model_dump(mode="json")})
+    version_two = hash_value({"questions_version": 2, "slots": SLOTS.model_dump(mode="json")})
+    assert questions.fingerprint != version_one
+    assert questions.fingerprint == version_two
 
 
 def test_choose_question_offers_every_key_plus_none():
