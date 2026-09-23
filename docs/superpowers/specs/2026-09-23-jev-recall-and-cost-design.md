@@ -240,3 +240,19 @@ holdout: accept_at=0.50 property_floor=0.50 choose_at=0.50 accepted=15 correct=1
 The recommendation sits at the bottom of the swept grid (accept_at 0.50), and on the held-out
 half it falls just short of the 0.95 target (14/15). With 39 rows, all of them contested,
 this does not justify changing thresholds. It is a first data point in the real domain.
+
+### A1. BM25 stemming and fuzzy terms
+
+Recall@200 on the four samples (cafeteria_fcd / chebi / ncbi_disease / nlm_gene, mean):
+
+| Configuration | Recall@200 | Mean |
+|---|---|---|
+| baseline (`default`, fuzzy 0) | 0.94 / 0.60 / 0.58 / 0.70 | 0.705 |
+| `analyzer: en_stem` | 0.94 / 0.70 / 0.58 / 0.70 | 0.730 |
+| `fuzzy_distance: 1` | 0.94 / 0.60 / 0.58 / 0.70 | 0.705 |
+| both | 0.94 / 0.70 / 0.58 / 0.70 | 0.730 |
+
+The gate (mean >= 0.735, no sample below baseline) failed by 0.005. The whole lift is stemming
+on chebi. Fuzzy terms added nothing because the misses are ids BM25 never returns at any depth
+(Task 1 found recall flat from k=10 to k=200), not near-miss spellings. Both options ship opt-in,
+the sample jobs keep the defaults, and `test_stem_and_fuzzy_lift_recall` is a strict xfail.

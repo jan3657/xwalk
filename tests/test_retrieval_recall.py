@@ -96,6 +96,13 @@ def test_a_gold_file_with_nothing_to_retrieve_is_an_error(tmp_path: Path) -> Non
         retrieval_recall(job, GoldSet({"cafeteria_fcd-T1": frozenset()}), index_dir=tmp_path)
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "A1 gate: en_stem + fuzzy_distance 1 measured 0.94/0.70/0.58/0.70, "
+        "mean 0.730 < 0.735 (2026-09-23); see spec Results"
+    ),
+)
 def test_stem_and_fuzzy_lift_recall(recall_for: RecallFor) -> None:
     def stem_and_fuzzy(data: dict[str, Any]) -> None:
         data["retrievers"][0]["analyzer"] = "en_stem"
