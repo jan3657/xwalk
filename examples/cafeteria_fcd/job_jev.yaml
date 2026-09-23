@@ -29,6 +29,13 @@ retrievers:
     name: bm25
     limit: 200
     exact_fields: [label, synonyms]
+  # Needs xwalk[dense]: multilingual E5 beside BM25, fused by reciprocal rank (A2).
+  - kind: dense
+    name: e5
+    model: intfloat/multilingual-e5-small
+    limit: 150
+    query_prefix: "query: "
+    doc_prefix: "passage: "
 
 decider:
   kind: jev

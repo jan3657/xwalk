@@ -30,6 +30,12 @@ retrievers:
   exact_fields:
   - label
   - synonyms
+- kind: dense
+  name: e5
+  model: intfloat/multilingual-e5-small
+  limit: 150
+  query_prefix: 'query: '
+  doc_prefix: 'passage: '
 prompts:
   slots: slots.yaml
 policy:

@@ -286,3 +286,28 @@ where Ref_zivila screens up to 300. At about one candidate per record the per-ch
 roughly cancels the per-question saving (chebi). The at-least-50% tokens-per-record condition is
 re-hosted on Task 9's Ref_zivila re-run, measured against the recorded 62,740 prompt tokens per
 record.
+
+### A2. Dense multilingual retrieval
+
+`intfloat/multilingual-e5-small` (revision 614241f6) as a second retriever (`limit: 150`,
+`query: ` / `passage: ` prefixes), fused with BM25 by reciprocal rank; sentence-transformers
+6.1.0, torch 2.14.0+cu130, faiss-cpu 1.15.1. English gate, recall@200 against the shipped BM25
+(A1 not adopted): 0.94 / 0.60 / 0.58 / 0.70 (mean 0.705) became 1.00 / 1.00 / 0.76 / 0.92
+(mean 0.920, +0.215): passed, and the four sample jobs ship the block. Slovenian gate, on
+`examples/ref_zivila/gold_slo_mini.csv` (ten rows with no English name; ids chosen by a person
+from FoodOn labels, not from a run), recall@50 against all 28,372 FoodOn records: fused 0.20,
+dense-only 0.20, BM25-only 0.00. Failed (needs >= 0.7); `multilingual-e5-large` probed at 0.30.
+E5 does not know Slovenian food words ("Kosmulja", "Som", "Pšenična moka"), so the Ref_zivila
+job keeps its dense block commented out and `test_dense_recovers_slovenian_only_rows` is a
+strict xfail. Live, `runs/jev_eval_v2` against `runs/jev_eval_v2_dense` (a baseline for A3/A4):
+
+| Domain | Accuracy v2 / v2_dense | Tokens per record v2 / v2_dense (ratio) |
+|---|---|---|
+| cafeteria_fcd | 0.92 / 0.92 | 3124 / 21193 (6.78) |
+| chebi | 0.58 / 0.62 | 1923 / 27691 (14.40) |
+| ncbi_disease | 0.44 / 0.58 | 4953 / 30736 (6.21) |
+| nlm_gene | 0.58 / 0.80 | 3188 / 24945 (7.83) |
+
+Mean accuracy +0.100, accepted precision 97.6-100%. Dense always returns its full 150, so the
+samples now screen about 150 candidates per record where BM25 alone gave 0.7 to 10.4: tokens
+rise 6 to 14 times, and the run cost $0.22 (about $0.001 per record).

@@ -68,7 +68,11 @@ class SentenceTransformerEncoder:
 
     @property
     def dimension(self) -> int:
-        return int(self._model.get_sentence_embedding_dimension())
+        # sentence-transformers 6 renamed the method and warns on the old name.
+        get = getattr(self._model, "get_embedding_dimension", None)
+        if get is None:
+            get = self._model.get_sentence_embedding_dimension
+        return int(get())
 
     def encode(self, texts: Sequence[str], *, is_query: bool = False) -> list[list[float]]:
         prefix = self._query_prefix if is_query else self._doc_prefix
