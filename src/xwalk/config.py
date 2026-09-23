@@ -123,6 +123,8 @@ class RetrieverSpec(BaseModel):
     limit: int = 20
     # bm25 only
     exact_fields: list[str] | None = None
+    analyzer: Literal["default", "en_stem"] = "default"
+    fuzzy_distance: int = Field(default=0, ge=0)
     # dense only
     model: str | None = None
     device: str | None = None
@@ -285,6 +287,8 @@ class JobSpec(BaseModel):
                             else ("label", "synonyms")
                         ),
                         default_limit=spec.limit,
+                        analyzer=spec.analyzer,
+                        fuzzy_distance=spec.fuzzy_distance,
                     )
                 )
             else:

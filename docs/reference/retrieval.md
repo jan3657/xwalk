@@ -78,6 +78,8 @@ def build(
     name: str = "bm25",
     exact_fields: Sequence[str] = (),
     default_limit: int = 20,
+    analyzer: str = "default",
+    fuzzy_distance: int = 0,
     writer_heap_bytes: int = 50_000_000,
     writer_threads: int = 1,
 ) -> BM25Retriever
@@ -85,7 +87,14 @@ def build(
 
 ```python
 @classmethod
-def open(cls, index_dir: str | Path, *, name: str | None = None) -> BM25Retriever
+def open(
+    cls,
+    index_dir: str | Path,
+    *,
+    name: str | None = None,
+    analyzer: str | None = None,
+    fuzzy_distance: int | None = None,
+) -> BM25Retriever
 ```
 
 `build` renders each record through `templates.render_doc` and indexes it. Records that
@@ -95,16 +104,21 @@ fields your source does not produce.
 
 `open` reopens a built index without re-reading the records; `name` overrides the one
 recorded at build time. Opening a directory without `xwalk_meta.json` raises
-`FileNotFoundError` telling you to build first.
+`FileNotFoundError` telling you to build first. `analyzer` and `fuzzy_distance`, when
+passed, must match what the index was built with, or `open` raises `ValueError` naming
+both values; left as `None`, the recorded ones are used. An index whose metadata predates
+these options is treated as `default` / `0`.
 
 ### What is written to disk
 
 `index_dir` holds Tantivy's own index — its `meta.json` plus segment files, all managed
 by Tantivy — and one file xwalk adds: `xwalk_meta.json`, recording `engine`
 (`"tantivy-bm25"`), `name`, `fingerprint`, `exact_fields`, `default_limit`,
-`doc_count`, and `empty_doc_count`. The fingerprint digests the engine, the `doc`
-template, `exact_fields`, and the sorted per-record hashes, so any change to content or
-configuration changes the run fingerprint.
+`doc_count`, `empty_doc_count`, `analyzer`, and `fuzzy_distance`. The fingerprint digests
+the engine, the `doc` template, `exact_fields`, the sorted per-record hashes, and
+`analyzer` and `fuzzy_distance` when they differ from their defaults, so any change to
+content or configuration changes the run fingerprint while a default index keeps the
+fingerprint it had before those options existed.
 
 ### `exact_fields`
 
@@ -117,6 +131,18 @@ the whole field value is one term, so `"glucose"` matches the label `glucose` bu
 `text` query under a boost of **10.0**, comfortably above any BM25 score the tokenised
 `text` field produces on a collection of this shape. Omit `exact_fields` for plain
 BM25.
+
+### `analyzer` and `fuzzy_distance`
+
+Both are off by default. `analyzer` picks the tokenizer for the `text` field (the `exact`
+field is always `raw`): `default` is Tantivy's own (split, lowercase); `en_stem` is a
+simple tokenizer followed by lowercase, ASCII folding and the English stemmer, so
+`anesthetics` finds `anesthetic`. `fuzzy_distance > 0` adds, for each distinct
+whitespace-separated query term of five or more characters, a Levenshtein fuzzy term
+query on `text` (transpositions cost 1) boosted by **0.5**, OR-ed with the text query,
+so `anaesthetic` also finds `anesthetic`. Fuzzy terms bypass the query parser, so each is
+lowercased and, under `en_stem`, run through the same analyzer, landing in the index's
+term space (`anesthet`, not `anesthetics`).
 
 ### `sanitise_query`
 

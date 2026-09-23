@@ -171,3 +171,99 @@ def test_bm25_satisfies_the_retriever_protocol(retriever):
     from xwalk.retrieval.base import Retriever
 
     assert isinstance(retriever, Retriever)
+
+
+SPELLINGS = [
+    ("A1", "anesthetic"),
+    ("A2", "anaesthetic agents"),
+    ("G1", "glucose"),
+]
+LABEL_ONLY = TemplateSet(query="{{ mention }}", context="", doc="{{ label }}", candidate="")
+
+
+def _spellings_index(path, **options):
+    from xwalk.records import Record
+
+    records = [Record(id=rid, fields={"label": label}) for rid, label in SPELLINGS]
+    return BM25Retriever.build(records, LABEL_ONLY, path, **options)
+
+
+async def _ids(retriever, text):
+    return {h.record_id for h in await retriever.search(SearchRequest(text=text, limit=10))}
+
+
+async def test_the_default_analyzer_does_not_stem(tmp_path):
+    assert await _ids(_spellings_index(tmp_path / "idx"), "anesthetics") == set()
+
+
+async def test_the_en_stem_analyzer_matches_an_inflected_query(tmp_path):
+    retriever = _spellings_index(tmp_path / "idx", analyzer="en_stem")
+    assert await _ids(retriever, "anesthetics") == {"A1"}
+
+
+async def test_fuzzy_terms_match_both_spellings(tmp_path):
+    retriever = _spellings_index(tmp_path / "idx", fuzzy_distance=1)
+    assert await _ids(retriever, "anaesthetic") == {"A1", "A2"}
+
+
+def test_fingerprint_changes_with_the_analyzer_and_fuzzy_distance(tmp_path):
+    fingerprints = {
+        _spellings_index(tmp_path / "a").fingerprint,
+        _spellings_index(tmp_path / "b", analyzer="en_stem").fingerprint,
+        _spellings_index(tmp_path / "c", fuzzy_distance=1).fingerprint,
+    }
+    assert len(fingerprints) == 3
+
+
+async def test_open_restores_the_analyzer_and_fuzzy_distance(tmp_path):
+    """Both on: "anesthetics" stems to "anesthet", and its fuzzy clause must be stemmed
+    too to reach "anaesthet" -- the raw word is three edits away from either stem."""
+    _spellings_index(tmp_path / "idx", analyzer="en_stem", fuzzy_distance=1)
+    reopened = BM25Retriever.open(tmp_path / "idx")
+    assert await _ids(reopened, "anesthetics") == {"A1", "A2"}
+    assert await _ids(reopened, "glucose") == {"G1"}
+
+
+def test_opening_with_a_different_analyzer_is_refused(tmp_path):
+    _spellings_index(tmp_path / "idx", analyzer="en_stem")
+    with pytest.raises(ValueError, match="analyzer 'en_stem'.*'default'"):
+        BM25Retriever.open(tmp_path / "idx", analyzer="default")
+
+
+def test_opening_with_a_different_fuzzy_distance_is_refused(tmp_path):
+    _spellings_index(tmp_path / "idx")
+    with pytest.raises(ValueError, match="fuzzy_distance 0.*1"):
+        BM25Retriever.open(tmp_path / "idx", fuzzy_distance=1)
+
+
+async def test_an_index_without_the_new_metadata_opens_with_the_defaults(tmp_path):
+    """Indexes built before the analyzer option existed carry no `analyzer` or
+    `fuzzy_distance` key; they are default-tokenised, non-fuzzy indexes."""
+    import json
+
+    built = _spellings_index(tmp_path / "idx")
+    meta_path = tmp_path / "idx" / "xwalk_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    del meta["analyzer"], meta["fuzzy_distance"]
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+    reopened = BM25Retriever.open(tmp_path / "idx", analyzer="default", fuzzy_distance=0)
+    assert reopened.fingerprint == built.fingerprint
+    assert await _ids(reopened, "anesthetic") == {"A1"}
+
+
+def test_the_default_fingerprint_is_unchanged_by_the_new_options(tmp_path):
+    """Pinned: defaults must not re-key existing indexes or cached runs."""
+    from xwalk.fingerprint import hash_record, hash_value
+    from xwalk.records import Record
+
+    records = [Record(id=rid, fields={"label": label}) for rid, label in SPELLINGS]
+    expected = hash_value(
+        {
+            "engine": "tantivy-bm25",
+            "doc_template": LABEL_ONLY.doc,
+            "exact_fields": [],
+            "records": sorted(hash_record(r) for r in records),
+        }
+    )
+    assert _spellings_index(tmp_path / "idx").fingerprint == expected

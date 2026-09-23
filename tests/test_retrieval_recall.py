@@ -94,3 +94,15 @@ def test_a_gold_file_with_nothing_to_retrieve_is_an_error(tmp_path: Path) -> Non
     job = load_job(EXAMPLES / "cafeteria_fcd" / "job_jev.yaml")
     with pytest.raises(ValueError, match="no source record has a gold id"):
         retrieval_recall(job, GoldSet({"cafeteria_fcd-T1": frozenset()}), index_dir=tmp_path)
+
+
+def test_stem_and_fuzzy_lift_recall(recall_for: RecallFor) -> None:
+    def stem_and_fuzzy(data: dict[str, Any]) -> None:
+        data["retrievers"][0]["analyzer"] = "en_stem"
+        data["retrievers"][0]["fuzzy_distance"] = 1
+
+    recalls = {ex: recall_for(ex, stem_and_fuzzy) for ex in sorted(SAMPLES)}
+    print(f"recall@200 with en_stem + fuzzy 1: {recalls}")
+    for ex, recall in recalls.items():
+        assert recall >= SAMPLES[ex] - 0.0, f"{ex}: {recall:.3f} < {SAMPLES[ex]}"
+    assert sum(recalls.values()) / len(recalls) >= 0.705 + 0.03, recalls

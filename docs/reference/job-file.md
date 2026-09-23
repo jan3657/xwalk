@@ -167,6 +167,8 @@ Both take the same shape. Several fields apply only to some `kind` values.
 | `name` | `str \| None` | no | `None` | both | retriever name and index subdirectory |
 | `limit` | `int` | no | `20` | both | this retriever's retrieval depth |
 | `exact_fields` | `list[str] \| None` | no | `None` → `["label", "synonyms"]` | bm25 | fields whose whole-string value gets a large boost |
+| `analyzer` | `default \| en_stem` | no | `default` | bm25 | tokenizer for the text field; `en_stem` adds ASCII folding and English stemming |
+| `fuzzy_distance` | `int` | no | `0` | bm25 | edit distance for extra fuzzy clauses on query terms of 5+ characters; `0` is off |
 | `model` | `str \| None` | required for dense | `None` | dense | sentence-transformers model name |
 | `device` | `str \| None` | no | `None` | dense | torch device |
 | `query_prefix` | `str` | no | `""` | dense | prepended when encoding a query |
