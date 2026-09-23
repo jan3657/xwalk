@@ -732,3 +732,150 @@ def test_fit_sweeps_from_the_jobs_own_decision_policy(tmp_path, monkeypatch):
     # The fixture sets chunk_size: 2 and screen_floor: 0.1; the defaults are 50 and 0.30.
     assert base.chunk_size == 2
     assert base.screen_floor == 0.1
+
+
+def _confident_decider_run(tmp_path, monkeypatch):
+    """A decider run whose screen is sure of every overlapping candidate, so fit can
+    recommend something: the plain overlap scores never reach the sweep's accept grid."""
+    from xwalk.cli import main as cli
+    from xwalk.decide.base import NoulAnswer
+    from xwalk.decide.fake import FakeDecider, overlap_handler
+
+    def confident(state, questions):
+        answers = overlap_handler(state, questions)
+        return {
+            name: NoulAnswer(noul=0.95)
+            if isinstance(answer, NoulAnswer) and answer.noul > 0
+            else answer
+            for name, answer in answers.items()
+        }
+
+    monkeypatch.setattr(cli, "_build_decider", lambda job: FakeDecider(confident))
+    out = tmp_path / "run"
+    cli.main(["match", "--job", str(FIXTURES / _JEV_JOB), "--out", str(out)])
+    return out
+
+
+def _fit_args(out, *extra):
+    return [
+        "fit",
+        "--run",
+        str(out),
+        "--gold",
+        str(FIXTURES / "gold_tiny.csv"),
+        "--precision",
+        "0.5",
+        *extra,
+    ]
+
+
+def test_write_job_round_trips(tmp_path, monkeypatch, capsys):
+    import yaml
+
+    from xwalk.cli import main as cli
+    from xwalk.config import load_job
+    from xwalk.decide.fit import fit_thresholds
+    from xwalk.evaluate.gold import load_gold_csv
+    from xwalk.ledger import Ledger
+
+    out = _confident_decider_run(tmp_path, monkeypatch)
+    written = tmp_path / "fitted.yaml"
+    code = cli.main(_fit_args(out, "--job", str(FIXTURES / _JEV_JOB), "--write-job", str(written)))
+    assert code == cli.EXIT_OK
+
+    job = load_job(FIXTURES / _JEV_JOB)
+    ledger = Ledger.open(out / "ledger.sqlite")
+    try:
+        results = list(ledger.iter_results(cli._run_fingerprint_of(out)))
+    finally:
+        ledger.close()
+    report = fit_thresholds(
+        results,
+        load_gold_csv(FIXTURES / "gold_tiny.csv"),
+        base=job.build_decision_policy(),
+        target_precision=0.5,
+    )
+    assert report.recommended is not None
+
+    fitted = load_job(written).build_decision_policy()
+    assert fitted.accept_at == report.recommended.accept_at
+    assert fitted.property_floor == report.recommended.property_floor
+    assert fitted.choose_at == report.recommended.choose_at
+    # Everything else is the original job's, in the original order.
+    original = yaml.safe_load((FIXTURES / _JEV_JOB).read_text(encoding="utf-8"))
+    copy = yaml.safe_load(written.read_text(encoding="utf-8"))
+    assert list(copy) == list(original)
+    assert {k: v for k, v in copy.items() if k != "policy"} == {
+        k: v for k, v in original.items() if k != "policy"
+    }
+    assert copy["policy"]["chunk_size"] == 2
+    assert copy["policy"]["screen_floor"] == 0.1
+
+
+def test_write_job_creates_a_missing_policy_block(tmp_path):
+    import yaml
+
+    from xwalk.cli import main as cli
+    from xwalk.config import load_job
+    from xwalk.decide.fit import FitPoint
+
+    data = yaml.safe_load((FIXTURES / _JEV_JOB).read_text(encoding="utf-8"))
+    del data["policy"]
+    bare = tmp_path / "bare.yaml"
+    bare.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    point = FitPoint(
+        accept_at=0.8,
+        property_floor=0.3,
+        choose_at=0.7,
+        accepted=1,
+        correct=1,
+        precision=1.0,
+        coverage=0.5,
+        near_threshold=0,
+    )
+    written = tmp_path / "fitted.yaml"
+    cli._write_fitted_job(str(bare), str(written), point)
+    copy = yaml.safe_load(written.read_text(encoding="utf-8"))
+    assert copy["policy"] == {"accept_at": 0.8, "property_floor": 0.3, "choose_at": 0.7}
+    assert list(copy)[:-1] == list(data)
+    fitted = load_job(written).build_decision_policy()
+    assert (fitted.accept_at, fitted.property_floor, fitted.choose_at) == (0.8, 0.3, 0.7)
+
+
+def test_write_job_requires_a_job(tmp_path, monkeypatch, capsys):
+    from xwalk.cli import main as cli
+
+    out = _decider_run(tmp_path, monkeypatch)
+    capsys.readouterr()
+    written = tmp_path / "fitted.yaml"
+    code = cli.main(_fit_args(out, "--write-job", str(written)))
+    assert code == cli.EXIT_USAGE
+    assert "--write-job needs --job" in capsys.readouterr().err
+    assert not written.exists()
+
+
+def test_write_job_refuses_when_nothing_is_recommended(tmp_path, monkeypatch, capsys):
+    from xwalk.cli import main as cli
+
+    out = _decider_run(tmp_path, monkeypatch)
+    capsys.readouterr()
+    written = tmp_path / "fitted.yaml"
+    args = _fit_args(out, "--job", str(FIXTURES / _JEV_JOB), "--write-job", str(written))
+    args[args.index("0.5")] = "1.01"
+    code = cli.main(args)
+    assert code == cli.EXIT_ATTENTION
+    assert "nothing to write" in capsys.readouterr().err
+    assert not written.exists()
+
+
+def test_fit_holdout_prints_the_holdout_line(tmp_path, monkeypatch, capsys):
+    from xwalk.cli import main as cli
+
+    out = _decider_run(tmp_path, monkeypatch)
+    capsys.readouterr()
+    code = cli.main(_fit_args(out, "--job", str(FIXTURES / _JEV_JOB), "--holdout"))
+    assert code in (cli.EXIT_OK, cli.EXIT_ATTENTION)
+    lines = capsys.readouterr().out.splitlines()
+    assert sum(1 for line in lines if line.startswith("holdout:")) == 1
+    (line,) = [line for line in lines if line.startswith("holdout:")]
+    assert line.startswith(("holdout: accepted=", "holdout: no holdout point"))

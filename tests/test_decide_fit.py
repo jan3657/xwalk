@@ -1,4 +1,4 @@
-from xwalk.decide.fit import fit_thresholds, render_fit
+from xwalk.decide.fit import fit_holdout, fit_thresholds, holdout_split, render_fit
 from xwalk.decide.policy import DecisionPolicy
 from xwalk.evaluate.gold import GoldSet
 from xwalk.records import Attempt, DecisionReason, MatchResult, MatchStatus, Usage
@@ -92,7 +92,13 @@ def test_a_lower_target_admits_the_wrong_one():
 
 def test_near_threshold_counts_rows_inside_the_margin():
     report = fit_thresholds(
-        RESULTS, GOLD, base=DecisionPolicy(), accept_grid=(0.9,), property_grid=(0.0,), margin=0.06
+        RESULTS,
+        GOLD,
+        base=DecisionPolicy(),
+        accept_grid=(0.9,),
+        property_grid=(0.0,),
+        choose_grid=(0.5,),
+        margin=0.06,
     )
     (point,) = report.points
     assert point.near_threshold == 2  # 0.95 and 0.90
@@ -105,3 +111,90 @@ def test_render_mentions_the_recommendation_or_its_absence():
     assert "no grid point" in render_fit(
         fit_thresholds(RESULTS, GOLD, base=DecisionPolicy(), target_precision=1.01)
     )
+
+
+def test_the_sweep_varies_choose_at():
+    report = fit_thresholds(
+        RESULTS, GOLD, base=DecisionPolicy(), accept_grid=(0.9,), property_grid=(0.0,)
+    )
+    assert sorted(p.choose_at for p in report.points) == [0.3, 0.5, 0.7]
+    # p_choice is 0.8 on every row, so a choose_at above it accepts nothing.
+    strict = fit_thresholds(
+        RESULTS,
+        GOLD,
+        base=DecisionPolicy(),
+        accept_grid=(0.5,),
+        property_grid=(0.0,),
+        choose_grid=(0.9,),
+    )
+    assert [p.accepted for p in strict.points if p.choose_at == 0.9] == [0]
+
+
+def test_the_runs_own_choose_at_is_always_swept():
+    report = fit_thresholds(
+        RESULTS,
+        GOLD,
+        base=DecisionPolicy(choose_at=0.6),
+        accept_grid=(0.9,),
+        property_grid=(0.0,),
+    )
+    assert sorted(p.choose_at for p in report.points) == [0.3, 0.5, 0.6, 0.7]
+
+
+def test_holdout_split_is_deterministic_and_disjoint():
+    ids = [f"id{i}" for i in range(17)]
+    dev, holdout = holdout_split(ids, "fp-abc")
+    again = holdout_split(list(reversed(ids)), "fp-abc")
+    assert (dev, holdout) == again
+    assert not set(dev) & set(holdout)
+    assert set(dev) | set(holdout) == set(ids)
+    assert abs(len(dev) - len(holdout)) <= 1
+
+
+def _sixteen():
+    """The four synthetic rows above, each pattern repeated four times under fresh ids."""
+    patterns = [("T1", 0.95, 0.9, True), ("T2", 0.90, 0.9, True), ("T9", 0.70, 0.9, False)]
+    patterns.append(("T4", 0.60, 0.2, True))
+    results, gold, kind = [], {}, {}
+    for i in range(16):
+        matched, screen, prop, right = patterns[i % 4]
+        sid = f"r{i}"
+        results.append(_result(sid, matched, screen, prop=prop))
+        gold[sid] = frozenset({matched if right else "T3"})
+        kind[sid] = i % 4
+    return results, GoldSet(gold), kind
+
+
+def test_holdout_reports_the_recommended_point_on_unseen_rows():
+    results, gold, kind = _sixteen()
+    report, point = fit_holdout(
+        results, gold, base=DecisionPolicy(), seed_fingerprint="fp", target_precision=1.0
+    )
+    _, holdout = holdout_split([r.source_id for r in results], "fp")
+    assert report.labelled == 16 - len(holdout)  # the report is fitted on dev only
+    r = report.recommended
+    assert r is not None
+    # At precision 1.0 the wrong row (0.70) must be refused, so accept_at > 0.70 and only
+    # the 0.95 and 0.90 patterns are accepted. Count them by hand over holdout ids only.
+    assert 0.70 < r.accept_at <= 0.90
+    expected = sum(1 for sid in holdout if kind[sid] in (0, 1))
+    assert expected < 8  # all 16 rows would give 8: the count really is holdout-only
+    assert point is not None
+    assert point.accepted == expected
+    assert point.correct == expected
+    assert point.coverage == expected / len(holdout)
+    assert point.precision == (1.0 if expected else None)
+    assert (point.accept_at, point.property_floor, point.choose_at) == (
+        r.accept_at,
+        r.property_floor,
+        r.choose_at,
+    )
+
+
+def test_holdout_has_no_point_without_a_recommendation():
+    results, gold, _ = _sixteen()
+    report, point = fit_holdout(
+        results, gold, base=DecisionPolicy(), seed_fingerprint="fp", target_precision=1.01
+    )
+    assert report.recommended is None
+    assert point is None

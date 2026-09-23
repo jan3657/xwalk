@@ -26,6 +26,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from xwalk.batch import MatcherLike
     from xwalk.config import JobSpec
     from xwalk.decide.base import DecisionClient
+    from xwalk.decide.fit import FitPoint
     from xwalk.evaluate.ablate import MatcherConfig
     from xwalk.matcher import Matcher
     from xwalk.prompts.contract import PromptSet
@@ -73,6 +74,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--job",
         default=None,
         help="the job the run used, so the gates that are not swept match the run",
+    )
+    fit.add_argument(
+        "--holdout",
+        action="store_true",
+        help="fit on half the labelled rows and report the recommendation on the other half",
+    )
+    fit.add_argument(
+        "--write-job",
+        default=None,
+        metavar="OUT.yaml",
+        help="write a copy of --job with the recommended thresholds in its policy: block",
     )
 
     comp = sub.add_parser("compare", help="compare completed runs")
@@ -207,16 +219,35 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _write_fitted_job(job_path: str, out_path: str, point: FitPoint) -> None:
+    """Copy the job file with the fitted thresholds set; every other key is left as it was."""
+    import yaml
+
+    data = yaml.safe_load(Path(job_path).read_text(encoding="utf-8"))
+    policy = data.get("policy") or {}
+    policy["accept_at"] = point.accept_at
+    policy["property_floor"] = point.property_floor
+    policy["choose_at"] = point.choose_at
+    data["policy"] = policy
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
 def _cmd_fit(args: argparse.Namespace) -> int:
     from xwalk.config import load_job
-    from xwalk.decide.fit import fit_thresholds, render_fit
+    from xwalk.decide import fit as fit_module
     from xwalk.decide.policy import DecisionPolicy
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.ledger import Ledger
 
-    # Only accept_at and property_floor are swept. Every other gate -- screen_floor,
-    # choose_at, none_at, rubric_floor, shortlist_floor -- has to be the one the run
-    # actually used, or the fitted pair is tuned against a policy nobody ran.
+    if args.write_job is not None and args.job is None:
+        print("error: --write-job needs --job, the job file to copy", file=sys.stderr)
+        return EXIT_USAGE
+
+    # Only accept_at, property_floor and choose_at are swept. Every other gate --
+    # screen_floor, none_at, rubric_floor, shortlist_floor -- has to be the one the run
+    # actually used, or the fitted thresholds are tuned against a policy nobody ran.
     if args.job is not None:
         job = load_job(args.job)
         if job.decider is None:
@@ -229,12 +260,37 @@ def _cmd_fit(args: argparse.Namespace) -> int:
     run_dir = Path(args.run)
     gold = load_gold_csv(args.gold)
     ledger = Ledger.open(run_dir / "ledger.sqlite")
+    fingerprint = _run_fingerprint_of(run_dir)
     try:
-        results = list(ledger.iter_results(_run_fingerprint_of(run_dir)))
+        results = list(ledger.iter_results(fingerprint))
     finally:
         ledger.close()
-    report = fit_thresholds(results, gold, base=base, target_precision=args.precision)
-    print(render_fit(report))
+    report = fit_module.fit_thresholds(results, gold, base=base, target_precision=args.precision)
+    print(fit_module.render_fit(report))
+    if args.holdout:
+        _, point = fit_module.fit_holdout(
+            results,
+            gold,
+            base=base,
+            seed_fingerprint=fingerprint,
+            target_precision=args.precision,
+        )
+        print(fit_module.render_holdout(point))
+    if args.write_job is not None:
+        if report.recommended is None:
+            print(
+                f"error: no recommendation, so nothing to write to {args.write_job}",
+                file=sys.stderr,
+            )
+            return EXIT_ATTENTION
+        _write_fitted_job(args.job, args.write_job, report.recommended)
+        print(f"wrote {args.write_job}")
+        if Path(args.write_job).resolve().parent != Path(args.job).resolve().parent:
+            print(
+                "note: the copy is in another directory; relative paths in it now resolve "
+                "from there",
+                file=sys.stderr,
+            )
     return EXIT_OK if report.recommended is not None else EXIT_ATTENTION
 
 
