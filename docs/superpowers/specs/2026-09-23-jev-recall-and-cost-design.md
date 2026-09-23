@@ -213,3 +213,30 @@ one Ref_zivila re-run after B1 and A2 about $2. Total under $3.
 Self-consistency for jitter; hierarchy descent as a retrieval strategy (A4 is a single
 hop, not a walk); multi-label output; question wording changes (the numbers say not
 to spend effort there).
+
+## Results
+
+### C2. Ref_zivila gold
+
+`scripts/adjudication_to_gold.py` turns the 40-row adjudicated sample
+(`2026-09-22-jev-adjudicated-sample.csv`) into `examples/ref_zivila/gold_adjudicated.csv`:
+39 labelled rows (both_acceptable 21, jev 14, qwen 4; the 1 both_wrong row is left
+unlabelled). This is a biased sample: it covers only Qwen/Jev disagreements from the
+2026-09-22 run. A blank id in the sample means that decider answered "no match". Two `jev`
+rows pick Jev's no-match, so their gold label is an explicit no-match. Eleven
+`both_acceptable` rows have one side blank and keep only the named id, because a gold set
+cannot express "this id or no match". Only 10 of the 21 carry two ids.
+
+```
+xwalk fit --run runs/ref_zivila/foodon_jev --gold examples/ref_zivila/gold_adjudicated.csv \
+  --job examples/ref_zivila/jobs/foodon/job_jev.yaml --holdout --precision 0.95
+```
+
+```
+recommended: accept_at=0.50 property_floor=0.50 choose_at=0.50 (29/30 correct, coverage 0.77, 2 rows within the jitter margin of accept_at)
+holdout: accept_at=0.50 property_floor=0.50 choose_at=0.50 accepted=15 correct=14 precision=0.93 coverage=0.79
+```
+
+The recommendation sits at the bottom of the swept grid (accept_at 0.50), and on the held-out
+half it falls just short of the 0.95 target (14/15). With 39 rows, all of them contested,
+this does not justify changing thresholds. It is a first data point in the real domain.
