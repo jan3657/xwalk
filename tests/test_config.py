@@ -107,6 +107,15 @@ def test_a_dense_retriever_without_a_model_is_rejected(tmp_path):
         load_job(path)
 
 
+@pytest.mark.parametrize("distance", [-1, 3])
+def test_a_fuzzy_distance_outside_0_to_2_is_rejected(tmp_path, distance):
+    """Tantivy raises on every fuzzy search above distance 2; refuse it at load time."""
+    retriever = {"kind": "bm25", "fuzzy_distance": distance}
+    path = _job_copy(tmp_path, lambda d: d.__setitem__("retrievers", [retriever]))
+    with pytest.raises(ValueError, match="fuzzy_distance"):
+        load_job(path)
+
+
 def test_relative_paths_resolve_against_the_job_file(tmp_path):
     (tmp_path / "targets.csv").write_text(
         (FIXTURES / "targets_tiny.csv").read_text(encoding="utf-8"), encoding="utf-8"

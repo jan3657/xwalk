@@ -267,3 +267,16 @@ def test_the_default_fingerprint_is_unchanged_by_the_new_options(tmp_path):
         }
     )
     assert _spellings_index(tmp_path / "idx").fingerprint == expected
+
+
+@pytest.mark.parametrize("distance", [-1, 3])
+def test_a_fuzzy_distance_outside_0_to_2_is_refused_at_build(tmp_path, distance):
+    """Tantivy accepts the index but raises on every fuzzy search above distance 2."""
+    with pytest.raises(ValueError, match="fuzzy_distance must be between 0 and 2"):
+        _spellings_index(tmp_path / "idx", fuzzy_distance=distance)
+    assert not (tmp_path / "idx").exists()
+
+
+async def test_a_query_the_parser_rejects_falls_back_to_plain_words(retriever):
+    """An apostrophe survives `sanitise_query` and trips tantivy's parser."""
+    assert isinstance(await retriever.search(SearchRequest(text="sodium's", limit=5)), list)

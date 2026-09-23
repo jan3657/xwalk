@@ -135,9 +135,10 @@ BM25.
 ### `analyzer` and `fuzzy_distance`
 
 Both are off by default. `analyzer` picks the tokenizer for the `text` field (the `exact`
-field is always `raw`): `default` is Tantivy's own (split, lowercase); `en_stem` is a
+field is always `raw`): `default` is Tantivy's own (split, drop tokens over 40 characters, lowercase); `en_stem` is a
 simple tokenizer followed by lowercase, ASCII folding and the English stemmer, so
-`anesthetics` finds `anesthetic`. `fuzzy_distance > 0` adds, for each distinct
+`anesthetics` finds `anesthetic`. `fuzzy_distance` is 0 to 2 (Tantivy's Levenshtein limit;
+`build` refuses anything else). Above 0 it adds, for each distinct
 whitespace-separated query term of five or more characters, a Levenshtein fuzzy term
 query on `text` (transpositions cost 1) boosted by **0.5**, OR-ed with the text query,
 so `anaesthetic` also finds `anesthetic`. Fuzzy terms bypass the query parser, so each is

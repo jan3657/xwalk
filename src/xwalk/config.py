@@ -31,7 +31,7 @@ from xwalk.policy import MatchPolicy
 from xwalk.prompts.contract import PromptSet, load_slots
 from xwalk.records import Record
 from xwalk.retrieval.base import Retriever
-from xwalk.retrieval.bm25 import BM25Retriever
+from xwalk.retrieval.bm25 import MAX_FUZZY_DISTANCE, BM25Retriever
 from xwalk.sources.tabular import csv_source, jsonl_source
 from xwalk.stages.choose import Chooser
 from xwalk.stages.gate import Scorer, Verifier
@@ -124,7 +124,7 @@ class RetrieverSpec(BaseModel):
     # bm25 only
     exact_fields: list[str] | None = None
     analyzer: Literal["default", "en_stem"] = "default"
-    fuzzy_distance: int = Field(default=0, ge=0)
+    fuzzy_distance: int = Field(default=0, ge=0, le=MAX_FUZZY_DISTANCE)
     # dense only
     model: str | None = None
     device: str | None = None

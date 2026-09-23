@@ -59,6 +59,9 @@ ANALYZERS = ("default", "en_stem")
 # close to too many others to be worth expanding.
 _FUZZY_BOOST = 0.5
 _FUZZY_MIN_LENGTH = 5
+# Tantivy builds Levenshtein automata only up to distance 2 and raises at query time above
+# that, so a larger value must be refused when the index is built, not on every search.
+MAX_FUZZY_DISTANCE = 2
 
 
 def _en_stem() -> tantivy.TextAnalyzer:
@@ -160,8 +163,10 @@ class BM25Retriever:
     ) -> BM25Retriever:
         if analyzer not in ANALYZERS:
             raise ValueError(f"unknown BM25 analyzer {analyzer!r}; expected one of {ANALYZERS}")
-        if fuzzy_distance < 0:
-            raise ValueError(f"fuzzy_distance must be 0 or more, got {fuzzy_distance}")
+        if not 0 <= fuzzy_distance <= MAX_FUZZY_DISTANCE:
+            raise ValueError(
+                f"fuzzy_distance must be between 0 and {MAX_FUZZY_DISTANCE}, got {fuzzy_distance}"
+            )
         index_dir = Path(index_dir)
         index_dir.mkdir(parents=True, exist_ok=True)
         index = _open_index(index_dir, analyzer)
