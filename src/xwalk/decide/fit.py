@@ -215,11 +215,28 @@ def render_fit(report: FitReport) -> str:
     return "\n".join(lines)
 
 
-def render_holdout(point: FitPoint | None) -> str:
+def _thresholds(point: FitPoint) -> tuple[float, float, float]:
+    return point.accept_at, point.property_floor, point.choose_at
+
+
+def render_holdout(point: FitPoint | None, full: FitPoint | None = None) -> str:
+    """One line: the dev-half recommendation scored on the holdout half.
+
+    `full` is the recommendation fitted on every labelled row. When the dev half chose
+    different thresholds the line says so, because the holdout numbers then do not
+    describe the point `--write-job` writes.
+    """
     if point is None:
         return "holdout: no holdout point (nothing was recommended on the dev half)"
     precision = "-" if point.precision is None else f"{point.precision:.2f}"
-    return (
-        f"holdout: accepted={point.accepted} correct={point.correct} "
+    line = (
+        f"holdout: accept_at={point.accept_at:.2f} property_floor={point.property_floor:.2f} "
+        f"choose_at={point.choose_at:.2f} accepted={point.accepted} correct={point.correct} "
         f"precision={precision} coverage={point.coverage:.2f}"
     )
+    if full is not None and _thresholds(full) != _thresholds(point):
+        line += (
+            " (holdout of the dev-half recommendation, which differs from the full-data "
+            "recommendation)"
+        )
+    return line

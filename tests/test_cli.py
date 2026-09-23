@@ -871,11 +871,12 @@ def test_write_job_refuses_when_nothing_is_recommended(tmp_path, monkeypatch, ca
 def test_fit_holdout_prints_the_holdout_line(tmp_path, monkeypatch, capsys):
     from xwalk.cli import main as cli
 
-    out = _decider_run(tmp_path, monkeypatch)
+    out = _confident_decider_run(tmp_path, monkeypatch)
     capsys.readouterr()
     code = cli.main(_fit_args(out, "--job", str(FIXTURES / _JEV_JOB), "--holdout"))
-    assert code in (cli.EXIT_OK, cli.EXIT_ATTENTION)
+    assert code == cli.EXIT_OK
     lines = capsys.readouterr().out.splitlines()
     assert sum(1 for line in lines if line.startswith("holdout:")) == 1
     (line,) = [line for line in lines if line.startswith("holdout:")]
-    assert line.startswith(("holdout: accepted=", "holdout: no holdout point"))
+    assert line.startswith("holdout: accept_at=")
+    assert " accepted=" in line and " coverage=" in line

@@ -275,7 +275,7 @@ def _cmd_fit(args: argparse.Namespace) -> int:
             seed_fingerprint=fingerprint,
             target_precision=args.precision,
         )
-        print(fit_module.render_holdout(point))
+        print(fit_module.render_holdout(point, report.recommended))
     if args.write_job is not None:
         if report.recommended is None:
             print(

@@ -1,4 +1,11 @@
-from xwalk.decide.fit import fit_holdout, fit_thresholds, holdout_split, render_fit
+from xwalk.decide.fit import (
+    FitPoint,
+    fit_holdout,
+    fit_thresholds,
+    holdout_split,
+    render_fit,
+    render_holdout,
+)
 from xwalk.decide.policy import DecisionPolicy
 from xwalk.evaluate.gold import GoldSet
 from xwalk.records import Attempt, DecisionReason, MatchResult, MatchStatus, Usage
@@ -149,6 +156,7 @@ def test_holdout_split_is_deterministic_and_disjoint():
     assert not set(dev) & set(holdout)
     assert set(dev) | set(holdout) == set(ids)
     assert abs(len(dev) - len(holdout)) <= 1
+    assert holdout_split(ids, "fp-other") != (dev, holdout)
 
 
 def _sixteen():
@@ -198,3 +206,36 @@ def test_holdout_has_no_point_without_a_recommendation():
     )
     assert report.recommended is None
     assert point is None
+
+
+def _point(accept_at, property_floor, choose_at):
+    return FitPoint(
+        accept_at=accept_at,
+        property_floor=property_floor,
+        choose_at=choose_at,
+        accepted=3,
+        correct=2,
+        precision=2 / 3,
+        coverage=0.5,
+        near_threshold=0,
+    )
+
+
+def test_holdout_line_names_the_point_it_scored():
+    line = render_holdout(_point(0.9, 0.5, 0.7), _point(0.9, 0.5, 0.7))
+    assert line == (
+        "holdout: accept_at=0.90 property_floor=0.50 choose_at=0.70 "
+        "accepted=3 correct=2 precision=0.67 coverage=0.50"
+    )
+
+
+def test_holdout_line_says_when_the_dev_point_is_not_the_written_one():
+    line = render_holdout(_point(0.85, 0.5, 0.7), _point(0.9, 0.5, 0.7))
+    assert line.startswith("holdout: accept_at=0.85 property_floor=0.50 choose_at=0.70 ")
+    assert line.endswith(
+        "(holdout of the dev-half recommendation, which differs from the full-data recommendation)"
+    )
+
+
+def test_holdout_line_without_a_point():
+    assert render_holdout(None, _point(0.9, 0.5, 0.7)).startswith("holdout: no holdout point")

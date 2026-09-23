@@ -171,7 +171,7 @@ every metric — it is not a wrong answer.
 
 ## `fit`
 
-Fits the two swept decider thresholds on a completed run and its gold labels. Reads the
+Fits the three swept decider thresholds on a completed run and its gold labels. Reads the
 ledger and calls nothing — it re-derives every status from the signals already recorded — so
 fitting is free, repeatable, and needs no credentials. Decider path only.
 
@@ -181,26 +181,30 @@ fitting is free, repeatable, and needs no credentials. Decider path only.
 | `--gold` | yes | — | the gold CSV; unlabelled source ids are skipped |
 | `--precision` | no | `0.95` | target accepted precision |
 | `--job` | no | none | the job the run used, so the gates that are *not* swept match the run |
+| `--holdout` | no | off | also fit on half the labelled rows and score that fit on the other half |
+| `--write-job` | no | none | `OUT.yaml`: a copy of `--job` with the recommendation in its `policy:` block |
 
 ```console
 $ xwalk fit --run runs/cfcd_jev --gold examples/cafeteria_fcd/sample/gold.csv \
     --job examples/cafeteria_fcd/job_jev.yaml --precision 0.95
 labelled rows: 120; target precision: 0.95
 
-accept_at prop_floor accepted correct precision coverage near
-     0.75       0.50       96      85      0.89     0.80   31
-     0.80       0.50       88      82      0.93     0.73   24
-     0.85       0.00       81      76      0.94     0.68   17
-     0.85       0.50       74      72      0.97     0.62   17
-     0.90       0.50       61      61      1.00     0.51    9
+accept_at prop_floor choose_at accepted correct precision coverage near
+     0.75       0.50      0.50       96      85      0.89     0.80   31
+     0.80       0.50      0.50       88      82      0.93     0.73   24
+     0.85       0.00      0.50       81      76      0.94     0.68   17
+     0.85       0.50      0.50       74      72      0.97     0.62   17
+     0.90       0.50      0.50       61      61      1.00     0.51    9
 
-recommended: accept_at=0.85 property_floor=0.50 (72/74 correct, coverage 0.62, 17 rows within the jitter margin of accept_at)
+recommended: accept_at=0.85 property_floor=0.50 choose_at=0.50 (72/74 correct, coverage 0.62, 17 rows within the jitter margin of accept_at)
 ```
 
-Only `accept_at` and `property_floor` are swept, over `0.50`–`0.95` in steps of `0.05` and
-`(0.0, 0.3, 0.5, 0.7)` respectively. Every other gate — `screen_floor`, `choose_at`,
-`none_at`, `rubric_floor`, `shortlist_floor` — must be the one the run actually used, or the
-fitted pair is tuned against a policy nobody ran.
+Only `accept_at`, `property_floor` and `choose_at` are swept: `accept_at` over `0.50`–`0.95`
+in steps of `0.05`, `property_floor` over `(0.0, 0.3, 0.5, 0.7)`, and `choose_at` over
+`(0.3, 0.5, 0.7)` plus the job's own value, so the run's own setting is always a candidate.
+Every other gate — `screen_floor`, `none_at`, `rubric_floor`, `shortlist_floor` — must be the
+one the run actually used, or the fitted thresholds are tuned against a policy nobody ran.
+The table above is abridged.
 
 **`--job` is optional and you almost always want it.** Without it the sweep runs against
 `DecisionPolicy()` defaults and prints, on stderr:
@@ -221,8 +225,30 @@ The recommendation is chosen by accepted count alone, so overruling it on `near`
 
 Returns `0` when a grid point meets the target precision. Returns `1` when none does, after
 printing `no grid point meets the target precision; lower the target or improve the
-questions` — the thresholds are not the problem, the questions are. Writes nothing; copy the
-recommended pair into the job's `policy:` block yourself.
+questions` — the thresholds are not the problem, the questions are.
+
+**`--holdout`** answers "does the recommendation hold on rows it was not fitted on?" The
+labelled ids are split into two halves, deterministically from the run fingerprint. The sweep
+is refitted on one half and its recommendation is scored on the other. One line follows the
+recommendation:
+
+```
+holdout: accept_at=0.85 property_floor=0.50 choose_at=0.50 accepted=36 correct=34 precision=0.94 coverage=0.60
+```
+
+The half-data fit can pick different thresholds from the full-data one printed above it. When
+it does, the line ends `(holdout of the dev-half recommendation, which differs from the
+full-data recommendation)`, and its numbers are not a check on the point `--write-job`
+writes. When the dev half has no recommendation the line reads `holdout: no holdout point`.
+
+**`--write-job OUT.yaml`** writes a copy of the `--job` file with `policy.accept_at`,
+`policy.property_floor` and `policy.choose_at` set to the full-data recommendation. If the
+job has no `policy:` block, one is created. Every other key is kept, in order, but the
+file goes through a YAML load and dump, so comments and anchors are dropped. Relative paths
+are not rewritten: if `OUT.yaml` is in another directory, they now resolve from there, and a
+note on stderr says so. Without `--job` the command is a usage error (exit `2`). With no
+recommendation it writes nothing and exits `1`. Without `--write-job`, fit writes nothing;
+copy the recommended thresholds into the job's `policy:` block yourself.
 
 ## `compare`
 
