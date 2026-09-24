@@ -3,10 +3,15 @@
 `examples/ref_zivila/gold_slo_mini.csv` holds ten source rows whose `mention_en` is
 empty. Their FoodOn ids were chosen by a person, by looking each Slovenian name up
 against the labels in `data/ref_zivila/targets/foodon.csv`, not taken from any run.
-Where a raw and an unspecified record are equally right, both are listed.
+Where several records are equally right (raw and unspecified, pea and pea pod for
+"grah z luščinami"), all are listed.
 
 BM25 cannot reach these rows: the queries share no token with any English label. The
 multilingual dense retriever is what should recover them.
+
+`_env.sh` runs HuggingFace offline, so the model must already be in HF_HOME; pull it once with
+`HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c "from xwalk.retrieval.dense import
+SentenceTransformerEncoder as E; E('intfloat/multilingual-e5-small')"`.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.conftest import e5_retriever
 from xwalk.config import JobSpec
 from xwalk.evaluate.gold import GoldSet, load_gold_csv
 from xwalk.evaluate.recall import retrieval_recall
@@ -31,15 +37,8 @@ MINI_GOLD = ROOT / "examples" / "ref_zivila" / "gold_slo_mini.csv"
 SOURCE = ROOT / "data" / "ref_zivila" / "source.csv"
 TARGET = ROOT / "data" / "ref_zivila" / "targets" / "foodon.csv"
 
-# The block commented out in the job file, as `tests/test_retrieval_recall.py` ships it.
-E5: dict[str, Any] = {
-    "kind": "dense",
-    "name": "e5",
-    "model": "intfloat/multilingual-e5-small",
-    "limit": 150,
-    "query_prefix": "query: ",
-    "doc_prefix": "passage: ",
-}
+# The block commented out in the job file (Ref_zivila screens up to 300 candidates anyway).
+E5 = e5_retriever(limit=150)
 
 needs_data = pytest.mark.skipif(
     not (SOURCE.exists() and TARGET.exists()), reason="data/ref_zivila is not present"
@@ -51,11 +50,11 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def test_the_mini_gold_has_ten_single_or_paired_foodon_rows() -> None:
+def test_the_mini_gold_has_ten_rows_of_foodon_ids() -> None:
     gold = load_gold_csv(MINI_GOLD)
     assert len(gold) == 10
     for ids in gold.labels.values():
-        assert 1 <= len(ids) <= 2
+        assert ids
         assert all(i.startswith("FOODON:") for i in ids)
 
 
@@ -80,6 +79,7 @@ def _recall_at_50(data: dict[str, Any], gold: GoldSet, kinds: set[str], index_di
 @needs_data
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason=(
         "A2 Slovenian gate: multilingual-e5-small measured fused 0.20, dense-only 0.20, "
         "BM25-only 0.00 at @50 (2026-09-23; e5-large 0.30); see spec Results"

@@ -33,7 +33,7 @@ retrievers:
   - kind: dense
     name: e5
     model: intfloat/multilingual-e5-small
-    limit: 150
+    limit: 20
     query_prefix: "query: "
     doc_prefix: "passage: "
 

@@ -16,6 +16,7 @@ from typing import Any, Protocol
 import pytest
 import yaml
 
+from tests.conftest import e5_retriever
 from xwalk.config import JobSpec, load_job
 from xwalk.evaluate.gold import GoldSet, load_gold_csv
 from xwalk.evaluate.recall import retrieval_recall
@@ -24,15 +25,10 @@ EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
 SAMPLES = {"cafeteria_fcd": 0.94, "chebi": 0.60, "ncbi_disease": 0.58, "nlm_gene": 0.70}
 
-# The dense retriever the sample decider jobs ship beside BM25 (A2). E5 wants its prefixes.
-E5: dict[str, Any] = {
-    "kind": "dense",
-    "name": "e5",
-    "model": "intfloat/multilingual-e5-small",
-    "limit": 150,
-    "query_prefix": "query: ",
-    "doc_prefix": "passage: ",
-}
+# The dense retriever the sample decider jobs ship beside BM25 (A2). A limit of 20 is the
+# smallest of 20 / 50 / 150 that passes the English gate; each dense hit is a screened
+# candidate, so the limit is what the decider pays for.
+E5 = e5_retriever(limit=20)
 # Only the English samples: the Ref_zivila job keeps its dense block commented out until
 # the Slovenian gate (tests/test_ref_zivila_dense.py) passes.
 DECIDER_JOBS = [EXAMPLES / ex / "job_jev.yaml" for ex in sorted(SAMPLES)]
@@ -124,6 +120,7 @@ def test_a_gold_file_with_nothing_to_retrieve_is_an_error(tmp_path: Path) -> Non
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason=(
         "A1 gate: en_stem + fuzzy_distance 1 measured 0.94/0.70/0.58/0.70, "
         "mean 0.730 < 0.735 (2026-09-23); see spec Results"

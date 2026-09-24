@@ -289,25 +289,43 @@ record.
 
 ### A2. Dense multilingual retrieval
 
-`intfloat/multilingual-e5-small` (revision 614241f6) as a second retriever (`limit: 150`,
+`intfloat/multilingual-e5-small` (revision 614241f6) as a second retriever (`limit: 20`,
 `query: ` / `passage: ` prefixes), fused with BM25 by reciprocal rank; sentence-transformers
-6.1.0, torch 2.14.0+cu130, faiss-cpu 1.15.1. English gate, recall@200 against the shipped BM25
-(A1 not adopted): 0.94 / 0.60 / 0.58 / 0.70 (mean 0.705) became 1.00 / 1.00 / 0.76 / 0.92
-(mean 0.920, +0.215): passed, and the four sample jobs ship the block. Slovenian gate, on
+6.1.0, transformers 5.17.0, torch 2.14.0+cu130, faiss-cpu 1.15.1. English gate, recall@200
+against the shipped BM25 (A1 not adopted; baseline 0.94 / 0.60 / 0.58 / 0.70, mean 0.705; the
+gate needs mean >= 0.785 and no sample more than 0.02 below its baseline), by dense `limit`:
+
+| Dense `limit` | Recall@200 (cafeteria_fcd / chebi / ncbi_disease / nlm_gene) | Mean | Gate |
+|---|---|---|---|
+| 20 | 0.96 / 1.00 / 0.70 / 0.92 | 0.895 | pass |
+| 50 | 0.98 / 1.00 / 0.72 / 0.92 | 0.905 | pass |
+| 150 | 1.00 / 1.00 / 0.76 / 0.92 | 0.920 | pass |
+
+Every dense hit is a candidate the decider screens, so the four sample jobs ship the smallest
+limit that passes, 20. Slovenian gate, on
 `examples/ref_zivila/gold_slo_mini.csv` (ten rows with no English name; ids chosen by a person
 from FoodOn labels, not from a run), recall@50 against all 28,372 FoodOn records: fused 0.20,
 dense-only 0.20, BM25-only 0.00. Failed (needs >= 0.7); `multilingual-e5-large` probed at 0.30.
 E5 does not know Slovenian food words ("Kosmulja", "Som", "Pšenična moka"), so the Ref_zivila
 job keeps its dense block commented out and `test_dense_recovers_slovenian_only_rows` is a
-strict xfail. Live, `runs/jev_eval_v2` against `runs/jev_eval_v2_dense` (a baseline for A3/A4):
+strict xfail. Two things make it worse than it need be. Reciprocal-rank fusion over the three
+query templates drops hits a single query does make: the camel-milk gold is at rank 8 on the
+third query and green coffee at rank 35, and both fall outside the top 50 after fusion; the
+best single query per row would give dense recall 0.40. And the shared `doc` template (label,
+synonyms, definition, parent labels) dilutes the embedding: embedding label and synonyms only
+moved herring oil from rank 133 to 12, coffee from 35 to 11 and camel milk from 8 to 2, and
+best-per-query recall from 4/10 to 5/10. Even so the gate would fail (5/10 < 0.7), so the
+verdict stands. Live, `runs/jev_eval_v2` against `runs/jev_eval_v2_dense_limit` (limit 20, a
+baseline for A3/A4):
 
-| Domain | Accuracy v2 / v2_dense | Tokens per record v2 / v2_dense (ratio) |
+| Domain | Accuracy v2 / v2_dense_limit | Tokens per record v2 / v2_dense_limit (ratio) |
 |---|---|---|
-| cafeteria_fcd | 0.92 / 0.92 | 3124 / 21193 (6.78) |
-| chebi | 0.58 / 0.62 | 1923 / 27691 (14.40) |
-| ncbi_disease | 0.44 / 0.58 | 4953 / 30736 (6.21) |
-| nlm_gene | 0.58 / 0.80 | 3188 / 24945 (7.83) |
+| cafeteria_fcd | 0.92 / 0.90 | 3124 / 4676 (1.50) |
+| chebi | 0.58 / 0.64 | 1923 / 5449 (2.83) |
+| ncbi_disease | 0.44 / 0.56 | 4953 / 8975 (1.81) |
+| nlm_gene | 0.58 / 0.80 | 3188 / 5732 (1.80) |
 
-Mean accuracy +0.100, accepted precision 97.6-100%. Dense always returns its full 150, so the
-samples now screen about 150 candidates per record where BM25 alone gave 0.7 to 10.4: tokens
-rise 6 to 14 times, and the run cost $0.22 (about $0.001 per record).
+Mean accuracy +0.095, accepted precision 97.4 / 100 / 100 / 100%. For comparison, the first
+run at limit 150 (`runs/jev_eval_v2_dense`) scored 0.92 / 0.62 / 0.58 / 0.80 (mean +0.100) at
+21,193 / 27,691 / 30,736 / 24,945 tokens per record (6 to 14 times v2, $0.22 for the run):
+limit 20 keeps nearly all of the accuracy for 20 to 29% of those tokens.
