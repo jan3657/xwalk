@@ -362,3 +362,30 @@ fix those. The Ref_zivila number says little. That gold covers only Qwen/Jev dis
 so both deciders' ids were retrieved by construction (37 labelled rows, the 2 explicit
 no-match rows excluded). Its zero reflects how the sample was chosen and is not a
 measurement of hop headroom on the full 2,030 rows.
+
+### A3. Conditional query rewrite
+
+Built as specified and opt-in (`decider.rewrite`, absent by default; a job without it keeps
+its fingerprint and behaviour). Live gate against `runs/jev_eval_v2_dense_limit`, with
+`qwen/qwen3-next-80b-a3b-instruct` via OpenRouter as the rewrite LLM, `max_queries: 3`, the
+v2 index reused, into `runs/jev_eval_v3_rewrite/<ex>`:
+
+| Domain | Accuracy v2_dense_limit / v3_rewrite (gate) | Accepted precision | Tokens per record | Records rewritten |
+|---|---|---|---|---|
+| ncbi_disease | 0.56 / 0.56 (>= 0.66) | 1.00 / 1.00 | 8975 / 10378 | 4 of 50 |
+| nlm_gene | 0.80 / 0.80 (>= 0.90) | 1.00 / 1.00 | 5732 / 6578 | 5 of 50 |
+
+Failed: accuracy did not move on either domain. Precision held and the cost guard held
+(the rewrite ran on 8-10% of records, not every one; run cost $0.0217 and $0.0137 against
+$0.0189 and $0.0121, most of the difference being the second screens, which saw 23 to 88
+new candidates per rewritten record). The trigger is the reason. Of ncbi_disease's 14
+records whose gold was never retrieved, only one had a first-screen best below
+`screen_floor` (0.30); the other thirteen scored a wrong candidate between 0.33 and 0.88.
+On nlm_gene it is one of four. A miss on these domains hides behind a plausible neighbour
+(a related disease, a paralog), so "the screen found nothing" almost never fires where the
+recall is lost, and the records it does fire on (bare abbreviations like "CT", "MHP",
+"Bmp") stayed unresolved after the second pass. The ncbi_disease failure decomposition
+moved one record from never-retrieved to misjudged. The code stays (opt-in, tested) and
+the sample jobs and the Ref_zivila job do not set it. Widening the trigger (for example,
+rewriting whenever the best is below `accept_at`) would be a different experiment with a
+different cost profile. It was not run here.

@@ -28,6 +28,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from xwalk.decide.base import DecisionClient
     from xwalk.decide.fit import FitPoint
     from xwalk.evaluate.ablate import MatcherConfig
+    from xwalk.llm.base import LLMClient
     from xwalk.matcher import Matcher
     from xwalk.prompts.contract import PromptSet
 
@@ -144,6 +145,11 @@ def _build_decider(job: JobSpec) -> DecisionClient:
     return job.build_decider()
 
 
+def _build_rewrite_llm(job: JobSpec) -> LLMClient:
+    """Module-level so a test can swap in a FakeLLM without an API key."""
+    return job.build_rewrite_llm()
+
+
 def _cmd_match(args: argparse.Namespace) -> int:
     from xwalk.batch import run_batch
     from xwalk.config import load_job
@@ -170,8 +176,9 @@ def _cmd_match(args: argparse.Namespace) -> int:
             # transaction open across the other's writes.
             cache_ledger = Ledger.open(Path(args.out) / "ledger.sqlite")
             decider = CachingDecider(_build_decider(job), cache_ledger)
+            rewrite_llm = None if job.decider.rewrite is None else _build_rewrite_llm(job)
             matcher: MatcherLike = job.build_decision_matcher(
-                store=store, retrievers=retrievers, decider=decider
+                store=store, retrievers=retrievers, decider=decider, rewrite_llm=rewrite_llm
             )
             manifest_extra = {"job": job.name, "model": decider.model, "path": "decider"}
         else:

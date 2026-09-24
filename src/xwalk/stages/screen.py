@@ -193,18 +193,51 @@ class Screener:
             usage = usage + chunk_usage
             model = served
 
-        ranked = sorted(probabilities, key=lambda k: (-probabilities[k], k))
-        shortlist = tuple(
-            issued[key]
-            for key in ranked[: self._shortlist_size]
-            if probabilities[key] >= self._shortlist_floor
-        )
         return ScreenOutcome(
             probabilities=probabilities,
-            shortlist=shortlist,
+            shortlist=self._shortlist(probabilities, issued),
             issued=issued,
             usage=usage,
             chunks=len(chunks),
             model=model,
             notes=tuple(notes),
+        )
+
+    def _shortlist(
+        self, probabilities: Mapping[str, float], issued: Mapping[str, str]
+    ) -> tuple[str, ...]:
+        ranked = sorted(probabilities, key=lambda k: (-probabilities[k], k))
+        return tuple(
+            issued[key]
+            for key in ranked[: self._shortlist_size]
+            if probabilities[key] >= self._shortlist_floor
+        )
+
+    def merge(
+        self, first: ScreenOutcome, second: ScreenOutcome, candidates: Sequence[Candidate]
+    ) -> ScreenOutcome:
+        """Two screens of overlapping candidate sets, as one outcome over `candidates`.
+
+        `candidates` is the deduplicated union, the first screen's order first. Keys are
+        re-issued over it (each screen issued its own C001...), and a record screened twice
+        keeps the higher of its two probabilities.
+        """
+        by_id: dict[str, float] = {}
+        for outcome in (first, second):
+            for key, probability in outcome.probabilities.items():
+                record_id = outcome.issued[key]
+                by_id[record_id] = max(probability, by_id.get(record_id, probability))
+        width = max(3, len(str(len(candidates))))
+        issued = {
+            f"C{i:0{width}d}": c.id for i, c in enumerate(candidates, start=1) if c.id in by_id
+        }
+        probabilities = {key: by_id[record_id] for key, record_id in issued.items()}
+        return ScreenOutcome(
+            probabilities=probabilities,
+            shortlist=self._shortlist(probabilities, issued),
+            issued=issued,
+            usage=first.usage + second.usage,
+            chunks=first.chunks + second.chunks,
+            model=second.model,
+            notes=first.notes + second.notes,
         )

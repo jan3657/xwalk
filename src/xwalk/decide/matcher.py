@@ -2,6 +2,11 @@
 
 No retries: the LLM path retries because 25 candidates were the wrong 25. This path
 retrieves 300 instead. One attempt per record, always index 0.
+
+The one exception is opt-in: with a `QueryRewriter`, a first screen that found nothing
+worth choosing from (no candidates, or a best probability below `screen_floor`) earns one
+second retrieve-and-screen with queries an LLM proposes. The LLM only writes query
+strings; it never sees the screened candidates and never decides anything.
 """
 
 from __future__ import annotations
@@ -26,8 +31,9 @@ from xwalk.records import (
 from xwalk.retrieval.base import Retriever
 from xwalk.retrieve import retrieve
 from xwalk.stages.choose import ChooseOutcome, Chooser
-from xwalk.stages.keying import Resolution
+from xwalk.stages.keying import KeyedCandidates, Resolution
 from xwalk.stages.property_gate import GateOutcome, PropertyGate
+from xwalk.stages.rewrite import QueryRewriter
 from xwalk.stages.screen import Screener, ScreenFailed, ScreenOutcome
 from xwalk.stores.base import TargetStore
 from xwalk.templates import TemplateSet
@@ -47,6 +53,7 @@ class DecisionMatcher:
         run_fingerprint: str = "",
         rrf_k: int = 60,
         keep_candidates_in_trace: bool = True,
+        rewriter: QueryRewriter | None = None,
     ) -> None:
         if not retrievers:
             raise ValueError("at least one retriever is required")
@@ -60,10 +67,15 @@ class DecisionMatcher:
         self._run_fingerprint = run_fingerprint
         self._rrf_k = rrf_k
         self._keep_candidates = keep_candidates_in_trace
+        self._rewriter = rewriter
 
     @property
     def run_fingerprint(self) -> str:
         return self._run_fingerprint
+
+    @property
+    def rewriter(self) -> QueryRewriter | None:
+        return self._rewriter
 
     @property
     def policy(self) -> DecisionPolicy:
@@ -95,11 +107,42 @@ class DecisionMatcher:
         usage = Usage.zero()
         error: str | None = None
         provider_failed = False
+        tried = list(queries)  # grows only if a second pass runs
+        rewrite_notes: list[str] = []
 
         try:
             if candidates and not all_failed:
                 screen = await self._screener.screen(source, context, candidates)
                 usage = usage + screen.usage
+            if self._rewriter is not None and not all_failed and self._missed(screen):
+                extra, rewrite_usage, note = await self._rewrite(source, context, queries)
+                usage = usage + rewrite_usage
+                if extra:
+                    tried.extend(extra)
+                    fused2, notes2, failed2 = await retrieve(
+                        extra,
+                        source,
+                        self._retrievers,
+                        self._store,
+                        timeout=self._policy.retriever_timeout,
+                        rrf_k=self._rrf_k,
+                    )
+                    notes = list(notes) + list(notes2)
+                    second = fused2[: self._policy.max_candidates]
+                    truncated += len(fused2) - len(second)
+                    seen = {c.id for c in candidates}
+                    new = [c for c in second if c.id not in seen]
+                    note = f"rewrite: {len(extra)} queries proposed, {len(new)} new candidates"
+                    if second and not failed2:
+                        screen2 = await self._screener.screen(source, context, second)
+                        usage = usage + screen2.usage
+                        if screen is None:
+                            screen, candidates = screen2, list(second)
+                        else:
+                            candidates = list(candidates) + new
+                            screen = self._screener.merge(screen, screen2, candidates)
+                rewrite_notes.append(note)
+            if screen is not None:
                 best = screen.best
                 if best is not None and best >= self._policy.screen_floor and screen.shortlist:
                     by_id: dict[str, Candidate] = {c.id: c for c in candidates}
@@ -159,7 +202,7 @@ class DecisionMatcher:
             },
             ensure_ascii=False,
         )
-        all_notes = list(notes) + ([] if screen is None else list(screen.notes))
+        all_notes = list(notes) + ([] if screen is None else list(screen.notes)) + rewrite_notes
         joined = "; ".join(all_notes) if all_notes else None
         flat = signals.flat()
         if screen is not None:
@@ -174,7 +217,10 @@ class DecisionMatcher:
 
         attempt = Attempt(
             index=0,
-            query=queries[0] if queries else "",
+            # One query unless a rewrite ran; then every query tried, first pass first.
+            query=" | ".join(tried)
+            if len(tried) > len(queries)
+            else (queries[0] if queries else ""),
             proposal=None,
             candidates=tuple(candidates) if self._keep_candidates else (),
             candidate_count=len(candidates),
@@ -224,8 +270,37 @@ class DecisionMatcher:
             signals=flat,
         )
 
+    def _missed(self, screen: ScreenOutcome | None) -> bool:
+        """Nothing to choose from: no candidates, or none cleared the screen floor."""
+        best = None if screen is None else screen.best
+        return best is None or best < self._policy.screen_floor
+
+    async def _rewrite(
+        self, source: Record, context: str, queries: Sequence[str]
+    ) -> tuple[list[str], Usage, str]:
+        """The rewriter's new queries, what the call cost, and the note for the trace.
+
+        Any failure is a note: the first screen's result stands. The rewriter is handed
+        the queries already tried and nothing about the candidates they returned.
+        """
+        assert self._rewriter is not None
+        try:
+            outcome = await self._rewriter.rewrite(source, context, queries, _NO_CANDIDATES)
+        except Exception as exc:  # noqa: BLE001 -- a rewrite is an extra, never a failure
+            return [], Usage.zero(), f"rewrite: failed ({type(exc).__name__})"
+        extra = [p.value for p in outcome.proposals]
+        if outcome.error is not None:
+            return [], outcome.usage, "rewrite: skipped (unparseable reply)"
+        if not extra:
+            return [], outcome.usage, "rewrite: skipped (no new queries)"
+        return extra, outcome.usage, ""
+
     def match_sync(self, source: Record) -> MatchResult:
         return asyncio.run(self.match(source))
 
+
+# The rewriter renders a "best candidates" section only when this is non-empty, so the
+# prompt carries the source and the queries tried, and nothing the screen saw.
+_NO_CANDIDATES = KeyedCandidates(order=(), by_key={}, issued={}, rendered="")
 
 __all__ = ["DecisionMatcher"]

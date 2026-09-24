@@ -602,6 +602,46 @@ def test_match_runs_the_decider_path_offline(tmp_path, monkeypatch):
     assert manifest["path"] == "decider" and manifest["model"] == "fake-decider"
 
 
+def test_match_wires_the_rewrite_llm_on_a_decider_job(tmp_path, monkeypatch):
+    import json
+
+    import yaml
+
+    from xwalk.cli import main as cli
+    from xwalk.decide.base import NoulAnswer
+    from xwalk.decide.fake import FakeDecider
+    from xwalk.llm.fake import FakeLLM
+
+    data = yaml.safe_load((FIXTURES / "job_tiny_jev.yaml").read_text(encoding="utf-8"))
+    for block in ("target", "source"):
+        data[block]["path"] = str((FIXTURES / data[block]["path"]).resolve())
+    data["prompts"]["slots"] = str((FIXTURES / data["prompts"]["slots"]).resolve())
+    data["decider"]["rewrite"] = {
+        "llm": {"kind": "openai_compat", "model": "m", "base_url": "https://x"},
+        "max_queries": 2,
+    }
+    job = tmp_path / "job.yaml"
+    job.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    def never(state, questions):  # no candidate clears the floor: every record misses
+        return {name: NoulAnswer(noul=0.0) for name in questions}
+
+    llm = FakeLLM(handler=lambda request: '{"queries": ["dextrose"], "explanation": "x"}')
+    built: list[str] = []
+
+    def build_rewrite(job):
+        built.append(job.decider.rewrite.llm.model)
+        return llm
+
+    monkeypatch.setattr(cli, "_build_decider", lambda job: FakeDecider(never))
+    monkeypatch.setattr(cli, "_build_rewrite_llm", build_rewrite)
+    out = tmp_path / "run"
+    cli.main(["match", "--job", str(job), "--out", str(out)])
+    assert built == ["m"] and len(llm.requests) == 4  # one rewrite per record, all four missed
+    first = json.loads((out / "results.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert "rewrite:" in (first["attempts"][0]["error"] or "")
+
+
 def test_a_resumed_decider_run_replays_from_the_cache(tmp_path, monkeypatch):
     from xwalk.cli import main as cli
     from xwalk.decide.fake import FakeDecider

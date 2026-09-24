@@ -39,6 +39,7 @@ render queries from the source record (several, not one)
 │                → per-candidate probability; shortlist = top `shortlist_size`
 │                  with probability ≥ `shortlist_floor`
 │                → if the best probability < `screen_floor`: UNMATCHED, stop
+│                  (unless `decider.rewrite` is set: see below)
 │
 ├─ 3. CHOOSE     one call: `choice` over the shortlist plus NONE, instructions
 │                "the most specific candidate the source supports"    → 1 call
@@ -657,6 +658,7 @@ class DecisionMatcher:
         run_fingerprint: str = "",
         rrf_k: int = 60,
         keep_candidates_in_trace: bool = True,
+        rewriter: QueryRewriter | None = None,
     ) -> None
 
     async def match(self, source: Record) -> MatchResult
@@ -693,6 +695,30 @@ A `DecisionFatalError` propagates and kills the run, because a broken contract w
 itself over 10,000 records. A `DecisionRetryableError` that survived the client's own
 retries is caught per record and becomes `failed` / `provider_failure` with the message in
 `Attempt.error`.
+
+### The miss-only rewrite
+
+With a `rewriter` (the job's `decider.rewrite:` block; `None` by default, and then `match`
+behaves exactly as described above), a record whose first screen had no candidates or a
+best probability below `screen_floor` gets one second round, never more:
+
+1. `QueryRewriter.rewrite` is asked for up to `max_queries` alternatives. It is handed the
+   source, its context and the queries already tried; the "best candidates" section of its
+   prompt is left empty, so it sees nothing the screen saw. It only writes query strings.
+2. The new queries alone are retrieved (`max_candidates` again) and screened as a normal
+   screen.
+3. The two screens are merged by record id with `Screener.merge`: the candidate list is
+   the first set followed by the second set's new records, keys are re-issued over it, and
+   a record screened twice keeps the higher probability. Choose and gate then run on the
+   merged shortlist as usual, so Jev makes every decision.
+
+The trace records it: `Attempt.query` becomes every query tried joined by ` | ` (first
+pass first), the usage sums both screens plus the rewrite call, and the notes in
+`Attempt.error` gain `rewrite: N queries proposed, M new candidates`, or
+`rewrite: skipped (no new queries)` / `skipped (unparseable reply)`. Any exception from the
+rewrite call becomes `rewrite: failed (<error class>)` and the first screen's result
+stands. A record whose retrievers all failed is not rewritten, and a failure in the second
+screen is a provider failure like one in the first.
 
 `mapping.csv` carries the same columns on both paths, `cost_usd` included; on the decider
 path `completion_tokens` is always `0`, and `llm_calls` counts decision calls.
@@ -792,8 +818,9 @@ Every one of these is an absence with a reason, not a gap waiting to be filled.
 - **No retries.** One attempt per record, `Attempt.index` always `0`. The LLM path retries
   because 25 candidates were the wrong 25; this path retrieves 300. There is no
   `max_attempts`.
-- **No rewriter.** Retry leads have nowhere to go without a retry loop. Recall comes from
-  `templates.queries` and retrieval depth instead.
+- **No rewrite loop.** Retry leads have nowhere to go without a retry loop. Recall comes
+  from `templates.queries` and retrieval depth instead. The one opt-in exception is the
+  single [miss-only rewrite](#the-miss-only-rewrite), off by default.
 - **No verifier and no audit sampling.** There is no second model to ask. `verify_band` and
   `audit_rate` do not exist on `DecisionPolicy`; the gate's rubric and properties are the
   independent second look, bought on every accepted record rather than on a band.

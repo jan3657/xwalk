@@ -24,6 +24,7 @@ from xwalk.decide.jev import JevClient
 from xwalk.decide.matcher import DecisionMatcher
 from xwalk.decide.policy import DecisionPolicy
 from xwalk.decide.questions import QuestionSet
+from xwalk.fingerprint import hash_value
 from xwalk.llm.base import LLMClient
 from xwalk.llm.openai_compat import OpenAICompatClient
 from xwalk.matcher import Matcher
@@ -160,6 +161,13 @@ class LLMSpec(BaseModel):
         return self
 
 
+class RewriteSpec(BaseModel):
+    """An LLM that proposes alternative queries after a screen miss. It never decides."""
+
+    llm: LLMSpec
+    max_queries: int = Field(default=3, ge=1, le=5)
+
+
 class DeciderSpec(BaseModel):
     kind: Literal["jev"] = "jev"
     model: str
@@ -168,6 +176,7 @@ class DeciderSpec(BaseModel):
     api_key: str | None = None  # present only so it can be rejected
     timeout: float = 60.0
     max_retries: int = 5
+    rewrite: RewriteSpec | None = None
 
     @model_validator(mode="after")
     def _no_inline_secrets(self) -> DeciderSpec:
@@ -315,30 +324,12 @@ class JobSpec(BaseModel):
     def build_llm(self) -> LLMClient:
         if self.llm is None:
             raise ValueError("this job has no llm: block")
-        api_key = None
-        if self.llm.api_key_env:
-            api_key = os.environ.get(self.llm.api_key_env)
-            if not api_key:
-                raise ValueError(
-                    f"environment variable {self.llm.api_key_env} is not set; "
-                    f"export it or change llm.api_key_env in the job file"
-                )
-        if self.llm.kind == "openai_compat":
-            return OpenAICompatClient(
-                base_url=self.llm.base_url or "",
-                model=self.llm.model,
-                api_key=api_key,
-                profile=self.llm.profile,
-                temperature=self.llm.temperature,
-                max_tokens=self.llm.max_tokens,
-            )
-        from xwalk.llm.litellm import LiteLLMClient
+        return _build_llm_client(self.llm, where="llm")
 
-        return LiteLLMClient(
-            self.llm.model,
-            temperature=self.llm.temperature,
-            max_tokens=self.llm.max_tokens,
-        )
+    def build_rewrite_llm(self) -> LLMClient:
+        if self.decider is None or self.decider.rewrite is None:
+            raise ValueError("this job has no decider.rewrite: block")
+        return _build_llm_client(self.decider.rewrite.llm, where="decider.rewrite.llm")
 
     def build_prompts(self) -> PromptSet:
         return PromptSet.from_slots(load_slots(self.base_dir / self.prompts.slots))
@@ -439,14 +430,48 @@ class JobSpec(BaseModel):
             retrievers=retrievers,
             decider=decider,
             policy=self.build_decision_policy(),
+            rewrite=self._rewrite_fingerprint(),
+        )
+
+    def _rewrite_fingerprint(self) -> str | None:
+        """What the rewrite would propose depends on its model, its prompt, and how many
+        queries it may return; credentials and the env var name do not change that."""
+        if self.decider is None or self.decider.rewrite is None:
+            return None
+        spec = self.decider.rewrite
+        return hash_value(
+            {
+                "llm": spec.llm.model_dump(exclude={"api_key", "api_key_env"}),
+                "max_queries": spec.max_queries,
+                "prompts": self.build_prompts().fingerprint,
+            }
         )
 
     def build_decision_matcher(
-        self, *, store: TargetStore, retrievers: Sequence[Retriever], decider: DecisionClient
+        self,
+        *,
+        store: TargetStore,
+        retrievers: Sequence[Retriever],
+        decider: DecisionClient,
+        rewrite_llm: LLMClient | None = None,
     ) -> DecisionMatcher:
+        """`rewrite_llm` is the client for `decider.rewrite`; it is built from the job
+        file when the block is present and none is passed."""
         templates = self.build_templates()
         questions = self.build_questions()
         policy = self.build_decision_policy()
+        rewrite = None if self.decider is None else self.decider.rewrite
+        rewriter: QueryRewriter | None = None
+        if rewrite is None:
+            if rewrite_llm is not None:
+                raise ValueError("a rewrite LLM was passed but the job has no decider.rewrite:")
+        else:
+            rewriter = QueryRewriter(
+                rewrite_llm or self.build_rewrite_llm(),
+                self.build_prompts(),
+                templates,
+                max_queries=rewrite.max_queries,
+            )
         return DecisionMatcher(
             templates=templates,
             retrievers=list(retrievers),
@@ -465,7 +490,36 @@ class JobSpec(BaseModel):
             run_fingerprint=self.decision_run_fingerprint(
                 store=store, retrievers=retrievers, decider=decider
             ),
+            rewriter=rewriter,
         )
+
+
+def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
+    """`where` is the spec's path in the job file, for the missing-key error."""
+    api_key = None
+    if spec.api_key_env:
+        api_key = os.environ.get(spec.api_key_env)
+        if not api_key:
+            raise ValueError(
+                f"environment variable {spec.api_key_env} is not set; "
+                f"export it or change {where}.api_key_env in the job file"
+            )
+    if spec.kind == "openai_compat":
+        return OpenAICompatClient(
+            base_url=spec.base_url or "",
+            model=spec.model,
+            api_key=api_key,
+            profile=spec.profile,
+            temperature=spec.temperature,
+            max_tokens=spec.max_tokens,
+        )
+    from xwalk.llm.litellm import LiteLLMClient
+
+    return LiteLLMClient(
+        spec.model,
+        temperature=spec.temperature,
+        max_tokens=spec.max_tokens,
+    )
 
 
 def load_job(path: str | Path) -> JobSpec:

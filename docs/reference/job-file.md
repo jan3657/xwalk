@@ -236,6 +236,39 @@ the key does not.
 `timeout` and `max_retries` are excluded from the run fingerprint — they change how fast an
 answer arrives, never what it means — so tuning them does not invalidate a resume.
 
+### `decider.rewrite`
+
+Optional, off by default. After the first screen, a record that found nothing worth
+choosing from (no candidates, or a best probability below `policy.screen_floor`) gets one
+second round: an LLM proposes alternative queries, they are retrieved and screened, and the
+two screens are merged by record id (see [decide.md](decide.md#decisionmatcher)). The LLM
+writes query strings only; it never sees the screened candidates and never decides.
+
+```yaml
+decider:
+  kind: jev
+  # ...
+  rewrite:                       # absent means no rewrite
+    llm: {kind: openai_compat, model: qwen/qwen3-next-80b-a3b-instruct,
+          base_url: https://openrouter.ai/api/v1, api_key_env: XWALK_TEST_API_KEY}
+    max_queries: 3               # 1 to 5
+```
+
+| Field | Type | Required | Default | Meaning |
+|---|---|---|---|---|
+| `llm` | [`llm` block](#llm) | yes | — | the rewrite model; same fields and the same inline-`api_key` rejection as the top-level `llm:` |
+| `max_queries` | `int`, 1 to 5 | no | `3` | most alternative queries asked for per miss |
+
+The prompt is the `rewrite` skeleton rendered from the job's `prompts.slots`, as on the LLM
+path. `build_rewrite_llm()` builds the client; an unset `api_key_env` there fails with
+`change decider.rewrite.llm.api_key_env in the job file`. The block's model, sampling
+parameters, `max_queries` and the prompts are part of the run fingerprint (only when the
+block is present, so a job without it keeps its fingerprint and its cached ledger).
+
+On the four gold samples the rewrite did not pay: see the spec's A3 result
+(`docs/superpowers/specs/2026-09-23-jev-recall-and-cost-design.md`). The shipped jobs do not
+set it.
+
 The CLI always wraps the built client in a `CachingDecider` over the run's own ledger.
 There is no job-file key for that and it is not an optimisation: the model's probabilities
 jitter between identical calls, and a resumed run must see the answers the first run saw.
@@ -405,7 +438,7 @@ file, no index, no environment variable and no network.
 | an unknown retriever `kind` | `Input should be 'bm25' or 'dense'` |
 | `retrievers: []` | `List should have at least 1 item after validation, not 0` |
 | a `dense` retriever with no `model` | `a dense retriever needs a model name` |
-| `llm.api_key` or `decider.api_key` present | `api_key must not appear in a job file; …` |
+| `llm.api_key`, `decider.api_key` or `decider.rewrite.llm.api_key` present | `api_key must not appear in a job file; …` |
 | an unknown `decider.kind` | `Input should be 'jev'` |
 | `kind: openai_compat` with no `base_url` | `openai_compat needs a base_url` |
 | a wrongly typed scalar (`accept_at: high`) | pydantic type error |

@@ -84,3 +84,64 @@ async def test_the_short_screen_question_reads_the_rules_from_the_state():
     assert by_id["T2"] > by_id["T3"]
     assert outcome.shortlist[0] == "T2"
     assert outcome.usage.prompt_tokens > 0
+
+
+REWRITE_URL = os.environ.get("XWALK_TEST_REWRITE_URL", "https://openrouter.ai/api/v1")
+REWRITE_MODEL = os.environ.get("XWALK_TEST_REWRITE_MODEL", "qwen/qwen3-next-80b-a3b-instruct")
+NCBI_SLOTS = Path(__file__).parent.parent / "examples/ncbi_disease/slots.yaml"
+
+
+@pytest.mark.skipif(not KEY, reason="XWALK_TEST_API_KEY unset")
+async def test_a_screen_miss_is_rewritten_by_a_real_llm_and_decided_by_jev():
+    """The first query only retrieves an unrelated disease; the rewrite must find the gold."""
+    from xwalk.decide.matcher import DecisionMatcher
+    from xwalk.llm.openai_compat import OpenAICompatClient
+    from xwalk.prompts.contract import PromptSet
+    from xwalk.records import RetrievalHit
+    from xwalk.retrieval.base import SearchRequest
+    from xwalk.stages.choose import Chooser
+    from xwalk.stages.property_gate import PropertyGate
+    from xwalk.stages.rewrite import QueryRewriter
+    from xwalk.stores.memory import MemoryStore
+
+    labels = {"D1": "myocardial infarction", "D2": "asthma", "D3": "psoriasis"}
+    store = MemoryStore.from_source([Record(id=k, fields={"label": v}) for k, v in labels.items()])
+
+    class Keyword:
+        name, fingerprint, default_limit = "kw", "kw", 10
+
+        async def search(self, request: SearchRequest):
+            text = request.text.lower()
+            ids = ["D2"] if text == "heart attack" else []
+            ids += [k for k, v in labels.items() if any(w in text for w in v.split())]
+            return [
+                RetrievalHit(record_id=rid, retriever="kw", raw_score=1.0, rank=i)
+                for i, rid in enumerate(dict.fromkeys(ids), start=1)
+            ]
+
+    slots = load_slots(NCBI_SLOTS)
+    questions = QuestionSet.from_slots(slots)
+    templates = TemplateSet(
+        query="{{ mention }}", context="", doc="{{ label }}", candidate="{{ label }}"
+    )
+    decider = JevClient(URL, MODEL, api_key=KEY, max_retries=2)
+    llm = OpenAICompatClient(REWRITE_URL, REWRITE_MODEL, api_key=KEY, max_retries=2)
+    matcher = DecisionMatcher(
+        templates=templates,
+        retrievers=[Keyword()],
+        store=store,
+        screener=Screener(decider, questions, templates),
+        chooser=Chooser(decider, questions, templates),
+        gate=PropertyGate(decider, questions, templates),
+        rewriter=QueryRewriter(llm, PromptSet.from_slots(slots), templates, max_queries=3),
+    )
+    try:
+        result = await matcher.match(Record(id="s1", fields={"mention": "heart attack"}))
+    finally:
+        await decider.aclose()
+        await llm.aclose()
+    attempt = result.attempts[0]
+    assert "rewrite:" in (attempt.error or "") and "failed" not in (attempt.error or "")
+    assert attempt.query.startswith("heart attack | ")
+    assert "D1" in {c.id for c in result.candidates}
+    assert result.matched_id == "D1"

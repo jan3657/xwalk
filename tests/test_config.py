@@ -329,3 +329,104 @@ def test_decision_policy_spec_defaults_match_the_policy():
     from xwalk.decide.policy import DecisionPolicy
 
     assert DecisionPolicySpec().model_dump() == asdict(DecisionPolicy())
+
+
+_REWRITE = {
+    "llm": {
+        "kind": "openai_compat",
+        "model": "qwen/qwen3-next-80b-a3b-instruct",
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key_env": "XWALK_TEST_API_KEY",
+    }
+}
+
+
+def _with_rewrite(data, **extra):
+    data["decider"]["rewrite"] = {**_REWRITE, **extra}
+
+
+def test_decider_rewrite_parses(tmp_path):
+    job = load_job(_jev_job(tmp_path, lambda d: _with_rewrite(d, max_queries=2)))
+    assert job.decider is not None and job.decider.rewrite is not None
+    assert job.decider.rewrite.llm.model == "qwen/qwen3-next-80b-a3b-instruct"
+    assert job.decider.rewrite.max_queries == 2
+
+
+def test_decider_rewrite_defaults(tmp_path):
+    assert load_job(_jev_job(tmp_path)).decider.rewrite is None
+    job = load_job(_jev_job(tmp_path, _with_rewrite))
+    assert job.decider.rewrite.max_queries == 3
+
+
+@pytest.mark.parametrize("bad", [0, 6])
+def test_decider_rewrite_bounds_max_queries(tmp_path, bad):
+    with pytest.raises(ValueError, match="max_queries"):
+        load_job(_jev_job(tmp_path, lambda d: _with_rewrite(d, max_queries=bad)))
+
+
+def test_decider_rewrite_rejects_inline_keys(tmp_path):
+    def inline(data):
+        _with_rewrite(data)
+        data["decider"]["rewrite"]["llm"] = {**_REWRITE["llm"], "api_key": "sk-live"}
+
+    with pytest.raises(ValueError, match="api_key_env"):
+        load_job(_jev_job(tmp_path, inline))
+
+
+def test_build_rewrite_llm_needs_the_env_var(tmp_path, monkeypatch):
+    monkeypatch.delenv("XWALK_TEST_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="decider.rewrite.llm.api_key_env"):
+        load_job(_jev_job(tmp_path, _with_rewrite)).build_rewrite_llm()
+
+
+def test_build_llm_keeps_its_error_wording(monkeypatch):
+    monkeypatch.delenv("XWALK_TEST_API_KEY", raising=False)
+    job = load_job(JOB)
+    job = job.model_copy(
+        update={"llm": job.llm.model_copy(update={"api_key_env": "XWALK_TEST_API_KEY"})}
+    )
+    with pytest.raises(ValueError, match=r"change llm\.api_key_env in the job file"):
+        job.build_llm()
+
+
+def test_build_decision_matcher_wires_the_rewriter(tmp_path, monkeypatch):
+    from xwalk.decide.fake import FakeDecider
+    from xwalk.llm.fake import FakeLLM
+
+    job = load_job(_jev_job(tmp_path))
+    store = job.build_store()
+    retrievers = job.build_retrievers(
+        list(job.build_target_records()), job.build_templates(), tmp_path / "idx"
+    )
+    plain = job.build_decision_matcher(store=store, retrievers=retrievers, decider=FakeDecider())
+    assert plain.rewriter is None
+    with pytest.raises(ValueError, match="rewrite"):
+        job.build_decision_matcher(
+            store=store, retrievers=retrievers, decider=FakeDecider(), rewrite_llm=FakeLLM([])
+        )
+
+    rewriting = load_job(_jev_job(tmp_path, _with_rewrite)).build_decision_matcher(
+        store=store, retrievers=retrievers, decider=FakeDecider(), rewrite_llm=FakeLLM([])
+    )
+    assert rewriting.rewriter is not None
+    assert rewriting.run_fingerprint != plain.run_fingerprint
+
+
+def test_decision_fingerprint_moves_with_the_rewrite_block(tmp_path):
+    from xwalk.decide.fake import FakeDecider
+
+    store_job = load_job(_jev_job(tmp_path))
+    store = store_job.build_store()
+    retrievers = store_job.build_retrievers(
+        list(store_job.build_target_records()), store_job.build_templates(), tmp_path / "idx"
+    )
+
+    def fp(mutate):
+        return load_job(_jev_job(tmp_path, mutate)).decision_run_fingerprint(
+            store=store, retrievers=retrievers, decider=FakeDecider(model="a")
+        )
+
+    none = fp(lambda d: None)
+    three = fp(_with_rewrite)
+    two = fp(lambda d: _with_rewrite(d, max_queries=2))
+    assert len({none, three, two}) == 3

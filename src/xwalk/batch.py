@@ -120,14 +120,19 @@ def build_decision_run_fingerprint(
     decider: DecisionClient,
     policy: DecisionPolicy,
     rrf_k: int = 60,
+    rewrite: str | None = None,
 ) -> str:
     """The decider path's counterpart of `build_run_fingerprint`.
 
     Concurrency, timeouts, and credentials are excluded for the same reason as on the
-    LLM path: they change how fast an answer arrives, never what it means.
+    LLM path: they change how fast an answer arrives, never what it means. `rewrite` is
+    the fingerprint of the optional miss-only query rewrite; it is hashed only when set,
+    so a job without one keeps the fingerprint (and the cached ledger) it had before.
     """
+    extra: dict[str, str] = {} if rewrite is None else {"rewrite": rewrite}
     return hash_value(
         {
+            **extra,
             "library_version": __version__,
             "path": "decider",
             "templates": templates.fingerprint,
