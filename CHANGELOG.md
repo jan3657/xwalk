@@ -15,9 +15,28 @@ All notable changes to this project are documented here. The format follows
   properties declared in `properties:`. `xwalk fit` fits the acceptance thresholds on a
   gold sample, results carry their `signals`, and the written output has a `cost_usd`
   column, so a run's bill is a number in the results rather than an estimate.
+- `scripts/retrieval_recall.py`: an offline harness for recall@k of a job's retrievers
+  against a gold sample, with no model calls.
+- `xwalk fit --holdout` fits on half the labelled rows and scores the recommendation on
+  the other half; `--write-job OUT.yaml` writes a copy of the job with the fitted
+  `accept_at`, `property_floor` and `choose_at` (the copy loses the YAML comments).
+- BM25 retriever options `analyzer: en_stem` and `fuzzy_distance`, both opt-in; the
+  sample jobs keep the defaults because they did not lift recall enough.
+- A dense `intfloat/multilingual-e5-small` retriever (`limit: 20`) beside BM25 on the
+  four sample decider jobs; the Ref_zivila job keeps BM25 alone.
+- An opt-in `decider.rewrite` block: when the screen finds nothing, an LLM proposes new
+  queries and Jev screens what they retrieve. No shipped job sets it.
+- `examples/ref_zivila/gold_adjudicated.csv` (39 rows from the adjudicated
+  disagreements, built by `scripts/adjudication_to_gold.py`) and
+  `scripts/hop_headroom.py`, which measures how many retrieval misses a graph hop could repair.
 
 ### Changed
 
+- The screen's shared preamble moves into the decision state (`questions_version` 2), so
+  each candidate's question is short. The run fingerprint covers the question version,
+  so a decider run recorded before this change does not resume and re-runs from the start.
+- The sample decider jobs and the Ref_zivila job carry thresholds fitted with
+  `xwalk fit --holdout` (see the recall-and-cost spec's Results).
 - The CI platform matrix now executes rather than merely being declared. macOS 14,
   Windows, and Linux on 3.10/3.11/3.12, plus aarch64 and each optional extra, all pass
   as of v0.1.1 — which retires the second of the limitations listed under 0.1.0.

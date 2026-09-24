@@ -1,6 +1,6 @@
 # Recall and cost on the decider path — design
 
-Date: 2026-09-23. Status: draft for review. Branch: `jev-recall-cost` (off `jev-decider`).
+Date: 2026-09-23. Status: implemented 2026-09-24; see Results. Branch: `jev-recall-cost` (off `jev-decider`).
 Plan: `../plans/2026-09-23-jev-recall-and-cost.md`.
 
 ## Why
@@ -389,3 +389,65 @@ moved one record from never-retrieved to misjudged. The code stays (opt-in, test
 the sample jobs and the Ref_zivila job do not set it. Widening the trigger (for example,
 rewriting whenever the best is below `accept_at`) would be a different experiment with a
 different cost profile. It was not run here.
+
+### Summary
+
+Retrieval, recall@200 from the harness (cafeteria_fcd / chebi / ncbi_disease / nlm_gene,
+mean; A1 and A2 subsections): baseline BM25 0.94 / 0.60 / 0.58 / 0.70 (0.705); A1 stemming
+and fuzzy 0.94 / 0.70 / 0.58 / 0.70 (0.730, not adopted); A2 dense `limit: 20` beside BM25
+0.96 / 1.00 / 0.70 / 0.92 (0.895, shipped on the samples). On Slovenian-only Ref_zivila rows
+dense recall@50 was 0.20, so that job keeps BM25 alone.
+
+Decisions on the four samples, accuracy (`recall_at_any_status`) and accepted precision per
+gate, from `runs/<run>/<ex>/eval.json`:
+
+| Gate (run) | Accuracy | Accepted precision |
+|---|---|---|
+| baseline (`jev_eval`) | 0.90 / 0.58 / 0.46 / 0.58 | 0.968 / 1.00 / 1.00 / 1.00 |
+| B1 (`jev_eval_v2`) | 0.92 / 0.58 / 0.44 / 0.58 | 0.976 / 1.00 / 1.00 / 1.00 |
+| B1 + A2 limit 150 (`jev_eval_v2_dense`) | 0.92 / 0.62 / 0.58 / 0.80 | 0.976 / 1.00 / 1.00 / 1.00 |
+| B1 + A2 limit 20, final (`jev_eval_v2_dense_limit`) | 0.90 / 0.64 / 0.56 / 0.80 | 0.974 / 1.00 / 1.00 / 1.00 |
+| + A3, two domains (`jev_eval_v3_rewrite`) | - / - / 0.56 / 0.80 | - / - / 1.00 / 1.00 |
+
+The final sample jobs are byte-identical, apart from the fitted `policy:` values below, to
+the jobs that produced `jev_eval_v2_dense_limit`, so that run is the final measurement and
+the samples were not re-run. Tokens per record, baseline to final: 4067 -> 4676, 1905 ->
+5449, 6118 -> 8975, 4412 -> 5732; cost per record (summed `usage.cost_usd` over
+`results.jsonl`) $0.000171 -> $0.000196, $0.000080 -> $0.000229, $0.000257 -> $0.000377,
+$0.000185 -> $0.000241, $0.035 -> $0.052 for the 200 rows. The samples pay for the recall
+gain in tokens: dense adds candidates to screen, and B1 alone saved 19-28% on three of four.
+
+Ref_zivila, `runs/ref_zivila/foodon_jev` (2026-09-22) against `runs/ref_zivila/foodon_jev_v3`
+(B1 and the fitted policy, BM25 only; 2,030 rows, 361 s of matching):
+
+| | 2026-09-22 | v3 |
+|---|---|---|
+| matched / needs_review / unmatched | 442 / 1001 / 587 | 835 / 602 / 593 |
+| prompt tokens per record | 62,740 | 24,726 (0.39) |
+| model calls per record | 4.54 | 4.53 |
+| cost (run / per record) | $5.35 / $0.00264 | $2.11 / $0.00104 |
+| adjudicated sample: accuracy | 0.892 | 0.892 |
+| adjudicated sample: accepted precision (coverage) | 1.00, 22/22 (0.56) | 0.966, 28/29 (0.74) |
+
+The B1 token gate, re-hosted here, passes: 60.6% fewer prompt tokens per record at the same
+number of calls. `scripts/compare_runs.py` on the two `mapping.csv` files: 438 rows matched by
+both, 432 on the same FoodOn id (98.6%), 6 on different ids, 4 matched only before, 397 only
+after. Moves: 397 needs_review -> matched, 46 needs_review -> unmatched, 40 unmatched ->
+needs_review, 4 matched -> needs_review. Most of the new matches are the lower `accept_at`
+(0.85 -> 0.50) at work; the adjudicated sample prices that at one wrong accept in 29, on 39
+contested rows, and it is not a precision estimate for the whole file.
+
+Fitted policies (`xwalk fit --holdout`, target precision 0.95, written into each job):
+
+| Job (fit on) | accept_at / property_floor / choose_at | Full fit | Holdout |
+|---|---|---|---|
+| cafeteria_fcd (`v2_dense_limit`) | 0.75 / 0.70 / 0.50 | 38/39, cov 0.78 | 17/17 = 1.00, cov 0.68 (dev half chose choose_at 0.70) |
+| chebi | 0.65 / 0.50 / 0.70 | 27/27, cov 0.54 | 14/14 = 1.00, cov 0.56 |
+| ncbi_disease | 0.75 / 0.50 / 0.50 | 20/20, cov 0.40 | 8/8 = 1.00, cov 0.32 (dev half chose 0.90 / 0.50 / 0.70) |
+| nlm_gene | 0.85 / 0.50 / 0.70 | 29/29, cov 0.58 | 13/13 = 1.00, cov 0.52 |
+| ref_zivila (`foodon_jev`) | 0.50 / 0.50 / 0.50 | 29/30, cov 0.77 | 14/15 = 0.93, cov 0.79 |
+
+What earned its keep: B1 (always on) and A2 on the English samples. The rest did not:
+- A1: +0.025 mean recall, short of the +0.03 gate; all of it stemming on chebi, and dense recovers more.
+- A3: accuracy unchanged on both domains; its trigger (nothing above `screen_floor`) rarely fires where recall is lost.
+- A4: hop headroom 0.00 on every ledger, so it was not built.

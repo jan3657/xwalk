@@ -47,11 +47,12 @@ prompts:
   slots: slots.yaml
 
 policy:
-  # Fitted on sample/gold.csv at 95% target precision (see the spec's Results section):
-  # 41 of 50 rows accepted, 40 correct, and only 2 rows within the jitter margin of
-  # accept_at. The 0.85 default was too conservative here by 20 points of coverage.
-  accept_at: 0.50
+  # Fitted by `xwalk fit --holdout` on sample/gold.csv against runs/jev_eval_v2_dense_limit at
+  # 95% target precision (see the spec's Results section): 38 of 39 accepted rows correct,
+  # coverage 0.78; the dev-half fit held 17/17 on the held-out half (coverage 0.68).
+  accept_at: 0.75
   property_floor: 0.70
+  choose_at: 0.50
   screen_floor: 0.30
   chunk_size: 50
   max_candidates: 300

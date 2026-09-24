@@ -59,7 +59,12 @@ prompts:
   slots: slots.yaml
 
 policy:
-  accept_at: 0.85
+  # Fitted by `xwalk fit --holdout` on gold_adjudicated.csv (39 contested rows) against the
+  # 2026-09-22 run at 95% target precision: 29/30 correct, coverage 0.77; holdout 14/15
+  # (0.93), coverage 0.79. A small, biased sample: see the spec's C2 and Summary.
+  accept_at: 0.50
+  property_floor: 0.50
+  choose_at: 0.50
   screen_floor: 0.30
   shortlist_size: 15
   chunk_size: 50

@@ -37,7 +37,11 @@ retrievers:
 prompts:
   slots: slots.yaml
 policy:
-  accept_at: 0.85
+  # Fitted by `xwalk fit --holdout` on sample/gold.csv against runs/jev_eval_v2_dense_limit at
+  # 95% target precision: 27/27 correct, coverage 0.54; holdout 14/14, coverage 0.56.
+  accept_at: 0.65
+  property_floor: 0.50
+  choose_at: 0.70
   screen_floor: 0.3
   chunk_size: 50
   max_candidates: 300
