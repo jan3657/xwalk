@@ -329,3 +329,36 @@ Mean accuracy +0.095, accepted precision 97.4 / 100 / 100 / 100%. For comparison
 run at limit 150 (`runs/jev_eval_v2_dense`) scored 0.92 / 0.62 / 0.58 / 0.80 (mean +0.100) at
 21,193 / 27,691 / 30,736 / 24,945 tokens per record (6 to 14 times v2, $0.22 for the run):
 limit 20 keeps nearly all of the accuracy for 20 to 29% of those tokens.
+
+### A4. Graph hop over the target
+
+Offline go/no-go with `scripts/hop_headroom.py`. A retrieval miss is a labelled row (gold not
+"no match") with no gold id among its first attempt's candidates, the only kind a hop can
+repair. It qualifies when a gold id is a parent of a retrieved candidate or a child of one
+(the gold record's `parents`, from the job's target). Status misses (final `matched_id` not in
+gold) are listed for information.
+
+```
+scripts/hop_headroom.py runs/jev_eval/cafeteria_fcd examples/cafeteria_fcd/sample/gold.csv \
+  parents --job examples/cafeteria_fcd/job_jev.yaml
+scripts/hop_headroom.py runs/jev_eval_v2_dense_limit/cafeteria_fcd \
+  examples/cafeteria_fcd/sample/gold.csv parents --job examples/cafeteria_fcd/job_jev.yaml
+scripts/hop_headroom.py runs/ref_zivila/foodon_jev examples/ref_zivila/gold_adjudicated.csv \
+  parents --job examples/ref_zivila/jobs/foodon/job_jev.yaml
+```
+
+| Ledger | Labelled | Retrieval misses | Status misses | Qualifying | Share |
+|---|---|---|---|---|---|
+| `jev_eval/cafeteria_fcd` (BM25 only) | 50 | 3 | 5 | 0 | 0.00 |
+| `jev_eval_v2_dense_limit/cafeteria_fcd` (shipped) | 50 | 2 | 5 | 0 | 0.00 |
+| `ref_zivila/foodon_jev` | 37 | 0 | 4 | 0 | 0.00 |
+
+No-go: both shipped-configuration shares are 0.00, below the 0.10 bar, so the hop was not
+built. On cafeteria_fcd the remaining retrieval misses are T23 (gold `tortilla`, parent
+FOODON:00001917) and T44 (`onion (raw)`, parent FOODON:03316347); BM25 alone also missed
+T37 (`food (cooked)`). None of their retrieved candidates is the gold's parent or child.
+Most status misses are choice or gate errors among retrieved candidates, and a hop cannot
+fix those. The Ref_zivila number says little. That gold covers only Qwen/Jev disagreements,
+so both deciders' ids were retrieved by construction (37 labelled rows, the 2 explicit
+no-match rows excluded). Its zero reflects how the sample was chosen and is not a
+measurement of hop headroom on the full 2,030 rows.
