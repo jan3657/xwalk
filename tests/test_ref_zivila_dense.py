@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 import yaml
 
-from tests.conftest import e5_retriever
+from tests.conftest import E5_MODEL, e5_retriever, load_encoder_or_skip
 from xwalk.config import JobSpec
 from xwalk.evaluate.gold import GoldSet, load_gold_csv
 from xwalk.evaluate.recall import retrieval_recall
@@ -89,7 +89,7 @@ def test_dense_recovers_slovenian_only_rows(tmp_path: Path) -> None:
     """A2 gate: the shipped BM25+dense fusion finds a gold id in the top 50 for at least
     seven of the ten rows; BM25 alone for at most two. The whole FoodOn target is indexed;
     only the source is cut down to the ten rows, since recall renders every row it gets."""
-    pytest.importorskip("sentence_transformers")
+    load_encoder_or_skip(E5_MODEL)
     gold = load_gold_csv(MINI_GOLD)
     rows = [row for row in _read_csv(SOURCE) if row["ID"] in gold.labels]
     assert len(rows) == len(gold)

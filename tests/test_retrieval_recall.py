@@ -16,7 +16,7 @@ from typing import Any, Protocol
 import pytest
 import yaml
 
-from tests.conftest import e5_retriever
+from tests.conftest import E5_MODEL, e5_retriever, load_encoder_or_skip, skip_if_loader_missing
 from xwalk.config import JobSpec, load_job
 from xwalk.evaluate.gold import GoldSet, load_gold_csv
 from xwalk.evaluate.recall import retrieval_recall
@@ -64,6 +64,7 @@ def recall_for(tmp_path: Path) -> RecallFor:
         job = JobSpec.model_validate(data).model_copy(
             update={"base_dir": job_path.parent.resolve()}
         )
+        skip_if_loader_missing(job.target.kind)
         gold = load_gold_csv(EXAMPLES / example / "sample" / "gold.csv")
         # A fresh directory per call, so a mutated build never reopens an earlier index.
         index_dir = tmp_path / f"{example}-{next(calls)}"
@@ -100,6 +101,7 @@ def test_no_match_and_unlabelled_rows_are_outside_the_denominator(tmp_path: Path
     T3 cannot be, T2 is a deliberate no-match, and every other source is unlabelled.
     Relies on BM25 ranking a gold id for cafeteria_fcd-T1 within the top 10."""
     job = load_job(EXAMPLES / "cafeteria_fcd" / "job_jev.yaml")
+    skip_if_loader_missing(job.target.kind)
     job = job.model_copy(update={"retrievers": [r for r in job.retrievers if r.kind == "bm25"]})
     shipped = load_gold_csv(EXAMPLES / "cafeteria_fcd" / "sample" / "gold.csv")
     gold = GoldSet(
@@ -114,6 +116,7 @@ def test_no_match_and_unlabelled_rows_are_outside_the_denominator(tmp_path: Path
 
 def test_a_gold_file_with_nothing_to_retrieve_is_an_error(tmp_path: Path) -> None:
     job = load_job(EXAMPLES / "cafeteria_fcd" / "job_jev.yaml")
+    skip_if_loader_missing(job.target.kind)
     with pytest.raises(ValueError, match="no source record has a gold id"):
         retrieval_recall(job, GoldSet({"cafeteria_fcd-T1": frozenset()}), index_dir=tmp_path)
 
@@ -150,7 +153,7 @@ def test_every_sample_decider_job_ships_e5_beside_bm25(job_path: Path) -> None:
 def test_dense_lifts_english_recall(recall_for: RecallFor) -> None:
     """A2 gate, against the shipped BM25 baselines (A1 was not adopted, so BM25 is as
     shipped): mean recall@200 at least 0.08 above 0.705, no sample more than 0.02 below."""
-    pytest.importorskip("sentence_transformers")
+    load_encoder_or_skip(E5_MODEL)
     recalls = {ex: recall_for(ex, with_dense) for ex in sorted(SAMPLES)}
     print(f"recall@200 with BM25 + e5: {recalls}")
     for ex, recall in recalls.items():

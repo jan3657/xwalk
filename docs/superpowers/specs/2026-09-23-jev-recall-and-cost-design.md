@@ -409,6 +409,10 @@ gate, from `runs/<run>/<ex>/eval.json`:
 | B1 + A2 limit 20, final (`jev_eval_v2_dense_limit`) | 0.90 / 0.64 / 0.56 / 0.80 | 0.974 / 1.00 / 1.00 / 1.00 |
 | + A3, two domains (`jev_eval_v3_rewrite`) | - / - / 0.56 / 0.80 | - / - / 1.00 / 1.00 |
 
+The final-gate row's accepted precision and coverage were measured under the pre-fit
+thresholds (`accept_at` 0.85, or the earlier cafeteria values), not the fitted ones; the
+policy written into each sample job is in the fitted-policies table below.
+
 The final sample jobs are byte-identical, apart from the fitted `policy:` values below, to
 the jobs that produced `jev_eval_v2_dense_limit`, so that run is the final measurement and
 the samples were not re-run. Tokens per record, baseline to final: 4067 -> 4676, 1905 ->
@@ -418,7 +422,10 @@ $0.000185 -> $0.000241, $0.035 -> $0.052 for the 200 rows. The samples pay for t
 gain in tokens: dense adds candidates to screen, and B1 alone saved 19-28% on three of four.
 
 Ref_zivila, `runs/ref_zivila/foodon_jev` (2026-09-22) against `runs/ref_zivila/foodon_jev_v3`
-(B1 and the fitted policy, BM25 only; 2,030 rows, 361 s of matching):
+(B1 and the fitted policy, BM25 only; 2,030 rows, 361 s of matching). The committed Ref_zivila
+job keeps `accept_at` 0.85: the fitted 0.50/0.50/0.50 point produced the v3 re-run's
+835 / 602 / 593 and its 0.966 accepted precision on the same 39 contested rows it was fitted
+on, so that precision is in-sample:
 
 | | 2026-09-22 | v3 |
 |---|---|---|
@@ -430,14 +437,20 @@ Ref_zivila, `runs/ref_zivila/foodon_jev` (2026-09-22) against `runs/ref_zivila/f
 | adjudicated sample: accepted precision (coverage) | 1.00, 22/22 (0.56) | 0.966, 28/29 (0.74) |
 
 The B1 token gate, re-hosted here, passes: 60.6% fewer prompt tokens per record at the same
-number of calls. `scripts/compare_runs.py` on the two `mapping.csv` files: 438 rows matched by
+number of calls. `scripts/compare_runs.py` (a local tool, not on this branch) on the two
+`mapping.csv` files: 438 rows matched by
 both, 432 on the same FoodOn id (98.6%), 6 on different ids, 4 matched only before, 397 only
 after. Moves: 397 needs_review -> matched, 46 needs_review -> unmatched, 40 unmatched ->
 needs_review, 4 matched -> needs_review. Most of the new matches are the lower `accept_at`
 (0.85 -> 0.50) at work; the adjudicated sample prices that at one wrong accept in 29, on 39
-contested rows, and it is not a precision estimate for the whole file.
+contested rows, and it is not a precision estimate for the whole file. Applying the fitted
+point would move about 397 rows from needs_review to matched, so 30-50 of them need a
+spot-check first; until then it is recorded here and not applied.
 
-Fitted policies (`xwalk fit --holdout`, target precision 0.95, written into each job):
+Fitted policies (`xwalk fit --holdout`, target precision 0.95; written into the four sample
+jobs, measured but not applied on Ref_zivila). The four sample policies were fitted
+in-sample on the final run (`jev_eval_v2_dense_limit`); the holdout column is the only
+out-of-sample check:
 
 | Job (fit on) | accept_at / property_floor / choose_at | Full fit | Holdout |
 |---|---|---|---|

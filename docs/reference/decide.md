@@ -725,32 +725,41 @@ path `completion_tokens` is always `0`, and `llm_calls` counts decision calls.
 
 ## Fitting thresholds
 
-The defaults ship unfitted. `xwalk fit` sweeps `accept_at` and `property_floor` over a
-completed run's recorded signals and prints the pair that meets a precision target with the
-most automatic matches. It calls nothing — it re-derives statuses through `derive_status`
-from the ledger — so it is free and repeatable.
+The defaults ship unfitted. `xwalk fit` sweeps `accept_at`, `property_floor` and `choose_at`
+over a completed run's recorded signals and prints the point that meets a precision target
+with the most automatic matches. It calls nothing — it re-derives statuses through
+`derive_status` from the ledger — so it is free and repeatable. The command's flags,
+`--holdout` and `--write-job` included, are in the [command-line reference](cli.md#fit).
 
 ```console
 $ xwalk fit --run runs/cfcd_jev --gold examples/cafeteria_fcd/sample/gold.csv \
     --job examples/cafeteria_fcd/job_jev.yaml --precision 0.95
 labelled rows: 120; target precision: 0.95
 
-accept_at prop_floor accepted correct precision coverage near
-     0.75       0.50       96      85      0.89     0.80   31
-     0.80       0.50       88      82      0.93     0.73   24
-     0.85       0.00       81      76      0.94     0.68   17
-     0.85       0.50       74      72      0.97     0.62   17
-     0.90       0.50       61      61      1.00     0.51    9
+accept_at prop_floor choose_at accepted correct precision coverage near
+     0.75       0.50      0.50       96      85      0.89     0.80   31
+     0.80       0.50      0.50       88      82      0.93     0.73   24
+     0.85       0.00      0.50       81      76      0.94     0.68   17
+     0.85       0.50      0.50       74      72      0.97     0.62   17
+     0.90       0.50      0.50       61      61      1.00     0.51    9
 
-recommended: accept_at=0.85 property_floor=0.50 (72/74 correct, coverage 0.62, 17 rows within the jitter margin of accept_at)
+recommended: accept_at=0.85 property_floor=0.50 choose_at=0.50 (72/74 correct, coverage 0.62, 17 rows within the jitter margin of accept_at)
 ```
 
-Only those two thresholds are swept. Every other gate — `screen_floor`, `choose_at`,
-`none_at`, `rubric_floor`, `shortlist_floor` — has to be the one the run actually used, or
-the fitted pair is tuned against a policy nobody ran. That is what `--job` is for: it reads
-the job's own `policy:` block as the base. **`--job` is optional, and omitting it fits
-against `DecisionPolicy()` defaults** and prints `note: --job not given; fitting against
-default policy thresholds` on stderr. If your job overrides any unswept gate, pass it.
+The table above is abridged. Only those three thresholds are swept; `choose_at` is swept over
+`(0.3, 0.5, 0.7)` plus the job's own value, so the run's own setting is always a candidate.
+Every other gate — `screen_floor`, `none_at`, `rubric_floor`, `shortlist_floor` — has to be
+the one the run actually used, or the fitted thresholds are tuned against a policy nobody
+ran. That is what `--job` is for: it reads the job's own `policy:` block as the base.
+**`--job` is optional, and omitting it fits against `DecisionPolicy()` defaults** and prints
+`note: --job not given; fitting against default policy thresholds` on stderr. If your job
+overrides any unswept gate, pass it.
+
+A point fitted and scored on the same rows flatters itself. `--holdout` splits the labelled
+ids into two halves, deterministically from the run fingerprint, refits on one half and
+scores that recommendation on the other; the line it prints is the only out-of-sample check
+the command gives. When the half-data fit picks different thresholds from the full-data one,
+the line says so, and its numbers do not describe the point `--write-job` writes.
 
 ### Reading `near_threshold`
 
@@ -776,17 +785,39 @@ def fit_thresholds(
     target_precision: float = 0.95,
     accept_grid: Sequence[float] = DEFAULT_ACCEPT_GRID,
     property_grid: Sequence[float] = DEFAULT_PROPERTY_GRID,
+    choose_grid: Sequence[float] = DEFAULT_CHOOSE_GRID,
     margin: float = 0.05,
 ) -> FitReport
 
 
+def fit_holdout(
+    results: Iterable[MatchResult],
+    gold: GoldSet,
+    *,
+    base: DecisionPolicy,
+    seed_fingerprint: str,
+    target_precision: float = 0.95,
+    accept_grid: Sequence[float] = DEFAULT_ACCEPT_GRID,
+    property_grid: Sequence[float] = DEFAULT_PROPERTY_GRID,
+    choose_grid: Sequence[float] = DEFAULT_CHOOSE_GRID,
+    margin: float = 0.05,
+) -> tuple[FitReport, FitPoint | None]
+
+
+def holdout_split(source_ids: Iterable[str], seed_fingerprint: str) -> tuple[list[str], list[str]]
+
+
 def render_fit(report: FitReport) -> str
+
+
+def render_holdout(point: FitPoint | None, full: FitPoint | None = None) -> str
 
 
 @dataclass(frozen=True)
 class FitPoint:
     accept_at: float
     property_floor: float
+    choose_at: float
     accepted: int
     correct: int
     precision: float | None
@@ -803,10 +834,19 @@ class FitReport:
 ```
 
 `DEFAULT_ACCEPT_GRID` is `0.50` to `0.95` in steps of `0.05`; `DEFAULT_PROPERTY_GRID` is
-`(0.0, 0.3, 0.5, 0.7)`. `recommended` is the eligible point — precision at or above
-`target_precision` — with the most accepted rows, and is `None` when no point qualifies, in
-which case `xwalk fit` prints `no grid point meets the target precision; lower the target
-or improve the questions` and exits `1` (`EXIT_ATTENTION`).
+`(0.0, 0.3, 0.5, 0.7)`; `DEFAULT_CHOOSE_GRID` is `(0.3, 0.5, 0.7)`, and `base.choose_at` is
+always added to it. `recommended` is the eligible point — precision at or above
+`target_precision` — with the most accepted rows (on a tie, the stricter thresholds), and is
+`None` when no point qualifies, in which case `xwalk fit` prints `no grid point meets the
+target precision; lower the target or improve the questions` and exits `1`
+(`EXIT_ATTENTION`).
+
+`holdout_split` orders the ids by a hash draw salted with `seed_fingerprint` and deals them
+alternately into `(dev, holdout)` halves whose sizes differ by at most one; the split depends
+only on the ids and the seed. `fit_holdout` fits on the dev half and returns that report with
+the recommended point scored on the holdout half, or `None` when the dev half recommended
+nothing. `render_holdout` formats that point as the one `holdout:` line; given the full-data
+recommendation as `full`, it notes when the two differ.
 
 Unlabelled source ids are skipped entirely; `precision` is `None`, printed as `-`, for a
 grid point that accepted nothing.

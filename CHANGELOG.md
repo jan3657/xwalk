@@ -23,7 +23,10 @@ All notable changes to this project are documented here. The format follows
 - BM25 retriever options `analyzer: en_stem` and `fuzzy_distance`, both opt-in; the
   sample jobs keep the defaults because they did not lift recall enough.
 - A dense `intfloat/multilingual-e5-small` retriever (`limit: 20`) beside BM25 on the
-  four sample decider jobs; the Ref_zivila job keeps BM25 alone.
+  four sample decider jobs; the Ref_zivila job keeps BM25 alone. The four sample
+  `job_jev.yaml` files and `scripts/run_jev_eval.sh` now need `xwalk[dense]` and the
+  `intfloat/multilingual-e5-small` model in the HuggingFace cache. Tokens per record rise
+  about 1.5-2.8x on those samples (against B1 alone) in exchange for the accuracy gain.
 - An opt-in `decider.rewrite` block: when the screen finds nothing, an LLM proposes new
   queries and Jev screens what they retrieve. No shipped job sets it.
 - `examples/ref_zivila/gold_adjudicated.csv` (39 rows from the adjudicated
@@ -35,8 +38,9 @@ All notable changes to this project are documented here. The format follows
 - The screen's shared preamble moves into the decision state (`questions_version` 2), so
   each candidate's question is short. The run fingerprint covers the question version,
   so a decider run recorded before this change does not resume and re-runs from the start.
-- The sample decider jobs and the Ref_zivila job carry thresholds fitted with
-  `xwalk fit --holdout` (see the recall-and-cost spec's Results).
+- The four sample decider jobs carry thresholds fitted with `xwalk fit --holdout`.
+  Ref_zivila's fitted threshold was measured but not applied: its job keeps `accept_at`
+  0.85 pending a spot-check (see the recall-and-cost spec's Results).
 - The CI platform matrix now executes rather than merely being declared. macOS 14,
   Windows, and Linux on 3.10/3.11/3.12, plus aarch64 and each optional extra, all pass
   as of v0.1.1 — which retires the second of the limitations listed under 0.1.0.

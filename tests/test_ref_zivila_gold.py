@@ -74,3 +74,10 @@ def test_conversion_rejects_an_unknown_verdict(tmp_path: Path) -> None:
     source.write_text("source_id,qwen_id,jev_id,verdict\na,FOODON:q,FOODON:j,maybe\n")
     with pytest.raises(ValueError, match="maybe"):
         _script().convert(source, tmp_path / "gold.csv")
+
+
+def test_the_committed_gold_file_matches_a_fresh_conversion(tmp_path: Path) -> None:
+    """Drift guard: the committed gold is exactly what the script makes of the adjudication."""
+    out = tmp_path / "gold.csv"
+    _script().convert(ADJUDICATED, out)
+    assert out.read_bytes() == GOLD.read_bytes()
