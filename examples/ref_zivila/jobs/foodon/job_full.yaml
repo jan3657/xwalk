@@ -1,0 +1,55 @@
+# Full 2,030-row Ref_zivila FoodOn mapping job
+name: ref_zivila_foodon_full
+
+templates:
+  query: "{{ mention_en }} {{ aliases | join(' ') }}"
+  context: ""
+  doc: >-
+    {{ label }} {{ synonyms | join(' ') }} {{ definition }}
+    {{ parent_labels | join(' ') }}
+  candidate: |
+    ID: {{ id }}
+    Label: {{ label }}
+    {% if synonyms %}Synonyms: {{ synonyms | join('; ') }}{% endif %}
+    {% if definition %}Definition: {{ definition }}{% endif %}
+    {% if parent_labels %}Parents: {{ parent_labels | join('; ') }}{% endif %}
+
+target:
+  kind: csv
+  path: ../../../../data/ref_zivila/targets/foodon.csv
+  id_column: id
+  multivalue_columns: [synonyms, parents, parent_labels]
+
+source:
+  kind: csv
+  path: ../../../../data/ref_zivila/source.csv
+  id_column: ID
+  multivalue_columns: [aliases]
+
+retrievers:
+  - kind: bm25
+    name: bm25
+    limit: 50
+    exact_fields: [label, synonyms]
+
+llm:
+  kind: openai_compat
+  model: nex-agi/nex-n2.5-mini:free
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: XWALK_TEST_API_KEY
+  profile: unknown
+
+prompts:
+  slots: slots.yaml
+
+policy:
+  max_attempts: 1
+  accept_at: 0.85
+  review_floor: 0.50
+  verify_band: null
+  audit_rate: 0.0
+  concurrency: 4
+
+selector:
+  max_candidates: 25
+  max_candidate_tokens: 8000

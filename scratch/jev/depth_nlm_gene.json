@@ -1,0 +1,54 @@
+{
+ "bm25_25": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.68,
+  "median_latency": 0.3,
+  "mean_tokens": 1712,
+  "cost_total": 0.0036,
+  "choice_acc": 0.62,
+  "choice_NONE": 19,
+  "acc_if_noul>=.8": [
+   1.0,
+   25
+  ],
+  "acc_if_noul<.8": [
+   0.36,
+   25
+  ]
+ },
+ "all200_one_call": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.86,
+  "median_latency": 0.56,
+  "mean_tokens": 32846,
+  "cost_total": 0.069,
+  "choice_acc": 0.8,
+  "choice_NONE": 7,
+  "acc_if_noul>=.8": [
+   0.97,
+   40
+  ],
+  "acc_if_noul<.8": [
+   0.4,
+   10
+  ]
+ },
+ "all200_chunks50": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.92,
+  "median_latency": 0.37,
+  "mean_tokens": 25063,
+  "cost_total": 0.0526,
+  "acc_if_noul>=.8": [
+   1.0,
+   39
+  ],
+  "acc_if_noul<.8": [
+   0.64,
+   11
+  ]
+ }
+}

@@ -1,0 +1,61 @@
+# Full 2,030-row Ref_zivila FoodOn mapping job with Nex N2.5 Mini (Free)
+name: ref_zivila_foodon_nex
+
+templates:
+  query: "{{ mention_en }} {{ aliases | join(' ') }}"
+  context: |-
+    {% if mention_en %}English name: {{ mention_en }}{% endif %}
+    {% if name_slo %}Slovenian full name: {{ name_slo }}{% endif %}
+    {% if tag_name_slo %}Slovenian tag name: {{ tag_name_slo }}{% endif %}
+    {% if short_name_slo %}Slovenian short name: {{ short_name_slo }}{% endif %}
+    {% if fgnm %}Food group: {{ fgnm }}{% endif %}
+    {% if curation_note %}Curation warning: {{ curation_note }}{% endif %}
+  doc: >-
+    {{ label }} {{ synonyms | join(' ') }} {{ definition }}
+    {{ parent_labels | join(' ') }}
+  candidate: |
+    ID: {{ id }}
+    Label: {{ label }}
+    {% if synonyms %}Synonyms: {{ synonyms | join('; ') }}{% endif %}
+    {% if definition %}Definition: {{ definition }}{% endif %}
+    {% if parent_labels %}Parents: {{ parent_labels | join('; ') }}{% endif %}
+
+target:
+  kind: csv
+  path: ../../../../data/ref_zivila/targets/foodon.csv
+  id_column: id
+  multivalue_columns: [synonyms, parents, parent_labels]
+
+source:
+  kind: csv
+  path: ../../../../data/ref_zivila/source.csv
+  id_column: ID
+  multivalue_columns: [aliases]
+
+retrievers:
+  - kind: bm25
+    name: bm25
+    limit: 50
+    exact_fields: [label, synonyms]
+
+llm:
+  kind: openai_compat
+  model: nex-agi/nex-n2.5-mini:free
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: XWALK_TEST_API_KEY
+  profile: unknown
+
+prompts:
+  slots: slots.yaml
+
+policy:
+  max_attempts: 1
+  accept_at: 0.85
+  review_floor: 0.50
+  verify_band: null
+  audit_rate: 0.0
+  concurrency: 4
+
+selector:
+  max_candidates: 25
+  max_candidate_tokens: 8000

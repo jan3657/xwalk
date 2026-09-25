@@ -1,0 +1,90 @@
+{
+ "bm25_25": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.92,
+  "median_latency": 0.32,
+  "mean_tokens": 1625,
+  "cost_total": 0.0034,
+  "choice_acc": 0.9,
+  "choice_NONE": 3,
+  "acc_if_noul>=.8": [
+   0.97,
+   35
+  ],
+  "acc_if_noul<.8": [
+   0.8,
+   15
+  ]
+ },
+ "bm25_50": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.92,
+  "median_latency": 0.29,
+  "mean_tokens": 1625,
+  "cost_total": 0.0034,
+  "choice_acc": 0.9,
+  "choice_NONE": 3,
+  "acc_if_noul>=.8": [
+   0.97,
+   35
+  ],
+  "acc_if_noul<.8": [
+   0.8,
+   15
+  ]
+ },
+ "bm25_100": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.92,
+  "median_latency": 0.3,
+  "mean_tokens": 1625,
+  "cost_total": 0.0034,
+  "choice_acc": 0.9,
+  "choice_NONE": 3,
+  "acc_if_noul>=.8": [
+   0.97,
+   35
+  ],
+  "acc_if_noul<.8": [
+   0.8,
+   15
+  ]
+ },
+ "all200_one_call": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.94,
+  "median_latency": 0.57,
+  "mean_tokens": 33115,
+  "cost_total": 0.0695,
+  "choice_acc": 0.92,
+  "choice_NONE": 4,
+  "acc_if_noul>=.8": [
+   1.0,
+   44
+  ],
+  "acc_if_noul<.8": [
+   0.5,
+   6
+  ]
+ },
+ "all200_chunks50": {
+  "n": 50,
+  "errors": 0,
+  "noul_top1_acc": 0.92,
+  "median_latency": 0.38,
+  "mean_tokens": 27134,
+  "cost_total": 0.057,
+  "acc_if_noul>=.8": [
+   0.98,
+   46
+  ],
+  "acc_if_noul<.8": [
+   0.25,
+   4
+  ]
+ }
+}
