@@ -16,6 +16,7 @@ from xwalk.llm.base import (
     LLMResponse,
     LLMRetryableError,
 )
+from xwalk.llm.budget import CallBudget, CallLimitExceeded
 from xwalk.records import Usage
 
 ADAPTER_VERSION = 1
@@ -122,6 +123,11 @@ class OpenAICompatClient:
         self._extra_headers = dict(extra_headers or {})
         self._structured_disabled = False
         self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
+        self._call_budget: CallBudget | None = None
+
+    def attach_call_budget(self, budget: CallBudget) -> None:
+        """Reserve from `budget` before every HTTP request, retries included."""
+        self._call_budget = budget
 
     @property
     def model(self) -> str:
@@ -219,6 +225,12 @@ class OpenAICompatClient:
         last_retry_after: float | None = None
         for attempt in range(self._max_retries + 1):
             body = self._body(request, structured=structured)
+            if self._call_budget is not None:
+                try:
+                    self._call_budget.acquire()
+                except CallLimitExceeded as exc:
+                    # The requests already sent (and failed) are still real calls.
+                    raise CallLimitExceeded(str(exc), usage=Usage.unreported(dispatched)) from None
             dispatched += 1
             try:
                 response = await self._post(body)

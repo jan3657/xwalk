@@ -8,6 +8,7 @@ from xwalk.llm.base import (
     LLMRetryableError,
     ParseError,
 )
+from xwalk.llm.budget import BudgetedLLM, CallBudget, CallLimitExceeded
 from xwalk.llm.cache import CachingLLM, llm_cache_key
 from xwalk.llm.fake import FakeLLM
 from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
@@ -15,7 +16,10 @@ from xwalk.llm.parsing import parse_json_object, strip_thinking
 
 __all__ = [
     "CAPABILITY_PROFILES",
+    "BudgetedLLM",
     "CachingLLM",
+    "CallBudget",
+    "CallLimitExceeded",
     "FakeLLM",
     "LLMCapabilities",
     "LLMClient",
