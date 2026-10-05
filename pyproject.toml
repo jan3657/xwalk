@@ -62,8 +62,8 @@ litellm = ["litellm>=1.40"]
 mcp = ["mcp>=2.3,<3"]
 all = ["xwalk[dense,ontology,sql,litellm,mcp]"]
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
+    "pytest>=8.2",
+    "pytest-asyncio>=0.24",
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML",

@@ -38,6 +38,18 @@ def test_every_declared_extra_exists():
         assert f"{extra} = [" in PYPROJECT
 
 
+def test_the_dev_test_runner_bounds_resolve_to_a_working_pair():
+    """With the lowest versions allowed, pytest 8.0 and pytest-asyncio 0.23.0 crash at
+    collection (INTERNALERROR), and 0.23.5 errors under pytest 8.3. pytest-asyncio
+    0.24 needs pytest >= 8.2; that lowest pair was checked to run the suite (0.2.0rc1
+    review, `uv pip install --resolution lowest-direct`)."""
+    block = re.search(r"^dev = \[(.*?)^\]", PYPROJECT, re.S | re.M)
+    assert block, "could not find the dev extra"
+    dev = re.findall(r'"([^"]+)"', block.group(1))
+    assert "pytest>=8.2" in dev
+    assert "pytest-asyncio>=0.24" in dev
+
+
 def test_the_python_floor_is_declared():
     assert 'requires-python = ">=3.10"' in PYPROJECT
 
