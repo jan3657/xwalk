@@ -115,6 +115,15 @@ but untested.
   identity (`DenseRetriever.encoder_identity`) is now part of it. `JobSpec.run_fingerprint`
   also used the default fallback retrieval depth instead of the one handed to `Matcher`.
 
+- Resuming a finished `xwalk cluster` run with `failed` records made no calls and kept
+  them failed (exit 3). Resume now retries them from the exported state, as `match`
+  retries failed records, and stores the result as a new selected state revision;
+  earlier decisions stay as history.
+- A reached `--max-calls` limit was listed once per in-flight record in a match run's
+  `errors`. It is now one `call_limit_reached` entry.
+- The `dev` extra allowed pytest 8.0 with pytest-asyncio 0.23.0, which crash at test
+  collection. It now requires `pytest>=8.2` and `pytest-asyncio>=0.24`.
+
 ### Added
 
 - Optional MCP server: `pip install 'xwalk[mcp]'` (official SDK, `mcp>=2.3,<3`), then
@@ -206,6 +215,14 @@ but untested.
   mapping no longer loads (`job_yaml_invalid`, "duplicate key ..."); YAML would otherwise
   keep the last value silently. YAML syntax errors report a position instead of quoting
   the offending line.
+- **Compatibility:** a prompt slots file that gives the same key twice no longer loads
+  (`load_slots` raises `ValueError`; `xwalk validate` reports `prompts_invalid`).
+- **Compatibility:** a retriever `name` must start with a letter or digit and use only
+  letters, digits, `.`, `_` and `-` (at most 64 characters). It names the index
+  directory, and `../x` placed the index outside it.
+- **Compatibility:** `xwalk cluster --max-calls N` with `0 < N < 2 + pool.max_expansion_pages`
+  is refused (exit 2): a step commits only when it finishes, so such a cap never made
+  progress.
 - **Compatibility:** `xwalk match` warnings (review bucket, duplicate targets) go to
   stderr; stdout carries the summary (or the JSON envelope).
 - **Compatibility:** index fingerprints, and therefore run fingerprints, changed; an

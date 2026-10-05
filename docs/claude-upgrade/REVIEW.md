@@ -171,15 +171,20 @@ All six new tests failed against the unfixed `src/` and pass after the fix.
 
 ## Remaining issues
 
+Follow-up (same day, after this review): the items marked **Fixed** were fixed on this
+branch, each with a regression test that failed first. Gates after the follow-up: pytest
+1214 passed / 16 skipped; ruff check and format (src tests benchmarks examples scripts),
+mypy and `scripts/check_readme_quickstart.py` clean.
+
 | Severity | Issue | Blocks release? |
 |---|---|---|
-| Medium | Clustering: a completed run with `failed` members cannot be retried by resuming. The rerun makes 0 calls and stays `failed`/exit 3; only a new `--out` (full recompute) helps, and the guide does not say so. Matching does retry failed rows on resume. | No (clustering is experimental). Fix or document before clustering leaves experimental |
+| Medium | **Fixed in `a64d20e`.** Clustering: a completed run with `failed` members cannot be retried by resuming. The rerun makes 0 calls and stays `failed`/exit 3; only a new `--out` (full recompute) helps, and the guide does not say so. Matching does retry failed rows on resume. Now a resume round restores the exported state, re-decides each failed source and stores a new selected state revision; history is kept and an interrupted round resumes to the same rows (`docs/guide/clustering.md`). | No (clustering is experimental). Fix or document before clustering leaves experimental |
 | Medium | MCP tool path arguments are unsandboxed: `out`/`index_dir` can create directories anywhere, and the `job` path can be any file. Writes never overwrite foreign files (`out` refuses non-empty non-run directories), and since fix 2 file content is no longer echoed, but unknown-field messages still name the keys of any YAML mapping file. This is documented as "no `--root` sandbox". | No, for local stdio use by the file's owner. Add `--root` before advertising MCP for untrusted agents |
-| Low | Clustering `--max-calls` below the calls one step needs (2+) never makes progress. Each invocation spends its budget and aborts with nothing persisted. Small budgets waste work (cap 3: 89 calls versus 66 uninterrupted). | No. Document a minimum, or refuse `max_calls < settings.max_calls_per_member_decision` |
-| Low | Pydantic lax mode coerces types: `accept_at: "0.6"` and `max_attempts: true` (→ 1) are accepted. | No |
-| Low | Several in-flight records hitting the call limit repeat `call_limit_reached` in `errors` (3 identical entries seen). | No (cosmetic) |
-| Low | Dev-only lower bounds: `pytest>=8.0` with `pytest-asyncio>=0.23` resolves to an incompatible pair (INTERNALERROR at collection). Runtime lower bounds are fine. | No. Raise to `pytest-asyncio>=0.24` |
-| Low | A retriever `name` such as `../x` places its index outside the index directory (job files are the user's own configuration). `slots.yaml` still uses plain `safe_load` (duplicate keys pass there). | No |
+| Low | **Fixed in `a64d20e`.** Clustering `--max-calls` below the calls one step needs (2+) never makes progress. Each invocation spends its budget and aborts with nothing persisted. Small budgets waste work (cap 3: 89 calls versus 66 uninterrupted). A positive cap below `2 + pool.max_expansion_pages` is now refused up front (`usage`, exit 2). | No. Document a minimum, or refuse `max_calls < settings.max_calls_per_member_decision` |
+| Low | Pydantic lax mode coerces types: `accept_at: "0.6"` and `max_attempts: true` (→ 1) are accepted. Still open (not trivial to change without breaking existing job files). | No |
+| Low | **Fixed in `19cb3d1`.** Several in-flight records hitting the call limit repeat `call_limit_reached` in `errors` (3 identical entries seen). Now reported once. | No (cosmetic) |
+| Low | **Fixed in `c087538`.** Dev-only lower bounds: `pytest>=8.0` with `pytest-asyncio>=0.23` resolves to an incompatible pair (INTERNALERROR at collection). Runtime lower bounds are fine. Now `pytest>=8.2`, `pytest-asyncio>=0.24`; the lowest pair (8.2.0/0.24.0) ran the suite in a scratch venv (0.23.5 errors under pytest 8.3.5). | No. Raise to `pytest-asyncio>=0.24` |
+| Low | **Fixed in `53aea88`.** A retriever `name` such as `../x` places its index outside the index directory (job files are the user's own configuration). `slots.yaml` still uses plain `safe_load` (duplicate keys pass there). Names are now validated as safe identifiers, and slots files use the job file's duplicate-key loader. | No |
 | Low | Carried over from task 07: the README install line points at the default branch, relative links break on PyPI, `inspect` shows the job's model for an injected offline model, and CONTRIBUTING's lint paths omit `benchmarks`. | No |
 
 ## Supported versus experimental
