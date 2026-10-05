@@ -1,0 +1,57 @@
+# Data manifest: CafeteriaFCD food mentions -> FoodOn subset (pilot, frozen in the repo).
+# Paths are relative to the repository root. `benchmarks.data` refuses to run when a
+# frozen file's sha256 differs from the digest below: a changed file is a new data
+# revision and needs a new manifest entry, not a silent re-run.
+name: cafeteria_fcd
+domain: food composition (Jan's domain)
+upstream:
+  corpus:
+    name: CafeteriaFCD (food consumption data annotated with food semantic resources)
+    url: null  # not recorded in this repository; fill in from the OntoRAG paper repo before publishing
+    version: unknown (OntoRAG paper repo copy, data/datasets/cafeteria_fcd/test.jsonl.gz)
+    split_used: upstream test split, first 50 mentions in file order
+  catalog:
+    name: FoodOn
+    url: https://github.com/FoodOntology/foodon
+    version: unknown (OntoRAG paper repo dump, data/cafeteria_foodon/ontology_dump.json)
+construction: >-
+  examples/cafeteria_fcd/extract.py, run once by hand (2026-07-28, commit f9c2def):
+  the first 50 test mentions; 200 FoodOn terms = every gold target of those mentions,
+  then sibling distractors. 28 of 50 mentions carry more than one gold id; any listed id
+  counts as correct. The sample has no no-match rows; the `nomatch` variant below adds
+  them.
+identifiers: "source: mention_id (cafeteria_fcd-T<n>); target: FOODON:<digits>"
+frozen_files:
+  job: examples/cafeteria_fcd/job.yaml
+  slots: examples/cafeteria_fcd/slots.yaml
+  targets: examples/cafeteria_fcd/sample/targets.owl
+  sources: examples/cafeteria_fcd/sample/mentions.jsonl
+  gold: examples/cafeteria_fcd/sample/gold.csv
+sha256:
+  examples/cafeteria_fcd/job.yaml: b106a6c347a4beb20eca1f9550e93cf253b177d9fe0b949102d8e0a55f7f1e26
+  examples/cafeteria_fcd/slots.yaml: ff4b434be837d3b7d7a777d0a2bb3159f42dfdfed9b388caa6de635c143461a2
+  examples/cafeteria_fcd/sample/targets.owl: 939be6d7af63fe2400cf53860d43da2009669fbba202264a2772482ba8aae3d6
+  examples/cafeteria_fcd/sample/mentions.jsonl: 49d96581a217a64597df188fe721db852cb881118998dbd4939c177694fd0055
+  examples/cafeteria_fcd/sample/gold.csv: 468ba46424be3c01048a243b28c49faf21f9d82cce7628efc2d586355bb41bf9
+gold_expander: null
+query_field: mention
+splits:
+  # Hash-based (xwalk.evaluate.Partitioner), so adding records never reshuffles them.
+  # Nothing in the benchmark is tuned: every threshold is fixed in benchmarks/methods.py
+  # or taken from the job. Metrics are reported on `all` and on `test` only; prompt_train
+  # and validation are reserved for any future tuning and must never be scored as results.
+  fractions: [0.5, 0.25, 0.25]
+  salt: xwalk-bench-v1
+variants:
+  - name: cafeteria_fcd
+    construction: none (the frozen sample as is)
+  - name: cafeteria_fcd_nomatch
+    construction: remove_gold_targets
+    # Mentions are visited in sha256(salt + source_id) order; each visited mention's
+    # whole gold set is removed from the catalog until at least `target_nomatch`
+    # mentions have no remaining gold. A removal that would push the count past
+    # `max_nomatch` is skipped. Every other target, including near-neighbour
+    # distractors, stays. Mentions whose gold set only shrinks keep the remaining ids.
+    target_nomatch: 10
+    max_nomatch: 15
+    salt: xwalk-bench-nomatch-v1

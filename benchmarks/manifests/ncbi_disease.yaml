@@ -1,0 +1,58 @@
+# Data manifest: NCBI Disease mentions -> CTD disease records (small pinned public corpus).
+# Paths are relative to the repository root. See cafeteria_fcd.yaml for the conventions.
+name: ncbi_disease
+domain: biomedical disease normalisation (public corpus)
+upstream:
+  corpus:
+    name: NCBI Disease corpus (Dogan, Leaman and Lu, J Biomed Inform 2014)
+    url: https://www.ncbi.nlm.nih.gov/CBBresearch/Dogan/DISEASE/
+    version: unknown (OntoRAG paper repo copy, data/datasets/ncbi_disease/test.jsonl.gz)
+    split_used: upstream test split, first 50 mentions in file order
+  catalog:
+    name: CTD disease vocabulary (MeSH + OMIM)
+    url: https://ctdbase.org/downloads/
+    version: unknown (OntoRAG paper repo dump, data/ctd_diseases/ontology_dump.json)
+construction: >-
+  examples/ncbi_disease/extract.py, run once by hand (2026-07-28, commit f9c2def):
+  the first 50 test mentions (with sentence context); 200 CTD records = every gold
+  target of those mentions, then sibling distractors. Gold ids are normalised and
+  expanded through examples/ncbi_disease/gold_normalize.py (alternate accessions).
+identifiers: "source: <PMID>.<n>; target: MESH:<id> or OMIM:<id>"
+frozen_files:
+  job: examples/ncbi_disease/job.yaml
+  slots: examples/ncbi_disease/slots.yaml
+  targets: examples/ncbi_disease/sample/targets.tsv
+  sources: examples/ncbi_disease/sample/mentions.jsonl
+  gold: examples/ncbi_disease/sample/gold.csv
+sha256:
+  examples/ncbi_disease/job.yaml: d34110443515718a87368dac69cd4bed68e421c25258a2b2e9bb562146155316
+  examples/ncbi_disease/slots.yaml: 7eb06e9cb953e6ae0f01c5e1f13ed33de428e3541e6b8b2a2a7bbb2a801fdce1
+  examples/ncbi_disease/sample/targets.tsv: 0b2ae63c1eeb357c4d5a7b07034ee82393540ae2025d8513e1b2a2327809c7a3
+  examples/ncbi_disease/sample/mentions.jsonl: bd14d71348fcae170cdea1649e176f0137a5ce210f5db991911d146b58dca12b
+  examples/ncbi_disease/sample/gold.csv: 1eec4a7a4ec45a5eec737b581f9b8445c4ce1896980ae184463ee8e880a45d42
+  examples/ncbi_disease/gold_normalize.py: 9259183898fafcee699d63a94bfdcaaffddb572eba9618bc1e13cf263f47c413
+known_issues:
+  - >-
+    11 of 50 mentions (gold OMIM:215600 x8, OMIM:261600 x3) have gold ids that are
+    absent from sample/targets.tsv even after alias expansion. The benchmark restricts
+    gold to the catalog, so they count as no-match cases; `xwalk eval` against the raw
+    gold.csv counts them as unreachable errors instead. Recorded per variant in
+    construction.json (`gold_outside_catalog`).
+gold_expander: examples.ncbi_disease.gold_normalize
+query_field: mention
+splits:
+  fractions: [0.5, 0.25, 0.25]
+  salt: xwalk-bench-v1
+variants:
+  - name: ncbi_disease
+    construction: none (the frozen sample as is)
+  - name: ncbi_disease_nomatch
+    construction: remove_gold_targets
+    # The base sample already has 11 mentions whose (expanded) gold ids are absent from
+    # the 200-record catalog, so they are no-match cases against it (see
+    # `known_issues`). The construction adds about 10 more. Every gold concept here is
+    # shared by several mentions, so one removal can turn many mentions into no-match
+    # cases; `max_nomatch` bounds that.
+    target_nomatch: 20
+    max_nomatch: 26
+    salt: xwalk-bench-nomatch-v1
