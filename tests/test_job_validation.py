@@ -87,6 +87,23 @@ def test_duplicate_retriever_names_are_rejected():
     assert "share the name 'bm25'" in issues[0][2]
 
 
+@pytest.mark.parametrize("name", ["../x", "a/b", "a\\b", "..", ".", "/abs", " pad", "x y"])
+def test_a_retriever_name_must_be_a_safe_index_directory_name(name):
+    """The name is the index subdirectory: it may not leave the index directory."""
+
+    def edit(d):
+        d["retrievers"][0]["name"] = name
+
+    issues = _issues(_job(edit))
+    assert issues[0][1].startswith("retrievers.0")
+    assert "letters, digits" in issues[0][2]
+
+
+@pytest.mark.parametrize("name", ["bm25", "dense-mini", "labels_v2", "bm25.v2", "B2"])
+def test_ordinary_retriever_names_are_accepted(name):
+    parse_job(_job(lambda d: d["retrievers"][0].__setitem__("name", name)))
+
+
 def test_a_field_that_does_not_apply_to_the_kind_is_rejected():
     issues = _issues(_job(lambda d: d["retrievers"][0].__setitem__("query_prefix", "q: ")))
     assert "query_prefix does not apply to kind 'bm25'" in issues[0][2]

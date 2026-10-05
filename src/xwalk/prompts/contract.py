@@ -127,7 +127,15 @@ class PromptSlots(BaseModel):
 
 
 def load_slots(path: str | Path) -> PromptSlots:
-    data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    """Read a slots file strictly: a key given twice is refused (`ValueError`), and a
+    YAML error names its position without quoting the file."""
+    from xwalk._yaml import load_strict_yaml, yaml_error_message
+
+    path = Path(path)
+    try:
+        data = load_strict_yaml(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{path.name}: {yaml_error_message(exc)}") from None
     return PromptSlots.model_validate(data)
 
 

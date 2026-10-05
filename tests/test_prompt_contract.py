@@ -104,6 +104,15 @@ def test_load_slots_reads_yaml(tmp_path):
     assert load_slots(path).entity_noun == "chemical entity mention"
 
 
+def test_load_slots_refuses_a_duplicate_key(tmp_path):
+    path = tmp_path / "slots.yaml"
+    text = yaml.safe_dump(json.loads(SLOTS.model_dump_json()), sort_keys=False)
+    path.write_text(text + "entity_noun: SECRETVALUE\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate key 'entity_noun'") as info:
+        load_slots(path)
+    assert "SECRETVALUE" not in str(info.value)  # the position, not the content
+
+
 def test_select_prompt_contains_the_candidate_block():
     prompts = PromptSet.from_slots(SLOTS)
     rendered = prompts.render_select(

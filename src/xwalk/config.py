@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import difflib
 import os
+import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from xwalk._yaml import load_strict_yaml, yaml_error_message
 from xwalk.batch import run_fingerprint_components
 from xwalk.fingerprint import hash_value
 from xwalk.llm.base import LLMClient
@@ -172,6 +174,7 @@ class RecordSpec(_Spec):
         )
 
 
+_SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _DENSE_ONLY = ("model", "device", "query_prefix", "doc_prefix", "revision", "normalize")
 
 
@@ -193,6 +196,12 @@ class RetrieverSpec(_Spec):
     def _check(self) -> RetrieverSpec:
         if self.name is not None and not self.name.strip():
             raise ValueError("a retriever name must not be blank")
+        if self.name is not None and not _SAFE_NAME.fullmatch(self.name):
+            # The name is the index subdirectory; it may not leave the index directory.
+            raise ValueError(
+                f"retriever name {self.name!r} must start with a letter or digit and use only "
+                "letters, digits, '.', '_' and '-' (it names the index directory)"
+            )
         if self.kind == "dense":
             if not self.model:
                 raise ValueError("a dense retriever needs a model name")
@@ -569,63 +578,13 @@ def parse_job(data: Any, *, path: str | Path | None = None) -> JobSpec:
         raise JobValidationError(path, _issues_from(exc)) from None
 
 
-class _StrictLoader(yaml.SafeLoader):
-    """`yaml.SafeLoader` that refuses a mapping with the same key twice.
-
-    Plain YAML loading keeps the last value, so `accept_at` written twice would load
-    silently with whichever came last -- the same failure `extra="forbid"` prevents for
-    a misspelled key. Keys brought in by a `<<` merge may still be overridden.
-    """
-
-
-def _construct_unique_mapping(loader: _StrictLoader, node: yaml.MappingNode) -> dict[Any, Any]:
-    first_line: dict[Any, int] = {}
-    for key_node, _ in node.value:
-        if key_node.tag == "tag:yaml.org,2002:merge":
-            continue
-        key = loader.construct_object(key_node, deep=True)
-        try:
-            earlier = first_line.get(key)
-        except TypeError:  # an unhashable key; construct_mapping reports it
-            continue
-        if earlier is not None:
-            raise yaml.constructor.ConstructorError(
-                None,
-                None,
-                f"duplicate key {key!r} (first given on line {earlier})",
-                key_node.start_mark,
-            )
-        first_line[key] = key_node.start_mark.line + 1
-    return loader.construct_mapping(node, deep=True)
-
-
-_StrictLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    _construct_unique_mapping,
-)
-
-
-def _yaml_error_message(exc: yaml.YAMLError) -> str:
-    """The problem and its position, without echoing the file's content back.
-
-    PyYAML's own message quotes the offending line; for a path that is not a job file
-    (an MCP client can name any path) that would disclose part of an unrelated file.
-    """
-    if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
-        mark = exc.problem_mark
-        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
-        context = f" ({exc.context})" if exc.context else ""
-        return f"{exc.problem}{where}{context}"
-    return type(exc).__name__
-
-
 def load_job_yaml(path: Path, text: str) -> Any:
     """Parse a job file's text strictly (no duplicate keys). Raises `JobValidationError`."""
     try:
-        return yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - a SafeLoader subclass
+        return load_strict_yaml(text)
     except yaml.YAMLError as exc:
         raise JobValidationError(
-            path, [JobIssue("job_yaml_invalid", "", _yaml_error_message(exc))]
+            path, [JobIssue("job_yaml_invalid", "", yaml_error_message(exc))]
         ) from None
 
 

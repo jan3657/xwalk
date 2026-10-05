@@ -154,7 +154,7 @@ Both take the same shape. Several fields apply only to some `kind` values.
 | Field | Type | Required | Default | Applies to | Meaning |
 |---|---|---|---|---|---|
 | `kind` | `bm25 \| dense` | yes | — | both | which engine |
-| `name` | `str \| None` | no | `None` | both | retriever name and index subdirectory |
+| `name` | `str \| None` | no | `None` | both | retriever name and index subdirectory: a letter or digit, then letters, digits, `.`, `_` or `-` (at most 64 characters), so it cannot leave the index directory |
 | `limit` | `int` | no | `20` | both | this retriever's retrieval depth |
 | `exact_fields` | `list[str] \| None` | no | `None` → `["label", "synonyms"]` | bm25 | fields whose whole-string value gets a large boost |
 | `model` | `str \| None` | required for dense | `None` | dense | sentence-transformers model name |
@@ -312,6 +312,7 @@ file, no index, no environment variable and no network.
 | an unknown retriever `kind` | `Input should be 'bm25' or 'dense'` |
 | `retrievers: []` | `List should have at least 1 item after validation, not 0` |
 | a `dense` retriever with no `model` | `a dense retriever needs a model name` |
+| a retriever `name` with a path separator or other unsafe character (`../x`) | `retriever name '../x' must start with a letter or digit and use only letters, digits, …` |
 | `llm.api_key` present | `api_key must not appear in a job file; …` |
 | `kind: openai_compat` with no `base_url` | `openai_compat needs a base_url` |
 | a wrongly typed scalar (`accept_at: high`) | pydantic type error |
@@ -325,7 +326,7 @@ file, no index, no environment variable and no network.
 | a `sql` source without both `url` and `query` | `a sql source needs url and query` |
 | an `id_column` absent from the file | `id_column 'id' not found in …; columns are …` |
 | a Jinja syntax error in a template | `build_templates()` → `query template failed to compile: …` |
-| a missing or invalid slots file | `build_prompts()` |
+| a missing or invalid slots file (including a key given twice) | `build_prompts()`; `xwalk validate` reports `prompts_invalid` |
 | an unset `api_key_env` variable | `build_llm()` |
 | an unknown `profile` | `build_llm()` → `unknown profile 'gpt'; choose from [...]` |
 | `review_floor > accept_at`, `max_attempts: 0`, `concurrency: 0`, a malformed `verify_band` | `build_policy()` → `need 0 <= review_floor (0.9) <= accept_at (0.1) <= 1` |
