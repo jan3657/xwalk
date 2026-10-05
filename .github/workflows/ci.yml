@@ -13,11 +13,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e ".[dev]"
+      # The MCP adapter is type-checked against the real SDK, not an `Any` stand-in.
+      - run: pip install -e ".[dev,mcp]"
       # Same paths as the local gate. CI that lints a narrower tree than the developer
       # does is CI that passes while the local gate fails.
-      - run: ruff check src tests examples scripts
-      - run: ruff format --check src tests examples scripts
+      - run: ruff check src tests examples scripts benchmarks
+      - run: ruff format --check src tests examples scripts benchmarks
       - run: mypy
 
   test:
@@ -39,12 +40,12 @@ jobs:
       - name: Tantivy ranking smoke test
         run: python -m pytest tests/test_bm25.py -q
       - name: Base test suite
-        run: python -m pytest -q -m "not integration and not dense and not ontology and not sql"
+        run: python -m pytest -q -m "not integration and not dense and not ontology and not sql and not mcp"
       - name: Assert the base install stays light
         shell: bash
         run: |
           pip list --format=freeze | tr 'A-Z' 'a-z' > installed.txt
-          for pkg in torch sentence-transformers faiss-cpu rdflib sqlalchemy litellm; do
+          for pkg in torch sentence-transformers faiss-cpu rdflib sqlalchemy litellm mcp; do
             if grep -q "^${pkg}==" installed.txt; then
               echo "::error::${pkg} leaked into the base install"; exit 1
             fi
@@ -65,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        extra: [ontology, sql]
+        extra: [ontology, sql, mcp]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

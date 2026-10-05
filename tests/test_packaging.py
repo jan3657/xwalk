@@ -15,6 +15,7 @@ HEAVY = (
     "rdflib",
     "sqlalchemy",
     "litellm",
+    "mcp",
     "numpy",
     "scikit-learn",
 )
@@ -33,7 +34,7 @@ def test_no_heavy_dependency_is_in_the_base_install():
 
 
 def test_every_declared_extra_exists():
-    for extra in ("dense", "ontology", "sql", "litellm", "all", "dev"):
+    for extra in ("dense", "ontology", "sql", "litellm", "mcp", "all", "dev"):
         assert f"{extra} = [" in PYPROJECT
 
 

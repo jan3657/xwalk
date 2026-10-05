@@ -57,7 +57,10 @@ dense = ["sentence-transformers>=3.0", "torch>=2.0", "faiss-cpu>=1.8"]
 ontology = ["rdflib>=7.0"]
 sql = ["sqlalchemy>=2.0"]
 litellm = ["litellm>=1.40"]
-all = ["xwalk[dense,ontology,sql,litellm]"]
+# `xwalk mcp`: tested against mcp 2.3.0. mcp 2 renamed FastMCP to MCPServer and changed
+# the result types, so 1.x is not supported; 3.x may change them again.
+mcp = ["mcp>=2.3,<3"]
+all = ["xwalk[dense,ontology,sql,litellm,mcp]"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -87,6 +90,7 @@ markers = [
     "dense: needs xwalk[dense]",
     "ontology: needs xwalk[ontology]",
     "sql: needs xwalk[sql]",
+    "mcp: needs xwalk[mcp]",
 ]
 
 [tool.ruff]
@@ -117,5 +121,6 @@ module = [
     "rdflib.*",
     "sqlalchemy.*",
     "litellm.*",
+    "mcp.*",
 ]
 ignore_missing_imports = true

@@ -190,6 +190,22 @@ def _build_parser() -> argparse.ArgumentParser:
     optimise.add_argument("--rounds", type=int, default=4)
     optimise.add_argument("--max-calls", type=int, default=None)
 
+    mcp = sub.add_parser(
+        "mcp", help="serve bounded operations to an agent over MCP stdio (needs xwalk[mcp])"
+    )
+    mcp.add_argument(
+        "--max-calls-cap",
+        type=int,
+        default=None,
+        help="the largest max_calls a match_records call may request (default 500)",
+    )
+    mcp.add_argument(
+        "--offline-model",
+        action="store_true",
+        help="answer every model call with a fixed scripted reply instead of the job's "
+        "endpoint (demos and tests; results are meaningless)",
+    )
+
     review = sub.add_parser("review", help="export or apply human review")
     review_sub = review.add_subparsers(dest="review_command")
     rexport = review_sub.add_parser("export", parents=[common])
@@ -530,6 +546,23 @@ def _failure(operation: str, exc: BaseException) -> OpResult:
     return failure_result(operation, exc)
 
 
+def _serve_mcp(args: argparse.Namespace) -> int:
+    """Run the MCP stdio server until the client closes stdin. stdout is the protocol
+    channel from here on, so a failure to start is reported on stderr only."""
+    try:
+        from xwalk.mcp_server import serve
+
+        serve(max_calls_cap=args.max_calls_cap, offline_model=args.offline_model)
+    except KeyboardInterrupt:
+        return EXIT_INTERRUPTED
+    except Exception as exc:
+        result = failure_result("mcp", exc)
+        for error in result.errors:
+            print(f"error: {error.code}: {error.message}", file=sys.stderr)
+        return result.exit_code
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(argv) if argv is not None else sys.argv[1:]
     as_json = "--json" in arguments
@@ -557,6 +590,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.command:
         parser.print_help()
         return EXIT_USAGE
+
+    if args.command == "mcp":
+        return _serve_mcp(args)
 
     handler = _DISPATCH.get(args.command)
     if handler is None:
