@@ -32,3 +32,6 @@ runs/
 # directory layout. Keep it local; document the variables it sets instead.
 _env.sh
 scripts/_env.sh
+
+# The preserved 0.1.1 ledger is test evidence, not a run artefact.
+!tests/fixtures/ledger_v0_1_1/rundir/ledger.sqlite

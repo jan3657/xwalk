@@ -1,0 +1,5 @@
+source_id,matched_id,confidence,status,reason,explanation,attempts,prompt_tokens,completion_tokens,llm_calls,elapsed_seconds
+s1,T1,0.95,matched,accept_threshold,ok,1,200,40,2,0.007
+s1,T1,0.95,matched,accept_threshold,ok,1,200,40,2,0.006
+s2,T2,0.5,needs_review,below_accept_threshold,ok,1,200,40,2,0.006
+s3,,,failed,provider_failure,,1,0,0,0,0.003

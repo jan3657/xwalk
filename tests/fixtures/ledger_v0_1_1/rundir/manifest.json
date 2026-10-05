@@ -1,0 +1,17 @@
+{
+  "counts": {
+    "failed": 1,
+    "matched": 2,
+    "needs_review": 1
+  },
+  "duplicate_targets": {
+    "T1": [
+      "s1",
+      "s1"
+    ]
+  },
+  "job": "fixture",
+  "library_version": "0.1.1",
+  "run_fingerprint": "v011fp",
+  "target_fingerprint": "7530c81d9ca482a2"
+}
