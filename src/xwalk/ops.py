@@ -942,12 +942,16 @@ async def run_async(
     # with unknown usage), which the batch report cannot see.
     result.usage = usage_to_dict(budgeted.usage)
     result.usage["limit"] = max_calls
-    result.errors = [
-        OpMessage(CALL_LIMIT_CODE, e.message, e.source_id)
-        if budgeted.budget.exhausted and "call limit of" in e.message
-        else OpMessage(e.code, e.message, e.source_id)
-        for e in report.errors
-    ]
+    result.errors = []
+    for e in report.errors:
+        if budgeted.budget.exhausted and "call limit of" in e.message:
+            # One run-level stop, however many in-flight records the spent budget
+            # refused (each is left unsettled and retried on resume).
+            if all(m.code != CALL_LIMIT_CODE for m in result.errors):
+                message = e.message[e.message.index("call limit of") :]
+                result.errors.append(OpMessage(CALL_LIMIT_CODE, message))
+        else:
+            result.errors.append(OpMessage(e.code, e.message, e.source_id))
     result.artifacts["index"] = str(index_root)
     result.data = {"indexes": actions, "job": spec.name, "model": spec.llm.model}
     result.lines += _run_lines(result, report.total)

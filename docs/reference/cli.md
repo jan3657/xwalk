@@ -194,7 +194,7 @@ handles it.
 OpenAI-compatible client's internal HTTP retries, structured-output fallbacks, verifier
 and rewriter calls included — so concurrent records can never dispatch more than `N`.
 When a request would exceed it, nothing is dispatched, the record is not recorded, the run
-is `aborted` with error `call_limit_reached` (exit `3`), and a later `match` resumes from
+is `aborted` with one error `call_limit_reached` (however many records it stopped; exit `3`), and a later `match` resumes from
 there. The limit is per invocation. Retries hidden inside LiteLLM (`num_retries`) cannot be
 observed or limited; set `num_retries=0` there. The reported `usage` counts calls that were
 in flight when the run stopped as calls with unknown usage, never as free.

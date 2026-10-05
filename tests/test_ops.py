@@ -307,6 +307,17 @@ def test_the_call_limit_aborts_and_a_resume_finishes(tmp_path):
     assert resumed.counts["total"] == 4
 
 
+@pytest.mark.parametrize("cap", [1, 2, 3, 5])
+def test_the_call_limit_is_reported_once_however_many_records_hit_it(tmp_path, cap):
+    """Several in-flight records refused by the same spent budget are one run-level
+    stop, not one error per record (review finding, 0.2.0rc1)."""
+    result = ops.run(_job_file(tmp_path), tmp_path / "run", llm=_llm(), max_calls=cap)
+    limits = [e for e in result.errors if e.code == "call_limit_reached"]
+    assert len(limits) == 1
+    assert limits[0].source_id is None
+    assert limits[0].message.startswith(f"call limit of {cap} reached")
+
+
 def test_exit_codes_follow_the_run(tmp_path):
     job = _job_file(tmp_path)
     assert ops.run(job, tmp_path / "a", llm=_llm()).exit_code == 0
