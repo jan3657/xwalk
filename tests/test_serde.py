@@ -1,3 +1,6 @@
+import dataclasses
+import json
+
 from xwalk.records import (
     Attempt,
     Candidate,
@@ -99,3 +102,19 @@ def test_the_serialised_form_is_json_safe():
     import json
 
     json.dumps(result_to_dict(sample_result()))  # must not raise
+
+
+def test_usage_round_trips_unknown_calls_and_cache_hits():
+    usage = Usage(prompt_tokens=5, completion_tokens=1, calls=3, unknown_calls=2, cache_hits=4)
+    result = dataclasses.replace(sample_result(), usage=usage)
+    assert result_from_dict(json.loads(json.dumps(result_to_dict(result)))).usage == usage
+
+
+def test_a_v0_1_usage_without_the_new_fields_reads_as_zero():
+    data = result_to_dict(sample_result())
+    for blob in [data["usage"], *(a["usage"] for a in data["attempts"])]:
+        del blob["unknown_calls"]
+        del blob["cache_hits"]
+    restored = result_from_dict(data)
+    assert restored.usage == Usage(prompt_tokens=100, completion_tokens=20, calls=2)
+    assert restored.attempts[0].usage.unknown_calls == 0

@@ -59,3 +59,13 @@ def test_usage_adds_componentwise():
 def test_usage_sum_starts_from_zero():
     parts = [Usage(prompt_tokens=1, completion_tokens=1, calls=1) for _ in range(3)]
     assert sum(parts, Usage.zero()) == Usage(prompt_tokens=3, completion_tokens=3, calls=3)
+
+
+def test_usage_adds_unknown_calls_and_cache_hits():
+    total = Usage(calls=1, unknown_calls=1) + Usage(cache_hits=2)
+    assert (total.calls, total.unknown_calls, total.cache_hits) == (1, 1, 2)
+
+
+def test_unknown_usage_is_never_displayed_as_a_bare_zero():
+    assert Usage(prompt_tokens=3, completion_tokens=1, calls=1).describe_tokens() == "4"
+    assert Usage.unreported(2).describe_tokens() == "0 (+2 calls with unknown usage)"

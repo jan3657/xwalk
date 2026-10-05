@@ -17,14 +17,26 @@ from xwalk.records import Usage
 
 
 class LLMError(Exception):
-    """Base class for provider failures."""
+    """Base class for provider failures.
+
+    `usage` is what the client observed before failing: how many requests it dispatched
+    (including its own internal retries) and any tokens the provider reported. `None`
+    means the client could not say; callers then count one call with unknown usage
+    (see `failure_usage`).
+    """
+
+    def __init__(self, *args: object, usage: Usage | None = None) -> None:
+        super().__init__(*args)
+        self.usage = usage
 
 
 class LLMRetryableError(LLMError):
     """Transient: 408, 409, 429, 5xx, timeouts, connection resets."""
 
-    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
-        super().__init__(message)
+    def __init__(
+        self, message: str, *, retry_after: float | None = None, usage: Usage | None = None
+    ) -> None:
+        super().__init__(message, usage=usage)
         self.retry_after = retry_after
 
 
@@ -35,9 +47,20 @@ class LLMFatalError(LLMError):
 class ParseError(LLMError):
     """The response could not be reduced to a JSON object."""
 
-    def __init__(self, message: str, *, raw: str) -> None:
-        super().__init__(message)
+    def __init__(self, message: str, *, raw: str, usage: Usage | None = None) -> None:
+        super().__init__(message, usage=usage)
         self.raw = raw
+
+
+def failure_usage(exc: BaseException) -> Usage:
+    """The usage to book for a stage call that raised `exc`.
+
+    A client that knows (it counted its own retries) attaches it to the error. Anything
+    else -- a scripted test double, a timeout outside the client -- counts as one
+    dispatched call whose tokens are unknown, never as a free call.
+    """
+    usage = getattr(exc, "usage", None)
+    return usage if isinstance(usage, Usage) else Usage.unreported()
 
 
 @dataclass(frozen=True)
@@ -57,8 +80,10 @@ class LLMRequest:
     user: str
     schema: Mapping[str, Any] | None = None
     schema_name: str = "response"
-    temperature: float = 0.0
-    max_tokens: int = 1024
+    # None means "use the client's configured value". A stage sets these only when its
+    # caller passed an explicit per-stage override (CONTRACTS.md section 6).
+    temperature: float | None = None
+    max_tokens: int | None = None
     seed: int | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
@@ -96,4 +121,5 @@ __all__ = [
     "LLMResponse",
     "LLMRetryableError",
     "ParseError",
+    "failure_usage",
 ]

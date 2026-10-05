@@ -61,19 +61,40 @@ class Candidate:
 
 @dataclass(frozen=True)
 class Usage:
-    """Token and call accounting. Additive so attempts can be summed into a result."""
+    """Call and token accounting. Additive so attempts can be summed into a result.
+
+    `calls` counts every upstream request that was dispatched, including client-side
+    retries and calls that failed after dispatch. The token fields sum only what the
+    provider reported. A call whose tokens were not reported (an error, an interrupted
+    call, a provider that omitted usage) is counted in `unknown_calls` -- its tokens
+    are unknown, not zero. Cache hits are not upstream calls and are counted apart.
+    """
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
     calls: int = 0
+    unknown_calls: int = 0
+    cache_hits: int = 0
 
     @classmethod
     def zero(cls) -> Usage:
         return cls()
 
+    @classmethod
+    def unreported(cls, calls: int = 1) -> Usage:
+        """`calls` dispatched requests whose token usage is unknown."""
+        return cls(calls=calls, unknown_calls=calls)
+
     @property
     def total_tokens(self) -> int:
+        """Provider-reported tokens only. See `unknown_calls` before reading it as a cost."""
         return self.prompt_tokens + self.completion_tokens
+
+    def describe_tokens(self) -> str:
+        """Tokens for display: never a silent zero when some usage is unknown."""
+        if self.unknown_calls:
+            return f"{self.total_tokens} (+{self.unknown_calls} calls with unknown usage)"
+        return str(self.total_tokens)
 
     def __add__(self, other: Any) -> Usage:
         if not isinstance(other, Usage):
@@ -82,6 +103,8 @@ class Usage:
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
             calls=self.calls + other.calls,
+            unknown_calls=self.unknown_calls + other.unknown_calls,
+            cache_hits=self.cache_hits + other.cache_hits,
         )
 
     def __radd__(self, other: Any) -> Usage:
@@ -120,6 +143,9 @@ class DecisionReason(Enum):
     UNRESOLVED_OUTPUT = "unresolved_output"
     RETRIEVER_FAILURE = "retriever_failure"
     PROVIDER_FAILURE = "provider_failure"
+    # Auth failure, unknown model, invalid request: no other record can succeed either,
+    # so a batch run stops on it rather than recording it as this record's outcome.
+    FATAL_PROVIDER_FAILURE = "fatal_provider_failure"
     VERIFIER_DISAGREEMENT = "verifier_disagreement"
 
 

@@ -72,6 +72,17 @@ def _error_message(response: httpx.Response) -> str:
     return str(error)[:500]
 
 
+def _reported_usage(raw: object) -> Usage:
+    """One successful call. Its tokens count only if the provider actually reported them."""
+    if not isinstance(raw, Mapping) or not ("prompt_tokens" in raw or "completion_tokens" in raw):
+        return Usage.unreported()
+    return Usage(
+        prompt_tokens=int(raw.get("prompt_tokens") or 0),
+        completion_tokens=int(raw.get("completion_tokens") or 0),
+        calls=1,
+    )
+
+
 class OpenAICompatClient:
     """Chat Completions over httpx, with backoff and structured-output fallback."""
 
@@ -85,6 +96,7 @@ class OpenAICompatClient:
         profile: str = "unknown",
         temperature: float = 0.0,
         max_tokens: int = 1024,
+        seed: int | None = None,
         timeout: float = 120.0,
         max_retries: int = 5,
         backoff_base: float = 1.0,
@@ -103,6 +115,7 @@ class OpenAICompatClient:
         self._capabilities = capabilities or CAPABILITY_PROFILES[profile]
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._seed = seed
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._backoff_cap = backoff_cap
@@ -131,18 +144,25 @@ class OpenAICompatClient:
                 "profile": self._profile,
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
+                # Only when set, so fingerprints of runs without a seed are unchanged.
+                **({"seed": self._seed} if self._seed is not None else {}),
             }
         )
 
     def _body(self, request: LLMRequest, *, structured: bool) -> dict[str, Any]:
+        # Precedence (CONTRACTS.md section 6): a value the request carries is an explicit
+        # per-stage override; None falls back to this client's configured value.
+        temperature = self._temperature if request.temperature is None else request.temperature
+        max_tokens = self._max_tokens if request.max_tokens is None else request.max_tokens
+        seed = self._seed if request.seed is None else request.seed
         body: dict[str, Any] = {
             "model": self._model,
             "messages": [
                 {"role": "system", "content": request.system},
                 {"role": "user", "content": request.user},
             ],
-            "temperature": request.temperature,
-            "max_tokens": request.max_tokens or self._max_tokens,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
         if structured and request.schema is not None:
             body["response_format"] = {
@@ -153,8 +173,8 @@ class OpenAICompatClient:
                     "strict": self._capabilities.strict_schema,
                 },
             }
-        if request.seed is not None and self._capabilities.seed:
-            body["seed"] = request.seed
+        if seed is not None and self._capabilities.seed:
+            body["seed"] = seed
         body.update(request.extra)
         return body
 
@@ -181,23 +201,33 @@ class OpenAICompatClient:
             return None
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        """Send one request, retrying transient failures.
+
+        Every POST is counted in the returned (or raised) usage: retries and the
+        structured-output fallback are real upstream calls. Only the successful response
+        reports tokens, so each earlier POST is counted as a call with unknown usage.
+        """
         structured = (
             request.schema is not None
             and self._capabilities.json_schema
             and not self._structured_disabled
         )
 
+        dispatched = 0
         last_error = "unknown"
         last_retry_after: float | None = None
         for attempt in range(self._max_retries + 1):
             body = self._body(request, structured=structured)
+            dispatched += 1
             try:
                 response = await self._post(body)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
             else:
                 if response.status_code == 200:
-                    return self._parse(response, structured=structured)
+                    return self._parse(
+                        response, structured=structured, failed_before=dispatched - 1
+                    )
 
                 message = _error_message(response)
                 if (
@@ -211,7 +241,10 @@ class OpenAICompatClient:
                     structured = False
                     continue
                 if response.status_code not in RETRYABLE_STATUSES:
-                    raise LLMFatalError(f"HTTP {response.status_code}: {message}")
+                    raise LLMFatalError(
+                        f"HTTP {response.status_code}: {message}",
+                        usage=Usage.unreported(dispatched),
+                    )
                 last_error = f"HTTP {response.status_code}: {message}"
                 last_retry_after = self._retry_after(response)
 
@@ -225,23 +258,23 @@ class OpenAICompatClient:
         raise LLMRetryableError(
             f"exhausted {self._max_retries} retries: {last_error}",
             retry_after=last_retry_after,
+            usage=Usage.unreported(dispatched),
         )
 
-    def _parse(self, response: httpx.Response, *, structured: bool) -> LLMResponse:
+    def _parse(
+        self, response: httpx.Response, *, structured: bool, failed_before: int
+    ) -> LLMResponse:
+        earlier = Usage.unreported(failed_before)
         payload = response.json()
+        usage = earlier + _reported_usage(payload.get("usage"))
         choices = payload.get("choices") or []
         if not choices:
-            raise LLMFatalError("provider returned no choices")
+            raise LLMFatalError("provider returned no choices", usage=usage)
         message = choices[0].get("message") or {}
         text = message.get("content") or ""
-        raw_usage = payload.get("usage") or {}
         return LLMResponse(
             text=text,
-            usage=Usage(
-                prompt_tokens=int(raw_usage.get("prompt_tokens", 0)),
-                completion_tokens=int(raw_usage.get("completion_tokens", 0)),
-                calls=1,
-            ),
+            usage=usage,
             model=str(payload.get("model", self._model)),
             structured=structured,
             finish_reason=choices[0].get("finish_reason"),

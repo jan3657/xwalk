@@ -77,11 +77,12 @@ class CachingLLM:
             cached = self._ledger.get_cached(key)
             if cached is not None:
                 self.hits += 1
-                # Zero usage is the honest number: a cache hit spends no tokens, so a
+                # A cache hit is not an upstream call and spends no tokens, so a
                 # resumed run's reported cost stays a cost, not a replayed estimate.
+                # It is counted apart, as a hit.
                 return LLMResponse(
                     text=cached,
-                    usage=Usage.zero(),
+                    usage=Usage(cache_hits=1),
                     model=self._inner.model,
                     structured=False,
                     finish_reason="cached",

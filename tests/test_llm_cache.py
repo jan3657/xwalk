@@ -123,3 +123,12 @@ def test_identity_delegates_to_the_inner_client(ledger):
 
 def test_caching_llm_satisfies_the_llm_client_protocol(ledger):
     assert isinstance(CachingLLM(FakeLLM(["x"]), ledger), LLMClient)
+
+
+async def test_a_cache_hit_is_counted_as_a_hit_not_a_call(ledger):
+    inner, cached = wrap(ledger, ["first"])
+    request = LLMRequest(system="s", user="u")
+    first = await cached.complete(request)
+    second = await cached.complete(request)
+    assert (first.usage.calls, first.usage.cache_hits) == (1, 0)
+    assert (second.usage.calls, second.usage.cache_hits) == (0, 1)

@@ -129,3 +129,39 @@ def test_fingerprint_changes_with_the_model():
 
 def test_satisfies_the_llm_client_protocol():
     assert isinstance(LiteLLMClient("fake/model"), LLMClient)
+
+
+async def test_a_missing_usage_block_is_unknown_not_zero(monkeypatch):
+    client = LiteLLMClient("fake/model")
+    completion = FakeCompletion("x")
+    completion.usage = None
+    monkeypatch.setattr(client, "_acompletion", lambda **kw: _async(completion))
+    usage = (await client.complete(LLMRequest(system="", user="u"))).usage
+    assert (usage.calls, usage.unknown_calls, usage.total_tokens) == (1, 1, 0)
+
+
+async def test_a_raised_provider_error_counts_one_unknown_call(monkeypatch):
+    client = LiteLLMClient("fake/model")
+
+    async def boom(**kw):
+        raise RuntimeError("RateLimitError: slow down")
+
+    monkeypatch.setattr(client, "_acompletion", boom)
+    with pytest.raises(LLMRetryableError) as caught:
+        await client.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage is not None and caught.value.usage.unknown_calls == 1
+
+
+async def test_client_generation_values_apply_unless_the_request_overrides(monkeypatch):
+    seen = []
+
+    def capture(**kw):
+        seen.append(kw)
+        return _async(FakeCompletion("x"))
+
+    client = LiteLLMClient("fake/model", temperature=0.4, max_tokens=700)
+    monkeypatch.setattr(client, "_acompletion", capture)
+    await client.complete(LLMRequest(system="", user="u"))
+    await client.complete(LLMRequest(system="", user="u", max_tokens=50))
+    assert (seen[0]["temperature"], seen[0]["max_tokens"]) == (0.4, 700)
+    assert (seen[1]["temperature"], seen[1]["max_tokens"]) == (0.4, 50)

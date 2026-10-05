@@ -35,7 +35,20 @@ def _usage_to_dict(usage: Usage) -> dict[str, Any]:
         "prompt_tokens": usage.prompt_tokens,
         "completion_tokens": usage.completion_tokens,
         "calls": usage.calls,
+        "unknown_calls": usage.unknown_calls,
+        "cache_hits": usage.cache_hits,
     }
+
+
+def _usage_from_dict(data: Mapping[str, Any]) -> Usage:
+    # Ledgers written before 0.2 carry only the first three fields.
+    return Usage(
+        prompt_tokens=data["prompt_tokens"],
+        completion_tokens=data["completion_tokens"],
+        calls=data["calls"],
+        unknown_calls=data.get("unknown_calls", 0),
+        cache_hits=data.get("cache_hits", 0),
+    )
 
 
 def _candidate_to_dict(candidate: Candidate) -> dict[str, Any]:
@@ -119,7 +132,7 @@ def _attempt_from_dict(data: Mapping[str, Any]) -> Attempt:
         dropped_proposals=tuple((str(pair[0]), str(pair[1])) for pair in data["dropped_proposals"]),
         reason=None if data["reason"] is None else DecisionReason(data["reason"]),
         error=data["error"],
-        usage=Usage(**data["usage"]),
+        usage=_usage_from_dict(data["usage"]),
         elapsed_seconds=data["elapsed_seconds"],
         finish_reason=data["finish_reason"],
     )
@@ -161,7 +174,7 @@ def result_from_dict(data: Mapping[str, Any]) -> MatchResult:
         explanation=data["explanation"],
         candidates=tuple(_candidate_from_dict(c) for c in data["candidates"]),
         attempts=tuple(_attempt_from_dict(a) for a in data["attempts"]),
-        usage=Usage(**data["usage"]),
+        usage=_usage_from_dict(data["usage"]),
         elapsed_seconds=data["elapsed_seconds"],
         run_fingerprint=data["run_fingerprint"],
     )

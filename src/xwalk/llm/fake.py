@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from xwalk.fingerprint import hash_value
-from xwalk.llm.base import LLMCapabilities, LLMRequest, LLMResponse
+from xwalk.llm.base import LLMCapabilities, LLMRequest, LLMResponse, failure_usage
 from xwalk.records import Usage
 
 Scripted = str | BaseException
@@ -75,6 +75,8 @@ class FakeLLM:
             self._index += 1
 
         if isinstance(item, BaseException):
+            # A scripted failure was still a dispatched call; its tokens are unknown.
+            self.total_usage = self.total_usage + failure_usage(item)
             raise item
 
         usage = Usage(

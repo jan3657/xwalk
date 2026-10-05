@@ -279,3 +279,76 @@ async def test_against_a_real_provider():
     from xwalk.llm.parsing import parse_json_object
 
     assert parse_json_object(response.text)["a"] == "x"
+
+
+# --- usage accounting and generation precedence (CONTRACTS.md sections 5 and 6) ---
+
+
+async def test_missing_usage_block_is_counted_as_unknown_not_zero():
+    body = ok_body()
+    del body["usage"]
+    llm = client(lambda r: httpx.Response(200, json=body))
+    usage = (await llm.complete(LLMRequest(system="", user="u"))).usage
+    assert (usage.calls, usage.unknown_calls, usage.total_tokens) == (1, 1, 0)
+
+
+async def test_internal_retries_are_counted_as_dispatched_calls():
+    responses = iter(
+        [httpx.Response(429, json={"error": "slow"}), httpx.Response(200, json=ok_body())]
+    )
+    llm = client(lambda r: next(responses), backoff_base=0.0)
+    usage = (await llm.complete(LLMRequest(system="", user="u"))).usage
+    assert (usage.calls, usage.unknown_calls) == (2, 1)
+    assert (usage.prompt_tokens, usage.completion_tokens) == (11, 3)
+
+
+async def test_exhausted_retries_carry_their_call_count():
+    llm = client(
+        lambda r: httpx.Response(503, json={"error": "down"}), max_retries=2, backoff_base=0.0
+    )
+    with pytest.raises(LLMRetryableError) as caught:
+        await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage is not None
+    assert (caught.value.usage.calls, caught.value.usage.unknown_calls) == (3, 3)
+
+
+async def test_a_fatal_response_carries_its_call_count():
+    llm = client(lambda r: httpx.Response(401, json={"error": "bad key"}))
+    with pytest.raises(LLMFatalError) as caught:
+        await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage is not None and caught.value.usage.unknown_calls == 1
+
+
+async def test_the_request_value_overrides_the_client_value():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=ok_body())
+
+    llm = client(handler, temperature=0.5, max_tokens=900)
+    await llm.complete(LLMRequest(system="", user="u"))
+    await llm.complete(LLMRequest(system="", user="u", temperature=0.0, max_tokens=64))
+    assert (seen[0]["temperature"], seen[0]["max_tokens"]) == (0.5, 900)
+    assert (seen[1]["temperature"], seen[1]["max_tokens"]) == (0.0, 64)
+
+
+async def test_a_client_seed_is_sent_when_the_provider_supports_it():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=ok_body())
+
+    await client(handler, seed=7, profile="openai").complete(LLMRequest(system="", user="u"))
+    await client(handler, seed=7, profile="unknown").complete(LLMRequest(system="", user="u"))
+    assert seen[0]["seed"] == 7
+    assert "seed" not in seen[1]
+
+
+def test_the_seed_enters_the_fingerprint_only_when_set():
+    def h(r):
+        return httpx.Response(200, json=ok_body())
+
+    assert client(h).fingerprint == client(h, seed=None).fingerprint
+    assert client(h).fingerprint != client(h, seed=1).fingerprint

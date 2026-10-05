@@ -130,6 +130,7 @@ class LLMSpec(BaseModel):
     profile: str = "unknown"
     temperature: float = 0.0
     max_tokens: int = 1024
+    seed: int | None = None
 
     @model_validator(mode="after")
     def _no_inline_secrets(self) -> LLMSpec:
@@ -253,6 +254,7 @@ class JobSpec(BaseModel):
                 profile=self.llm.profile,
                 temperature=self.llm.temperature,
                 max_tokens=self.llm.max_tokens,
+                seed=self.llm.seed,
             )
         from xwalk.llm.litellm import LiteLLMClient
 
@@ -260,6 +262,7 @@ class JobSpec(BaseModel):
             self.llm.model,
             temperature=self.llm.temperature,
             max_tokens=self.llm.max_tokens,
+            seed=self.llm.seed,
         )
 
     def build_prompts(self) -> PromptSet:
