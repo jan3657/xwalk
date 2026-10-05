@@ -49,9 +49,16 @@ All three are frozen dataclasses.
 | `user` | `str` | required | User message |
 | `schema` | `Mapping[str, Any] \| None` | `None` | JSON schema for structured output, if the adapter can use one |
 | `schema_name` | `str` | `"response"` | Name sent alongside the schema in `response_format` |
-| `temperature` | `float` | `0.0` | Sampling temperature |
-| `max_tokens` | `int` | `1024` | Completion budget; adapters fall back to their own default when this is falsy |
-| `seed` | `int \| None` | `None` | Sampling seed; sent only if the adapter declares `seed` support |
+| `temperature` | `float \| None` | `None` | Per-request override; `None` sends the client's configured temperature |
+| `max_tokens` | `int \| None` | `None` | Per-request override; `None` sends the client's configured `max_tokens` |
+| `seed` | `int \| None` | `None` | Per-request override of the client's seed; a seed is sent only if the adapter declares `seed` support |
+
+Precedence, highest first: an explicit per-stage constructor argument (for example
+`Scorer(max_tokens=256)`, which the stage puts on the request) > the job's `llm.*`
+values > the client constructor's defaults > library defaults (`temperature=0.0`,
+`max_tokens=1024`). The stages send `None` unless given an explicit value. Changed in
+0.2: stages used to hard-code `temperature=0.0` and `max_tokens` 512 (256 for the
+rewriter), which silently overrode the job's settings.
 | `extra` | `Mapping[str, Any]` | `{}` | Provider-specific body fields, merged into the request body last |
 
 ### `LLMResponse`
@@ -59,7 +66,7 @@ All three are frozen dataclasses.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `text` | `str` | required | Raw completion text |
-| `usage` | `Usage` | required | Token and call accounting (`prompt_tokens`, `completion_tokens`, `calls`) |
+| `usage` | `Usage` | required | Call and token accounting. `calls` includes the client's own retries; calls without reported tokens are counted in `unknown_calls` |
 | `model` | `str` | required | The model string the provider reported, falling back to the configured one |
 | `structured` | `bool` | `False` | Whether a schema was **sent** with this request — not whether it was enforced |
 | `finish_reason` | `str \| None` | `None` | Provider finish reason (`"stop"`, `"length"`, …) |
@@ -87,16 +94,26 @@ JSON discipline.
 ## Errors
 
 ```python
-class LLMError(Exception): ...
+class LLMError(Exception):
+    def __init__(self, *args: object, usage: Usage | None = None) -> None: ...
 
 class LLMRetryableError(LLMError):
-    def __init__(self, message: str, *, retry_after: float | None = None) -> None: ...
+    def __init__(
+        self, message: str, *, retry_after: float | None = None, usage: Usage | None = None
+    ) -> None: ...
 
 class LLMFatalError(LLMError): ...
 
 class ParseError(LLMError):
-    def __init__(self, message: str, *, raw: str) -> None: ...
+    def __init__(self, message: str, *, raw: str, usage: Usage | None = None) -> None: ...
+
+def failure_usage(exc: BaseException) -> Usage: ...
 ```
+
+Every error may carry `usage`: what the client observed before failing (requests
+dispatched, including its own retries). `failure_usage(exc)` returns it, or one call
+with unknown usage when the error carries none, so a failed call is never booked as
+free.
 
 | Error | Raised when |
 |---|---|
@@ -106,7 +123,8 @@ class ParseError(LLMError):
 | `ParseError` | The response text could not be reduced to a JSON object (see [Parsing model output](#parsing-model-output)). Carries the original text as `raw` |
 
 `OpenAICompatClient` raises `LLMRetryableError` only after exhausting its own retries;
-`LiteLLMClient` raises it immediately and retries nothing.
+`LiteLLMClient` raises it immediately and retries nothing. How the matcher handles each
+error per stage is in [the pipeline reference](pipeline.md).
 
 ## OpenAICompatClient
 
@@ -123,6 +141,7 @@ OpenAICompatClient(
     profile: str = "unknown",
     temperature: float = 0.0,
     max_tokens: int = 1024,
+    seed: int | None = None,
     timeout: float = 120.0,
     max_retries: int = 5,
     backoff_base: float = 1.0,
@@ -196,12 +215,15 @@ with the defaults, 1, 2, 4, 8, 16 seconds. When all attempts are spent it raises
 last `retry-after` seen.
 
 A 200 whose payload has no choices raises `LLMFatalError("provider returned no
-choices")`. Missing usage fields become zeros.
+choices")`. A response without a usage block counts as a call with unknown usage, not
+zero tokens. The returned (or raised) `usage` counts every POST this `complete` made:
+each failed attempt before the final one is a call with unknown usage.
 
 ### Fingerprint
 
 The fingerprint hashes exactly: `adapter="openai_compat"`, `adapter_version` (currently
-`1`), `base_url`, `model`, `profile`, `temperature`, `max_tokens`. The API key is
+`1`), `base_url`, `model`, `profile`, `temperature`, `max_tokens`, and `seed` when it is
+set. The API key is
 deliberately absent: rotating a key must not invalidate a resumable run, and a secret
 must never reach a manifest on disk. Note that an explicit `capabilities=` override is
 *not* hashed — only the profile name is (see [Gotchas](#gotchas)).
@@ -218,6 +240,7 @@ LiteLLMClient(
     capabilities: LLMCapabilities | None = None,
     temperature: float = 0.0,
     max_tokens: int = 1024,
+    seed: int | None = None,
     **kwargs: Any,
 )
 ```
@@ -239,6 +262,10 @@ Differences from `OpenAICompatClient`, all of them deliberate:
 
 - **No retries.** Errors are classified and raised on the first failure. If you want
   backoff, add it in the caller.
+- **Retries inside LiteLLM are invisible.** If you pass `num_retries` (or use router
+  fallbacks), the extra upstream calls cannot be observed: each `complete` is counted
+  as one call, and one that raises as one call with unknown usage. Keep
+  `num_retries=0` when call counts must be exact.
 - **Error classification by string matching.** LiteLLM raises many provider-specific
   exception types, so the type name and message are lowercased, underscores removed,
   and scanned for markers. Fatal markers (`authentication`, `permissiondenied`,
@@ -410,9 +437,9 @@ Not safe, or at least not what you meant:
   keeps the profile's fingerprint, so two clients that send different request bodies
   can share cache keys.
 
-A cache hit also loses metadata: `usage` is `Usage.zero()` (the honest number — a hit
-spends no tokens, so a resumed run's reported cost stays a cost, not a replayed
-estimate), `structured` is always `False`, `finish_reason` is the literal `"cached"`
+A cache hit also loses metadata: `usage` is `Usage(cache_hits=1)` — zero calls and
+zero tokens (the honest number: a hit spends nothing, so a resumed run's reported cost
+stays a cost, not a replayed estimate), counted as a hit, `structured` is always `False`, `finish_reason` is the literal `"cached"`
 (so truncation detection keyed on `"length"` never fires on a hit), and `model` is the
 inner client's configured string, not what the provider reported.
 
@@ -478,8 +505,8 @@ Raises `ParseError` (with the original text on `.raw`) when:
 - **`request.extra` is merged into the body last**, so it can override `model`,
   `messages`, or `response_format`. It is part of the cache key, so at least a
   divergence never aliases in the cache.
-- **`request.max_tokens=0` means "use the client default"** — both adapters compute
-  `request.max_tokens or self._max_tokens`.
+- **`request.max_tokens=None` means "use the client value"**; any other value,
+  including `0`, is sent as given.
 - **The structured fallback is per-instance state.** A fresh process re-discovers the
   rejection with one wasted request. It also never triggers on providers that accept
   `response_format` and then ignore it — that is what `strict_schema=False` profiles
@@ -492,6 +519,6 @@ Raises `ParseError` (with the original text on `.raw`) when:
   under `CachingLLM`.
 - **`FakeLLM` exhaustion raises `AssertionError`**, not an `LLMError` — deliberately,
   so retry logic in the code under test cannot swallow it.
-- **`usage_reporting` is declared but not branched on** by either adapter; missing
-  provider usage simply becomes zeros. Treat zero usage from a provider that should
-  report as a sign the declaration is wrong.
+- **`usage_reporting` is declared but not branched on** by either adapter; a response
+  without usage is counted in `Usage.unknown_calls`, never as zero tokens. Unknown
+  usage from a provider that should report is a sign the declaration is wrong.

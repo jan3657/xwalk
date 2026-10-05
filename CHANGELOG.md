@@ -7,8 +7,55 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A `NaN` or `Infinity` confidence from the scorer was clamped to `1.0` and accepted as
+  a match. Every stage now accepts only a finite JSON number in `[0, 1]`; anything else
+  (missing, strings, booleans, non-finite, out of range) is invalid output and routes
+  to review. `derive_status` also refuses a non-finite stored score.
+- `keep_candidates_in_trace=False` changed decisions: a scorer's candidate proposal was
+  re-examined against an empty candidate list. Live candidate state is no longer read
+  back from the trace; trace on/off gives identical results and identical requests.
+- A candidate whose rendered text contained blank lines had the rest of its text moved
+  into the "other candidates" section of the scorer and verifier prompts. Candidate
+  blocks are now kept per key until rendering.
+- Verifier and rewriter provider errors escaped `Matcher.match`. Every stage now follows
+  one error policy (see `docs/reference/pipeline.md`): recoverable errors stay inside
+  the record (a failed gating verification can never become `matched`), and fatal
+  errors yield `failed` with the new reason `fatal_provider_failure`.
+- Rewriter calls were missing from usage totals. Every stage call is now attributed to
+  an attempt, and `result.usage` equals the sum of its attempts.
+- Job `llm.temperature`/`llm.max_tokens` changed only the run fingerprint: stages
+  hard-coded `temperature=0.0` and 512/256 output tokens. The job's values now reach
+  every matching request.
+
+### Added
+
+- `Usage.unknown_calls` (calls whose tokens were not reported, including failed calls
+  and responses without a usage block) and `Usage.cache_hits`; `Usage.describe_tokens()`.
+  `calls` now includes `OpenAICompatClient`'s internal retries. Retries inside LiteLLM
+  remain unobservable (documented).
+- `DecisionReason.FATAL_PROVIDER_FAILURE`.
+- `llm.seed` in job files and a `seed=` argument on both clients.
+- `temperature=` on every stage, alongside `max_tokens=`, as explicit per-stage
+  overrides.
+- `xwalk.llm.parsing.parse_confidence`, `xwalk.llm.base.failure_usage`, and a `usage`
+  attribute on `LLMError`.
+
 ### Changed
 
+- **Compatibility:** `LLMRequest.temperature`/`max_tokens` default to `None` (use the
+  client's value). Stage `max_tokens` defaults changed from 512 (256 for the rewriter)
+  to `None`, so default requests now send the client's `max_tokens` (1024 unless
+  configured).
+- **Compatibility:** an out-of-range confidence (for example `1.7`) is no longer clamped;
+  it is invalid output. The selector treats it like a missing confidence (`UNRESOLVED`).
+- **Compatibility:** `KeyedCandidates` takes `blocks` (key -> rendered block) instead of
+  `rendered`; `rendered` is now a derived property.
+- **Compatibility:** a fatal provider error yields reason `fatal_provider_failure`
+  instead of `provider_failure`. A cache hit reports `Usage(cache_hits=1)` instead of
+  `Usage.zero()`. Ledgers written by 0.1.x read back with `unknown_calls=0` and
+  `cache_hits=0`.
 - The CI platform matrix now executes rather than merely being declared. macOS 14,
   Windows, and Linux on 3.10/3.11/3.12, plus aarch64 and each optional extra, all pass
   as of v0.1.1 — which retires the second of the limitations listed under 0.1.0.

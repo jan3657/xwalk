@@ -161,8 +161,9 @@ backend that declares no depth of its own; it does feed the run fingerprint.
 | `api_key_env` | `str \| None` | no | `None` | both | **name** of the environment variable holding the key |
 | `api_key` | — | never | `None` | — | present only so it can be rejected |
 | `profile` | `str` | no | `"unknown"` | openai_compat | capability profile, below |
-| `temperature` | `float` | no | `0.0` | both | recorded in the fingerprint |
-| `max_tokens` | `int` | no | `1024` | both | client default; recorded in the fingerprint |
+| `temperature` | `float` | no | `0.0` | both | sent on every matching request; recorded in the fingerprint |
+| `max_tokens` | `int` | no | `1024` | both | sent on every matching request; recorded in the fingerprint |
+| `seed` | `int \| None` | no | `None` | both | sent when the adapter declares `seed` support; recorded in the fingerprint when set |
 
 Valid `profile` values are `openai`, `anthropic-compat`, `google-compat`, `vllm` and
 `unknown`. The profile decides only what the adapter **asks** for — strict JSON schema,
@@ -170,7 +171,7 @@ seeding, `Retry-After` — never whether it trusts the answer; every response is
 validated regardless. `unknown` asks for nothing, which always works.
 
 `kind: litellm` needs `xwalk[litellm]` and ignores `base_url` and `profile`; only `model`,
-`temperature` and `max_tokens` reach `LiteLLMClient`, and its capabilities default to
+`temperature`, `max_tokens` and `seed` reach `LiteLLMClient`, and its capabilities default to
 all-false.
 
 ## `policy`
@@ -314,12 +315,13 @@ fields. To get unboosted BM25 from a job file, write `exact_fields: []`.
 invariants live in `MatchPolicy.__post_init__` and fire at `build_policy()`. `SelectorSpec`
 carries no constraints at all, at either end.
 
-**`llm.temperature` and `llm.max_tokens` change the fingerprint but not the request.**
-Every stage constructs its own `LLMRequest` with its own values — 512 output tokens for
-selection, scoring and verification, 256 for rewriting, 2048 for drafting and optimising,
-and temperature `0.0` — and the adapter falls back to its own `max_tokens` only when the
-request leaves it unset, which no stage does. Changing either field will invalidate a
-resume without changing a single API call.
+**`llm.temperature`, `llm.max_tokens` and `llm.seed` reach every matching request.**
+The matching stages (selection, scoring, verification, rewriting) leave these unset on
+their requests, so the client sends the job's values. (Before 0.2 the stages hard-coded
+512/256 output tokens and temperature `0.0`, so these fields changed only the
+fingerprint.) The prompt drafting and optimising tools still pass their own
+`max_tokens=2048`. A per-stage value can be set only from Python, by passing
+`temperature=`/`max_tokens=` to a stage constructor.
 
 **Two unnamed retrievers of the same kind share an index directory.** The subdirectory is
 `spec.name or spec.kind`, so two `kind: dense` entries with different models both write to

@@ -74,17 +74,26 @@ attempt and per-attempt usages sum into a result.
 |---|---|---|---|
 | `prompt_tokens` | `int` | `0` | prompt tokens consumed |
 | `completion_tokens` | `int` | `0` | completion tokens consumed |
-| `calls` | `int` | `0` | number of provider calls |
+| `calls` | `int` | `0` | upstream requests dispatched, including client-side retries and calls that failed |
+| `unknown_calls` | `int` | `0` | calls whose token usage was not reported (errors, interrupted calls, providers that omit usage) |
+| `cache_hits` | `int` | `0` | responses served from the LLM cache; not upstream calls |
 
-No validation. Methods and properties:
+Token fields sum only provider-reported tokens, so `total_tokens` is a lower bound
+whenever `unknown_calls > 0`; `describe_tokens()` renders it as
+`"N (+k calls with unknown usage)"`. Ledgers written before 0.2 read back with
+`unknown_calls=0` and `cache_hits=0`. No validation. Methods and properties:
 
 ```python
 @classmethod
-def zero(cls) -> Usage          # Usage(0, 0, 0)
+def zero(cls) -> Usage          # all zero
+
+@classmethod
+def unreported(cls, calls=1) -> Usage  # `calls` calls with unknown usage
 
 @property
 def total_tokens(self) -> int   # prompt_tokens + completion_tokens
 
+def describe_tokens(self) -> str     # "120" or "120 (+1 calls with unknown usage)"
 def __add__(self, other) -> Usage   # fieldwise sum; NotImplemented for non-Usage
 def __radd__(self, other) -> Usage  # 0 + Usage == Usage, so sum(usages) works
 ```
@@ -136,7 +145,8 @@ Why a result carries the status it does. Every `MatchResult` and (optionally) ev
 | `NO_CANDIDATES` | `"no_candidates"` | no attempt ever retrieved a candidate → `UNMATCHED` |
 | `UNRESOLVED_OUTPUT` | `"unresolved_output"` | model output could not be resolved to an issued key, or the best attempt used an inexact (legacy) resolution → `NEEDS_REVIEW` |
 | `RETRIEVER_FAILURE` | `"retriever_failure"` | every retriever in an attempt failed or timed out; all attempts failed → `FAILED` |
-| `PROVIDER_FAILURE` | `"provider_failure"` | an LLM call failed; all attempts failed → `FAILED`. Also the fallback reason when there are no attempts at all |
+| `PROVIDER_FAILURE` | `"provider_failure"` | a recoverable LLM call failure; all attempts failed → `FAILED`; best attempt's in-band score could not be verified → `NEEDS_REVIEW`. Also the fallback reason when there are no attempts at all |
+| `FATAL_PROVIDER_FAILURE` | `"fatal_provider_failure"` | an `LLMFatalError` (auth, unknown model, invalid request) in any stage → `FAILED`. Added in 0.2 |
 | `VERIFIER_DISAGREEMENT` | `"verifier_disagreement"` | verifier answered `"disagree"` or `"no_match"` on the best attempt → `NEEDS_REVIEW` |
 
 ## Attempt

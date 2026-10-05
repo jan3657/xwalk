@@ -201,8 +201,9 @@ xwalk match --job job.yaml --out run/ || [ $? -eq 1 ]
 
 ## A cache hit reports zero tokens
 
-Correct. `CachingLLM` stores only the response text, so a hit reports zero usage — a hit
-spends nothing, and counting it would turn a cost report into a replayed estimate.
+Correct. `CachingLLM` stores only the response text, so a hit reports zero calls and
+zero tokens (it is counted in `Usage.cache_hits` instead) — a hit spends nothing, and
+counting it would turn a cost report into a replayed estimate.
 
 The other side of that: a hit also loses `finish_reason` (it becomes `"cached"`) and the
 `structured` flag. Do not build logic on those fields downstream of a cache. And with

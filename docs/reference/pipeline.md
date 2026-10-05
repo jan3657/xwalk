@@ -92,15 +92,26 @@ Within an attempt (`Matcher._attempt`):
    keys and genuinely new queries; everything else is dropped with a recorded reason
    and surfaces on the attempt as `dropped_proposals`.
 
-`LLMError` from the selector or scorer becomes a `PROVIDER_FAILURE` attempt.
-`LLMFatalError` (a bad key, an unknown model — things that will not fix themselves)
-propagates out of the attempt and stops the loop.
+Every stage call goes through one helper that books its usage (a call that raised
+counts as a call with unknown usage) and classifies provider errors. `Matcher.match`
+never raises for a provider error:
+
+| Error | Stage | Outcome |
+|---|---|---|
+| recoverable (`LLMError` other than fatal, or a timeout) | selector, scorer | attempt `reason=PROVIDER_FAILURE`; the same query is retried |
+| recoverable | gating verifier (score in `verify_band`) | the score is kept, `verifier_decision="error"`, `reason=PROVIDER_FAILURE`; retried; an unverified in-band score is never `MATCHED` |
+| recoverable | audit verifier | decision unchanged; the error is noted on the attempt |
+| recoverable | rewriter | the loop ends; status comes from the attempts so far; error noted on the last attempt |
+| `LLMFatalError` (bad key, unknown model, invalid request) | any stage | the record is `FAILED` with `reason=FATAL_PROVIDER_FAILURE`; the loop stops |
+
+Malformed model output is not a provider error: it is handled inside the stage and
+routes to review.
 
 ### What triggers another attempt
 
 After each attempt the loop stops early if the attempt is *acceptable*: a primary score
-`>= policy.accept_at`, resolved as `EXACT_KEY`, with no verifier decision of
-`"disagree"` or `"no_match"`. Otherwise, if attempts remain:
+`>= policy.accept_at`, resolved as `EXACT_KEY`, from an attempt with no failure
+reason, whose verifier decision (if any) is `"support"`. Otherwise, if attempts remain:
 
 - An infrastructure failure (`RETRIEVER_FAILURE`, `PROVIDER_FAILURE`) re-inserts the
   *same* query at the front of the query queue. An outage is not evidence about this
@@ -114,8 +125,8 @@ After each attempt the loop stops early if the attempt is *acceptable*: a primar
 ### Every way the loop terminates
 
 1. **Early accept** — an acceptable attempt (see above).
-2. **Fatal LLM error** — `LLMFatalError` is recorded as a failed attempt and stops
-   everything.
+2. **Fatal LLM error** — `LLMFatalError` in any stage (including the verifier and
+   rewriter) marks the attempt `FATAL_PROVIDER_FAILURE` and stops everything.
 3. **Attempts exhausted** — `policy.max_attempts` iterations have run.
 4. **Rewriter exhausted** — both queues empty and the rewriter proposed nothing new.
 5. **No work at the top of an iteration** — both queues empty when picking work
@@ -124,7 +135,11 @@ After each attempt the loop stops early if the attempt is *acceptable*: a primar
 ### After the loop
 
 `derive_status` (in `xwalk.policy`) reduces the attempt list to one
-`(status, reason, best_attempt)`. Highest score wins; ties go to the earlier attempt.
+`(status, reason, best_attempt)`. Any `FATAL_PROVIDER_FAILURE` attempt makes the result
+`FAILED` with that reason. Only a finite score in `[0, 1]` counts. Highest score wins;
+on a tie an attempt that completed beats one whose verifier call failed, then the
+earlier attempt wins. A best attempt with `verifier_decision="error"` is
+`NEEDS_REVIEW` with reason `PROVIDER_FAILURE`.
 `matched_id` is cleared for `UNMATCHED` and `FAILED`. The matched record is looked up
 in the store — a missing id is tolerated, leaving `matched_record` as `None`. The
 result carries a `result_key` derived from `(run_fingerprint, source.id,
@@ -184,7 +199,7 @@ def assign_keys(candidates: Sequence[Candidate], templates: TemplateSet) -> Keye
 
 Assigns `C01, C02, ...` in the order given, zero-padded to
 `max(2, len(str(len(candidates))))` digits, and renders the candidate block: one
-`[Ckk] <candidate template>` entry per record, joined by blank lines. An empty input
+`[Ckk] <candidate template>` block per record, kept separately by key. An empty input
 yields an empty `KeyedCandidates`.
 
 `KeyedCandidates` (frozen dataclass; `len()` gives the candidate count):
@@ -194,7 +209,12 @@ yields an empty `KeyedCandidates`.
 | `order` | `tuple[str, ...]` | issued keys, in presentation order |
 | `by_key` | `Mapping[str, Candidate]` | key -> full candidate |
 | `issued` | `Mapping[str, str]` | key -> record id |
-| `rendered` | `str` | the candidate block shown to the model |
+| `blocks` | `Mapping[str, str]` | key -> that candidate's rendered block |
+
+`rendered` (property) joins every block in key order with blank lines;
+`render_except(key)` joins all blocks but one. The scorer and verifier select the
+chosen block by key, never by re-splitting the joined text, so a rendered record that
+itself contains blank lines keeps all of its text in its own block.
 
 ```python
 def resolve_key(
@@ -276,7 +296,8 @@ class Selector:
         policy: SelectorPolicy | None = None,
         legacy_id_resolution: bool = False,
         system: str = "You return JSON only. No prose, no code fences.",
-        max_tokens: int = 512,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None: ...
 
     async def select(
@@ -292,7 +313,7 @@ class Selector:
 | Field | Type | Meaning |
 |---|---|---|
 | `choice` | `ResolvedChoice` | resolved record id (or refusal) plus resolution tag |
-| `confidence` | `float \| None` | model self-report, clamped to `[0, 1]`; bools rejected |
+| `confidence` | `float \| None` | model self-report; `None` unless a finite number in `[0, 1]` |
 | `explanation` | `str` | model explanation |
 | `raw` | `str` | the raw response text |
 | `keyed` | `KeyedCandidates` | the keys actually issued this attempt |
@@ -304,8 +325,24 @@ class Selector:
 Fail-safes: an empty budgeted list returns an `ABSTAIN` outcome without calling the
 LLM. A `ParseError` returns `UNRESOLVED` with the raw text as `choice.raw` and the
 parse error in `error`. A non-string `chosen_key` is coerced with `str()` before
-resolution. An `EXACT_KEY` choice whose `confidence_score` is missing or not a number
-is *demoted to* `UNRESOLVED` — a choice we cannot score is a choice we cannot classify.
+resolution. An `EXACT_KEY` choice whose `confidence_score` is invalid (see
+"Confidence values" below) is *demoted to* `UNRESOLVED` — a choice we cannot score is a
+choice we cannot classify.
+
+#### Confidence values
+
+Every stage validates `confidence_score` with `xwalk.llm.parsing.parse_confidence`.
+Only a finite JSON number in `[0, 1]` is accepted. Missing/`null`, strings (even
+`"0.9"`), booleans, `NaN`, `Infinity`, `-Infinity` and finite numbers outside `[0, 1]`
+are invalid, with the reason in `error`; nothing is clamped or coerced. An invalid
+scorer confidence routes the attempt to review (`UNRESOLVED_OUTPUT`); it can never
+pass `accept_at`.
+
+#### Generation parameters
+
+`temperature` and `max_tokens` on every stage default to `None`, which sends the
+client's configured values (from the job's `llm.*` or the client constructor). Pass a
+value only to override it for that stage.
 
 ### Scorer
 
@@ -318,7 +355,8 @@ class Scorer:
         templates: TemplateSet,
         *,
         review_floor: float = 0.4,
-        max_tokens: int = 512,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None: ...
 
     async def score(
@@ -331,7 +369,7 @@ class Scorer:
 ```
 
 `review_floor` is passed into the prompt so the rubric and the policy threshold agree.
-`score` splits the rendered candidate block into the chosen entry and the others (a
+`score` takes the chosen candidate's block and the other blocks by key (a
 `chosen_key` that was never issued raises `KeyError`) and judges the pick against the
 whole source record.
 
@@ -339,7 +377,7 @@ whole source record.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `score` | `float \| None` | clamped to `[0, 1]`; `None` when unusable |
+| `score` | `float \| None` | a finite number in `[0, 1]`; `None` when invalid or unusable |
 | `explanation` | `str` | model explanation |
 | `proposals` | `tuple[RetryProposal, ...]` | candidate-key and query leads |
 | `raw` | `str` | raw response text |
@@ -348,8 +386,8 @@ whole source record.
 | `finish_reason` | `str \| None` | default `None` |
 
 Fail-safes: a `ParseError` yields `score=None`, no proposals, and the parse error. A
-missing or non-numeric `confidence_score` yields `score=None` with the error
-`"confidence_score was missing or not a number"`. Proposal cleaning: non-lists and
+`confidence_score` that is not a finite number in `[0, 1]` yields `score=None` with
+the reason in `error`. Proposal cleaning: non-lists and
 non-strings are ignored; values are stripped and deduplicated; a proposed candidate key
 that was not issued this attempt is discarded outright — naming a key we never issued
 is a hallucination, not a lead. Candidate keys are upper-cased; queries are kept as
@@ -365,7 +403,8 @@ class Verifier:
         prompts: PromptSet,
         templates: TemplateSet,
         *,
-        max_tokens: int = 512,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None: ...
 
     async def verify(
@@ -385,7 +424,7 @@ A second, independent opinion. It returns a verdict, not a number to average.
 |---|---|---|
 | `decision` | `Decision` | the verdict |
 | `preferred_key` | `str \| None` | an issued key the verifier likes better |
-| `confidence` | `float \| None` | clamped to `[0, 1]` |
+| `confidence` | `float \| None` | `None` unless a finite number in `[0, 1]` (an invalid one is noted in `error`) |
 | `explanation` | `str` | model explanation |
 | `raw` | `str` | raw response text |
 | `usage` | `Usage` | tokens and calls |
@@ -408,7 +447,8 @@ class QueryRewriter:
         templates: TemplateSet,
         *,
         max_queries: int = 2,
-        max_tokens: int = 256,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None: ...
 
     async def rewrite(
