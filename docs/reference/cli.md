@@ -78,7 +78,8 @@ Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missi
 `source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
 `interrupted` and `usage`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
 to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`, and the
-`experimental` warning. `search` adds the `retriever_failure` warning.
+`experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
+`--offline-model` adds the `offline_model` warning.
 
 ## `init`
 
@@ -364,6 +365,18 @@ Each row has `source_id`, `status`, `reason`, `matched_id`, `confidence`, `revis
 `result_key`. `data.total` counts the rows that match the filter and `data.next_offset` is
 the next page's offset, `null` on the last page. Calls nothing and exits `0`; a path that
 is not a run directory or an out-of-range flag is `2`.
+
+## `mcp`
+
+Serves `validate_job`, `search_candidates`, `match_records`, `get_run`, `list_results` and
+`explain_result` to an agent over MCP on stdin/stdout until the client disconnects. Needs
+`pip install 'xwalk[mcp]'`; without it, `xwalk mcp` prints the install command on stderr
+and exits `2`. See the [MCP guide](../guide/mcp.md).
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--max-calls-cap` | no | `500` | the largest `max_calls` a `match_records` call may request |
+| `--offline-model` | no | — | answer every model call with a fixed scripted reply (demos and tests; the results are meaningless) |
 
 ## `export`
 

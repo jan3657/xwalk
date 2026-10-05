@@ -50,6 +50,7 @@ Markers:
 | `dense` | `xwalk[dense]` |
 | `ontology` | `xwalk[ontology]` |
 | `sql` | `xwalk[sql]` |
+| `mcp` | `xwalk[mcp]` (the `xwalk mcp` server tests; the missing-extra tests are unmarked) |
 
 `python -m pytest -q` on a base install must stay green: every optional-dependency test
 skips cleanly when its extra is absent.

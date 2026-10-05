@@ -25,6 +25,7 @@ pip install xwalk                 # BM25 + any OpenAI-compatible endpoint. No to
 pip install 'xwalk[dense]'        # + sentence-transformers, torch, faiss-cpu
 pip install 'xwalk[ontology]'     # + rdflib, for OWL sources
 pip install 'xwalk[sql]'          # + SQLAlchemy, for database sources
+pip install 'xwalk[mcp]'          # + the MCP SDK, for `xwalk mcp` (agent tools over stdio)
 pip install 'xwalk[all]'
 ```
 

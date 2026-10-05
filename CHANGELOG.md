@@ -77,6 +77,21 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Optional MCP server: `pip install 'xwalk[mcp]'` (official SDK, `mcp>=2.3,<3`), then
+  `xwalk mcp` serves six tools over stdio -- `validate_job`, `search_candidates`,
+  `match_records`, `get_run`, `list_results`, `explain_result` -- each calling one
+  `xwalk.ops` operation and returning the `--json` envelope as structured content with
+  a declared output schema. `match_records` requires `max_calls` (capped by
+  `--max-calls-cap`, default 500) and processes at most 100 records per call;
+  `list_results` pages at most 200 rows; `search_candidates` returns at most 100.
+  `--offline-model` answers with a fixed scripted reply for demos and tests. The base
+  install does not import `mcp`; without it `xwalk mcp` exits 2 naming the extra. See
+  `docs/guide/mcp.md`.
+- `xwalk search QUERY --job --index` / `ops.search`: the fused retrieval candidates for
+  a query, without a model call. `xwalk results --run [--status] [--offset] [--limit]` /
+  `ops.list_results`: one bounded page of a run's current view
+  (`Ledger.iter_current_summaries`). `ops.failure_result` maps an escaped exception to
+  an error envelope (shared by the CLI and the MCP server).
 - Experimental flat equivalence clustering: `xwalk cluster --job cluster.yaml --out DIR`
   (`kind: cluster` job files), `ops.cluster`, and `xwalk.cluster.run_clustering`. Groups
   one collection's equivalent records with LLM decisions under bounded candidate lists

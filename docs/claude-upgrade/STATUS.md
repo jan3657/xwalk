@@ -10,7 +10,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 | 03 Shared operations and CLI | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"` (+ hatchling, now in the dev extra). Reproduced before the fix on `ae55e4c`: a misspelled `policy.accept_att` loaded with `accept_at=0.6`. New tests: `test_job_validation.py` (19), `test_call_budget.py` (7), `test_ops.py` (30), `test_cli_json.py` (11), plus test_bm25/test_packaging (wheel contents) additions; 4 CLI tests migrated to the contract exit codes / stderr warnings. `python -m pytest -q`: 1065 passed, 15 skipped; `-m "not integration"`: 1065 passed, 14 skipped, 1 deselected; ruff check/format clean (120 files); mypy clean (67 files). FakeLLM/MockTransport/toy encoders only, no paid calls; dense extra not installed (dense paths tested with fake encoders); ontology/sql/integration not run |
 | 04 Flat clustering | Done, **experimental** (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `src/xwalk/cluster/` (engine, incremental pool index, SQLite store, prompts, job, ops operation), `xwalk cluster`, `ops.cluster`. New tests: `test_cluster_engine.py` (30), `test_cluster_ops.py` (16), `test_cluster_pool.py` (7), fixture `tests/fixtures/cluster_tiny/`; all with a scripted judge (FakeLLM handler), no paid calls. `python -m pytest -q`: 1124 passed, 15 skipped; `-m "not integration"`: 1124 passed, 14 skipped, 1 deselected; ruff check/format and mypy clean. Gates: all implementation gates met; real labelled sample **not** evaluated (no endpoint) -> experimental. Decision record: `CLUSTERING_DECISIONS.md` (incl. scaling table) |
 | 05 Benchmark and performance | Done (awaiting review; real eval pending) | unreported | unreported | worktree branch `worktree-agent-ad4549e848904883e` (off `d8fa82f`) | Python 3.11 venv `pip install -e ".[dev,ontology]"`. `python -m benchmarks.run --smoke` (SYNTHETIC judge, offline) on 4 pilot variants, raw output `benchmarks/results/smoke/` at `cd88923`; new `tests/test_benchmarks.py` (17). Profile + experiment in `benchmarks/results/perf/`: per-call Jinja recompilation in `PromptSet._render` is ~70% of xwalk's own CPU (0.440 s -> 0.188 s median with a cached template, prompts identical; ~1.5% at 200 ms/call). No library change made (fix is in `prompts/`, outside this task's file set). `python -m pytest -q`: 1097 passed, 3 skipped; `-m "not integration"`: 1097 passed, 2 skipped, 1 deselected; ruff check/format clean on src tests examples scripts benchmarks (133 files); mypy clean (67 files; benchmarks/ also strict-clean, 12 files). Without rdflib the cafeteria test skips. No paid calls; dense/LinkTransformer/real-model not run |
-| 06 Optional MCP | Not started | | | | |
+| 06 Optional MCP | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"` + `mcp==2.3.0` (latest on PyPI at implementation; extra `xwalk[mcp]` = `mcp>=2.3,<3`). New `src/xwalk/mcp_server.py` (MCPServer, 6 tools), `xwalk mcp`, `ops.search`/`ops.list_results`/`ops.failure_result`, `xwalk search`/`xwalk results`. New tests: `test_ops_read.py` (16, base), `test_mcp.py` (9: 7 marked `mcp` via the SDK's in-process and stdio-subprocess clients plus a raw JSON-RPC stdout check; 2 missing-extra tests unmarked). `python -m pytest -q`: 1171 passed, 16 skipped; `-m "not integration"`: 1171 passed, 15 skipped, 1 deselected; `-m mcp`: 7 passed; without mcp installed `test_mcp.py`: 2 passed, 7 skipped; ruff check/format clean on src tests benchmarks examples scripts (151 files); mypy clean (79 files) with and without mcp installed. Offline scripted model only, no paid calls; host configs (Claude Code/Desktop) documented but not exercised |
 | 07 Documentation and release | Not started | | | | |
 | 08 Independent review | Not started | | | | |
 
@@ -184,3 +184,37 @@ Balances come from the actual promotional credit display, not a model estimate. 
   and 8/130 duplicate requests; `xwalk match` does not use `CachingLLM`).
 - Not done: dense retrieval (extra not installed), LinkTransformer (unexecuted adapter in
   `benchmarks/adapters/`), WDC/Splink/dedupe, real-model evaluation.
+
+## Task 06 notes (for task 07 and later)
+
+- **SDK**: `mcp` 2.x (2.3.0 tested). FastMCP is now `mcp.server.mcpserver.MCPServer`;
+  results use snake_case fields (`structured_content`, `is_error`). The extra pins
+  `<3`; 1.x is not supported. Tools are registered with `server.add_tool` (not the
+  decorator) so `mypy --strict` passes with and without the SDK installed (`mcp.*` is in
+  the `ignore_missing_imports` override; CI lint installs `.[dev,mcp]` to type-check
+  against the real SDK).
+- **Shape**: every tool returns `Annotated[CallToolResult, <Envelope model>]`: the
+  `--json` envelope as structured content (validated by the SDK against the declared
+  output schema) plus the same JSON as text. `isError` only when the operation raised
+  (`OpError`, unexpected exception, schema-invalid arguments, `max_calls` over the cap);
+  a performed operation (invalid job, run aborted at its limit, partial run) is a normal
+  result whose `status`/`exit_code` say so, identical to the CLI. Recorded in
+  `docs/guide/mcp.md`.
+- **Bounds**: `match_records` requires `max_calls` (<= `--max-calls-cap`, default 500,
+  enforced through the existing `BudgetedLLM`/`CallBudget`) and `limit` <= 100 records
+  (`run_batch(limit=...)`: the rest stay `pending`, the run `partial`; calling again
+  resumes). `ops.MAX_SEARCH_LIMIT` 100, `ops.MAX_PAGE_SIZE` 200. No background jobs.
+  `explain_result` does not expose `--full`.
+- **Offline**: jobs cannot name an offline model, so the server takes
+  `--offline-model` (a launch flag the human sets, not a tool argument): the quickstart's
+  fixed scripted reply via `FakeLLM(model="xwalk-offline")`, flagged on every result
+  with an `offline_model` warning. Its LLM fingerprint differs from any real client, so
+  an offline run directory is refused by a real-model run (and vice versa).
+- **stdout**: the SDK's stdio transport moves fd 1 to stderr while serving; a startup
+  failure (missing extra) prints to stderr only. Raw-protocol test confirms every stdout
+  line is JSON-RPC.
+- Not done: clustering tool (cluster runs have no inspect/explain yet), a path sandbox
+  (`--root`) for tool arguments, progress notifications during `match_records`, the
+  host configurations are untested. CLI vs MCP consistency is tested for `inspect`,
+  `results` and `validate` envelopes (byte-identical JSON objects).
+- Next recommended task: 07 (documentation and release).

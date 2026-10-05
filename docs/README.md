@@ -18,6 +18,7 @@ Task-oriented, in the order you will need them.
 | [Measuring a run](guide/evaluation.md) | You have gold labels and need to know what to change next. |
 | [Human review](guide/review.md) | You have a review bucket and need decisions back into the run. |
 | [Clustering one collection](guide/clustering.md) | You want one collection's equivalent records grouped (experimental). |
+| [Driving xwalk from an agent (MCP)](guide/mcp.md) | An agent should validate jobs, search candidates, run bounded matches and read results through MCP tools. |
 | [Drafting and optimising prompts](guide/prompt-optimisation.md) | Your failures are *misjudged* rather than *never retrieved*. |
 | [Extending xwalk](guide/extending.md) | You need your own retriever, source, store, or model client. |
 | [Troubleshooting](guide/troubleshooting.md) | Something is behaving oddly. |
