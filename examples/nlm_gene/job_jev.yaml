@@ -1,0 +1,58 @@
+name: nlm_gene_jev
+templates:
+  context: '{{ context_left }}[{{ mention }}]{{ context_right }}'
+  doc: '{{ label }} {{ synonyms | join('' '') }} {{ definition }} {{ organism }}'
+  candidate: 'ID: {{ id }}
+
+    Symbol: {{ label }}
+
+    Organism: {{ organism }}
+
+    {% if synonyms %}Synonyms: {{ synonyms | join(''; '') }}{% endif %}
+
+    {% if definition %}Description: {{ definition }}{% endif %}
+
+    '
+  queries:
+  - '{{ mention }}'
+target:
+  kind: tsv
+  path: sample/targets.tsv
+  id_column: id
+  multivalue_columns:
+  - synonyms
+source:
+  kind: jsonl
+  path: sample/mentions.jsonl
+  id_field: mention_id
+retrievers:
+- kind: bm25
+  name: bm25
+  limit: 200
+  exact_fields:
+  - label
+  - synonyms
+# Needs xwalk[dense]: multilingual E5 beside BM25, fused by reciprocal rank (A2).
+- kind: dense
+  name: e5
+  model: intfloat/multilingual-e5-small
+  limit: 20
+  query_prefix: 'query: '
+  doc_prefix: 'passage: '
+prompts:
+  slots: slots.yaml
+policy:
+  # Fitted by `xwalk fit --holdout` on sample/gold.csv against runs/jev_eval_v2_dense_limit at
+  # 95% target precision: 29/29 correct, coverage 0.58; holdout 13/13, coverage 0.52.
+  accept_at: 0.85
+  property_floor: 0.50
+  choose_at: 0.70
+  screen_floor: 0.3
+  chunk_size: 50
+  max_candidates: 300
+  concurrency: 16
+decider:
+  kind: jev
+  model: ~typesafe/jev-latest
+  base_url: https://openrouter.ai/api/alpha/decisions
+  api_key_env: XWALK_TEST_API_KEY

@@ -1,0 +1,60 @@
+# The decider-path twin of job.yaml: same data, the same slots plus a decider-only
+# properties block (slots_jev.yaml), Jev instead of an LLM.
+# Run:  set -a; source .env; set +a
+#       xwalk index --job examples/cafeteria_fcd/job_jev.yaml --out runs/cfcd_jev/index
+#       xwalk match --job examples/cafeteria_fcd/job_jev.yaml --out runs/cfcd_jev
+#       xwalk eval  --run runs/cfcd_jev --gold examples/cafeteria_fcd/sample/gold.csv
+name: cafeteria_fcd_jev
+templates:
+  queries:
+    - "{{ mention }}"
+  context: "{{ context_left }}[{{ mention }}]{{ context_right }}"
+  doc: "{{ label }} {{ synonyms | join(' ') }} {{ definition }}"
+  candidate: |
+    ID: {{ id }}
+    Label: {{ label }}
+    {% if synonyms %}Synonyms: {{ synonyms | join('; ') }}{% endif %}
+    {% if definition %}Definition: {{ definition }}{% endif %}
+
+target:
+  kind: owl
+  path: sample/targets.owl
+
+source:
+  kind: jsonl
+  path: sample/mentions.jsonl
+  id_field: mention_id
+
+retrievers:
+  - kind: bm25
+    name: bm25
+    limit: 200
+    exact_fields: [label, synonyms]
+  # Needs xwalk[dense]: multilingual E5 beside BM25, fused by reciprocal rank (A2).
+  - kind: dense
+    name: e5
+    model: intfloat/multilingual-e5-small
+    limit: 20
+    query_prefix: "query: "
+    doc_prefix: "passage: "
+
+decider:
+  kind: jev
+  model: "~typesafe/jev-latest"      # pin typesafe/jev-1.13 for a reproducible run
+  base_url: https://openrouter.ai/api/alpha/decisions
+  api_key_env: XWALK_TEST_API_KEY
+
+prompts:
+  slots: slots_jev.yaml
+
+policy:
+  # Fitted by `xwalk fit --holdout` on sample/gold.csv against runs/jev_eval_v2_dense_limit at
+  # 95% target precision (see the spec's Results section): 38 of 39 accepted rows correct,
+  # coverage 0.78; the dev-half fit held 17/17 on the held-out half (coverage 0.68).
+  accept_at: 0.75
+  property_floor: 0.70
+  choose_at: 0.50
+  screen_floor: 0.30
+  chunk_size: 50
+  max_candidates: 300
+  concurrency: 16

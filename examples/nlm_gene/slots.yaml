@@ -39,3 +39,19 @@ disambiguation_steps: |
 
   ## Step 3: Match the symbol
   Prefer the official symbol over an alias when both are available.
+# Used only by the decider path (see docs/reference/decide.md); the LLM skeletons
+# ignore this block. Each property restates a hard rule as a yes/no question the
+# gate can score independently of the rubric.
+properties:
+  - name: organism
+    question: >-
+      Do the source context and the candidate agree on the organism, wherever either
+      states or implies one?
+  - name: family_member
+    question: >-
+      Do the source and the candidate name the same family member, rather than two
+      members differing only by a trailing number or letter?
+  - name: symbol_match
+    question: >-
+      Does the candidate's official symbol or one of its listed aliases correspond to
+      the symbol the source mention uses?

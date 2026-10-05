@@ -70,3 +70,32 @@ def test_id_field_in_fields_does_not_shadow_record_id():
     ts = TemplateSet(query="{{ id }}", context="", doc="", candidate="")
     record = Record(id="real", fields={"id": "spoofed"})
     assert ts.render_query(record) == "real"
+
+
+def test_render_queries_falls_back_to_query():
+    from xwalk.records import Record
+    from xwalk.templates import TemplateSet
+
+    t = TemplateSet(query="{{ a }}", context="", doc="{{ label }}", candidate="{{ label }}")
+    assert t.render_queries(Record(id="s", fields={"a": "x"})) == ["x"]
+
+
+def test_render_queries_drops_empty_and_duplicate_renderings():
+    from xwalk.records import Record
+    from xwalk.templates import TemplateSet
+
+    t = TemplateSet(
+        query="{{ a }}",
+        context="",
+        doc="{{ label }}",
+        candidate="{{ label }}",
+        queries=("{{ a }}", "{{ b }}", "{{ a }}", "{{ missing }}"),
+    )
+    assert t.render_queries(Record(id="s", fields={"a": "x", "b": "y"})) == ["x", "y"]
+
+
+def test_queries_change_the_fingerprint():
+    from xwalk.templates import TemplateSet
+
+    base = dict(query="{{ a }}", context="", doc="{{ label }}", candidate="{{ label }}")
+    assert TemplateSet(**base).fingerprint != TemplateSet(**base, queries=("{{ b }}",)).fingerprint

@@ -96,6 +96,13 @@ class RubricRow(BaseModel):
     example: str = ""
 
 
+class PropertyQuestion(BaseModel):
+    """One identity-bearing property the decider path checks on the chosen candidate."""
+
+    name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    question: str = Field(min_length=1)
+
+
 class PromptSlots(BaseModel):
     entity_noun: str
     target_noun: str
@@ -103,6 +110,8 @@ class PromptSlots(BaseModel):
     rubric: list[RubricRow] = Field(min_length=1)
     hard_rules: list[str] = Field(default_factory=list)
     disambiguation_steps: str = ""
+    # Used only by the decider path; the LLM skeletons ignore it.
+    properties: list[PropertyQuestion] = Field(default_factory=list)
 
     @field_validator("rubric")
     @classmethod
@@ -224,9 +233,13 @@ class PromptSet:
 
     @property
     def fingerprint(self) -> str:
+        # `properties` is read only by the decider path (its QuestionSet fingerprint
+        # covers it); no skeleton renders it, so it stays out of the prompts' identity
+        # and adding it to a slots file does not invalidate LLM-path runs.
+        slots = json.loads(self.slots.model_dump_json(exclude={"properties"}))
         return hash_value(
             {
-                "slots": json.loads(self.slots.model_dump_json()),
+                "slots": slots,
                 "skeletons": dict(sorted(self.skeletons.items())),
             }
         )

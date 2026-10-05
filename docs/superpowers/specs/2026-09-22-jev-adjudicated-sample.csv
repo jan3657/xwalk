@@ -1,0 +1,41 @@
+source_id,mention_en,name_slo,qwen_id,qwen_label,jev_id,jev_label,verdict
+12eb61e2-a0a3-462e-a4bb-df71db929827,Button mushrooms,Šampinjoni,FOODON:00003462,white mushroom,FOODON:03540784,07840 - common mushrooms (efsa foodex2),both_acceptable
+12fb8310-3bac-4d72-84b3-ad8bde291e80,Peanut butter,Arašidovo maslo,FOODON:03305637,peanut butter (hydrogenated),FOODON:03306867,peanut butter,jev
+1c451c86-4fa6-4c61-bc76-79c4f62af729,"Water, municipal",,FOODON:03400844,water (eurofir),FOODON:03543264,32640 - tap water (efsa foodex2),jev
+25a60898-33e3-4c39-886d-0ef8c7f10eac,"apricots, dried","Marelice, sušeno",FOODON:03541797,17970 - dried apricots (efsa foodex2),FOODON:03301756,apricot (dried),both_acceptable
+47f08b9e-1b3b-41f0-8784-a24b3c5cb5e5,Rooibos tea (infusion),Rooibos/rooibos/rooibos čaj (pijača),FOODON:00003277,rooibos tea (steeped),FOODON:03543741,37410 - rooibos infusion (efsa foodex2),both_acceptable
+53a2eaf4-e927-4be2-adb7-dbdcc0388d12,CHICKEN EGG Yolk,,FOODON:02020158,chicken egg yolk (raw),FOODON:02020157,chicken egg yolk,jev
+573a342e-0311-4eea-a4ec-06aedbc90b75,"Bay, leaves",,FOODON:03541264,"12640 - bay leaves, dry (efsa foodex2)",FOODON:03301173,bay leaf (dried),both_acceptable
+5f423043-20de-43c7-b6fb-510f21ac231a,"Alcoholic beverage, wine, cooking",,FOODON:03400849,"wine, fortified wine or wine-like beverage (eurofir)",FOODON:03307299,cooking wine,jev
+79d45e45-f3e6-4d19-9fc6-cd5c0edd3586,"John dory, raw",Kovač,FOODON:03309257,european john dory (raw),FOODON:03309117,john dory (raw),both_acceptable
+96f8e027-d818-4d10-9492-8362f85dee1b,"Apple, average",,FOODON:03310788,apple (whole or pieces),FOODON:03301710,apple (raw),jev
+99b4d636-ce91-491a-9cda-fe771241efce,Rye flour,,FOODON:03302492,rye flour,FOODON:03540078,00780 - rye flour (efsa foodex2),both_acceptable
+9fab4b7f-f8d7-4aac-90c8-714b7277fae5,"Cauliflower, frozen, raw",,FOODON:03316744,cauliflower (quick-frozen),FOODON:03305392,cauliflower (frozen),jev
+a3aa3cea-8e1f-4bdf-85eb-c7044ddd7dcf,Soy sprouts,Sojini kalčki,FOODON:03540510,05100 - soyabeans sprouts (efsa foodex2),FOODON:00003837,soybean sprout,both_acceptable
+a51ae022-afaa-44db-9844-dc586a7bb4ee,"Tomato, dried, in oil",,FOODON:03310212,"tomato (sun-dried, in olive oil)",FOODON:03311691,"tomato (sun-dried, in oil)",jev
+bfde6a64-cf23-47fc-871e-ce6084418818,Cusk raw,"Torsk, morski menek",FOODON:03542353,23530 - tusk (efsa foodex2),FOODON:03308034,cusk (raw),jev
+d6b53c23-5369-4aab-862c-1ae17151aa32,Chicken`s heart,Surovo piščančje srce,FOODON:02020331,piece(s) of chicken heart (raw),FOODON:03303027,chicken heart (raw),jev
+db090952-e03f-4b03-8600-4dd0be1eddc5,Meat extract,Mesni ekstrakt,FOODON:03315424,meat extract,FOODON:03544082,40820 - meat extract (efsa foodex2),both_acceptable
+e2542c00-7c9c-45ba-ab21-39434eb897ad,Calf`s liver,Surova telečja jetra,FOODON:03311404,calf liver (raw),FOODON:02021311,veal liver (raw),both_acceptable
+f6db8ba8-4c50-4fdf-98e6-49e1a6bca74f,Parsnip,Pastinak,FOODON:03307242,parsnip (raw),FOODON:00003693,parsnip,both_acceptable
+f8d12b2d-815a-4b75-922a-cb50cbc7e13a,"Tomatoes, canned",Paradižnik v konzervi,FOODON:03540934,09340 - preserved tomatoes not concentrated (efsa foodex2),FOODON:03301452,tomato (canned),jev
+05eff69f-d3b5-4a7e-94b8-635b692fc960,Wheat toast/butter toast,"Toast, pšenični",FOODON:03306255,toast,,,both_acceptable
+08987613-d2b8-4c1f-8d7c-2eee5321e69b,Avocado,Avokado,FOODON:03305236,avocado (raw),,,qwen
+0ec49b0b-92f6-4fd2-9061-6b7af61679ec,"Grapes, white",,,,FOODON:00002578,white grape (raw),jev
+18c95372-8d42-4c37-bfbc-10c145b0db53,Nougat,Nugat/nugat/noisette,FOODON:03316438,nougat,,,both_acceptable
+1c83801f-2c74-419c-a446-415fd753e772,Artichokes raw,Artičoka,FOODON:03401859,10006130 - globe artichokes (gs1 gpc),,,both_acceptable
+20890bae-81f7-4a78-87f9-7346251bc35f,"Oat, raw","Oves, zrno, neoluščeno",FOODON:03309855,whole oats (raw),,,both_acceptable
+2ab819d8-9812-4b8d-aecf-3001778f6404,"Soured milk (thick) low-fat, min. 1.5 % to max. 1.8 % fat","Gosto mleko/kislo mleko, malo maščobe, najmanj 1,5 % do max. 1,8% maščobe",FOODON:03542657,"26570 - cow milk, skimmed (low fat) (efsa foodex2)",,,jev
+36cd59b1-041c-4e9c-8960-0ee23e5430d6,"Peppers, hot chili, green, raw","Čili/feferon, zelen",FOODON:03302033,chili pepper (raw),,,both_acceptable
+3864349d-ca1b-4bcb-b799-64f50a0503fb,Wheat toast with rye,Pšenični toast kruh z rženim,FOODON:03540134,01340 - mixed wheat and rye bread and rolls (efsa foodex2),,,qwen
+4563c09d-928e-4ab3-8452-b058c9b1f693,"Cocktail, Kir royale","Koktajl, Kir Royal",FOODON:03315855,cocktail beverage (alcoholic),,,qwen
+5a417ae3-af0e-4573-a0a7-c3493fd13225,Whole milk chocolate with caramel filling (alcoholic),Mlečna čokolada s karamelnim polnilom (vsebuje alkohol),FOODON:03543045,30450 - filled chocolate (efsa foodex2),,,qwen
+88fda400-3cf7-4b02-882c-d45e08513941,Ice cream streaked with chocolate,Sladoled oblit s čokolado,FOODON:03305848,chocolate ice cream,,,jev
+92772bbc-15fc-4d89-b7af-87552b17fc49,"Calf, neck sweet bread",Surovi telečji priželjc,FOODON:00003155,sweetbread food product,,,both_acceptable
+a554aa1a-6c03-4eff-8d92-97e8d2fc64b8,"Tarragon, dried, ground",,FOODON:03301214,tarragon (dried),,,both_acceptable
+ad27afe1-4ae9-48ff-b0a3-056f361c0cb9,"Basil, dried",,FOODON:03541263,"12630 - basil, dry (efsa foodex2)",,,both_acceptable
+da5517bd-3acb-4e05-946f-d7d9afc9ce6f,Kidney bean mature,Zrel fižol,FOODON:00005267,red kidney bean (mature),,,both_wrong
+e1a4d285-f1fa-4f69-bdf3-aa357bf240d9,Mangosteen raw,Surovi mangostin,FOODON:03401721,10005968 - mangosteen (gs1 gpc),,,both_acceptable
+e8b1fc08-9c00-4f39-bc45-e0476d3cae0d,"Lamb`s meat, shoulder",,FOODON:02000240,lamb shoulder (raw),,,both_acceptable
+eb450cb4-74d1-4710-8701-29d5e079d994,"Fish fingers (Alaska pollock) breaded, deep-frozen","Ribje palčke (aljaški polok), panirane, globoko zamrznjene",FOODON:03542613,"26130 - fish fingers, breaded (efsa foodex2)",,,both_acceptable
+ec3c71a3-6229-4bd6-ad5b-c68735bfd83e,"Apple, flesh without skin, raw (average)","Jabolko, olupljeno",,,FOODON:03317119,"apple (raw, peeled)",jev

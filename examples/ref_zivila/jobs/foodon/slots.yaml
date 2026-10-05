@@ -1,0 +1,69 @@
+entity_noun: Slovenian food-reference record
+target_noun: FoodOn food product or food material term
+domain_brief: >-
+  food-composition reference data containing English and Slovenian names, where species,
+  animal or plant part, processing state, preparation, ingredients, and product form can
+  distinguish separate foods; FoodOn also contains non-food processes and specifications
+  that must not be selected as food entities
+rubric:
+  - score: 1.0
+    name: Certain
+    when: >-
+      the source and candidate denote the same food or food material, with every stated
+      identity-bearing property compatible
+    example: "pineapple -> pineapple (whole)"
+  - score: 0.85
+    name: High
+    when: >-
+      the candidate is the same food product and differs only by an incidental numeric or
+      regional detail that FoodOn does not represent
+    example: "pasteurised milk with a stated fat percentage -> matching pasteurised milk"
+  - score: 0.55
+    name: Plausible broader match
+    when: >-
+      the candidate is the right underlying food but omits or adds a processing state,
+      preparation, species, body part, or product form
+    example: "canned stewed blueberries -> blueberry food product"
+  - score: 0.2
+    name: Speculative
+    when: only a broad food category or one ingredient is shared
+    example: "vegetable pizza -> vegetable food product"
+hard_rules:
+  - >-
+    Select a food product or food material. Never select a process, quality, role,
+    specification, anatomical structure by itself, or organism merely because its label
+    overlaps the food name.
+  - >-
+    Processing state and product form matter: raw, cooked, dried, canned, smoked, fermented,
+    juice, oil, flour, jam, and whole foods are not interchangeable when the source or target
+    explicitly commits to one.
+  - >-
+    A dish is not one of its ingredients. A food is not one chemical constituent. Species
+    and animal body part must agree whenever stated.
+  - >-
+    Treat a non-empty curation_note or conflicting English and Slovenian names as uncertainty;
+    do not automatically accept a candidate unless the identity is still unambiguous.
+  - >-
+    If no candidate denotes the same entity, abstain. Never choose the nearest broad category
+    merely to fill the destination column.
+disambiguation_steps: >-
+  Identify the core food first, then its source species or ingredient, anatomical part,
+  processing state, preparation, and product form. Eliminate candidates with incompatible
+  properties. Prefer the most specific candidate supported by the source, but do not infer a
+  property that is absent. Check that the candidate is a food entity rather than a FoodOn
+  process or metadata class.
+# Used only by the decider path (see docs/reference/decide.md); the LLM skeletons
+# ignore this block.
+properties:
+  - name: processing_state
+    question: >-
+      Do the source and the candidate agree on processing state (raw, cooked, dried,
+      canned, frozen, smoked, fermented, juice, oil, flour, jam) wherever either states one?
+  - name: species_or_ingredient
+    question: >-
+      Do the source and the candidate agree on the source species or main ingredient
+      wherever either states one?
+  - name: part_or_form
+    question: >-
+      Do the source and the candidate agree on the anatomical part or product form
+      (whole, pieces, fillet, leg, powder, paste) wherever either states one?

@@ -1,0 +1,58 @@
+# The decider path's slots: examples/cafeteria_fcd/slots.yaml (frozen by the benchmark
+# manifest) plus the `properties:` block the decider's property gate asks.
+entity_noun: food or ingredient mention
+target_noun: FoodOn ontology term
+domain_brief: >-
+  food composition and culinary vocabulary, where the same foodstuff appears as a raw
+  ingredient, a prepared dish, and a branded product, and where processing state
+  (raw, cooked, dried, canned) distinguishes separate ontology terms
+rubric:
+  - score: 1.0
+    name: Certain
+    when: the mention is the term's label or one of its exact synonyms
+    example: "party wing -> prepared chicken wing"
+  - score: 0.8
+    name: Confident
+    when: >-
+      the same foodstuff in the same processing state, named differently
+    example: "aubergine -> eggplant"
+  - score: 0.5
+    name: Plausible
+    when: >-
+      the same foodstuff but the processing state is unstated in the mention and the
+      candidate commits to one
+    example: "tomato -> canned tomato, when the text does not say canned"
+  - score: 0.2
+    name: Speculative
+    when: only the broad food category is shared
+    example: "cheese -> cream cheese"
+hard_rules:
+  - >-
+    Processing state is part of the identity. A raw ingredient and its cooked, dried,
+    or canned form are distinct terms; choose the unqualified term when the mention
+    does not commit to a state.
+  - >-
+    A dish containing an ingredient is not that ingredient. "Chicken soup" is not
+    "chicken".
+  - >-
+    If no candidate names the same foodstuff, abstain. A wrong food mapping propagates
+    into composition and nutrition figures, where it is silently wrong.
+disambiguation_steps: >-
+  Decide first whether the mention names an ingredient or a prepared dish, then match
+  within that kind. Only when the mention itself states a processing state should a
+  state-qualified term be preferred over the plain one.
+# Used only by the decider path (see docs/reference/decide.md); the LLM skeletons
+# ignore this block.
+properties:
+  - name: processing_state
+    question: >-
+      Do the source and the candidate agree on processing state (raw, cooked, dried,
+      canned, frozen, smoked, fermented, juice, oil, flour, jam) wherever either states one?
+  - name: species_or_ingredient
+    question: >-
+      Do the source and the candidate agree on the source species or main ingredient
+      wherever either states one?
+  - name: part_or_form
+    question: >-
+      Do the source and the candidate agree on the anatomical part or product form
+      (whole, pieces, fillet, leg, powder, paste) wherever either states one?

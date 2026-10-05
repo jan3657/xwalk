@@ -33,12 +33,11 @@ from xwalk.records import (
     MatchResult,
     MatchStatus,
     Record,
-    RetrievalHit,
     RetryProposal,
     Usage,
 )
-from xwalk.retrieval.base import Retriever, SearchRequest
-from xwalk.retrieval.fusion import reciprocal_rank_fusion
+from xwalk.retrieval.base import Retriever
+from xwalk.retrieve import retrieve
 from xwalk.stages.gate import Scorer, Verifier
 from xwalk.stages.keying import KeyedCandidates, Resolution
 from xwalk.stages.proposals import RoutedProposals, normalise_query, route_proposals
@@ -154,35 +153,17 @@ class Matcher:
     # --- retrieval -------------------------------------------------------------
 
     async def _retrieve(self, query: str, source: Record) -> tuple[list[Candidate], list[str]]:
-        """Search every retriever concurrently. Returns (candidates, degradation notes).
-
-        Depth comes from each retriever's own `default_limit`; `retriever_limit` is only
-        the fallback for a backend that does not declare one.
-        """
-
-        async def one(retriever: Retriever) -> Sequence[RetrievalHit]:
-            limit = getattr(retriever, "default_limit", None) or self._retriever_limit
-            request = SearchRequest(text=query, limit=limit, source_record=source)
-            return await asyncio.wait_for(
-                retriever.search(request), timeout=self._policy.retriever_timeout
-            )
-
-        outcomes = await asyncio.gather(*(one(r) for r in self._retrievers), return_exceptions=True)
-
-        groups: list[Sequence[RetrievalHit]] = []
-        notes: list[str] = []
-        for retriever, outcome in zip(self._retrievers, outcomes, strict=True):
-            # Order matters: TimeoutError is an Exception, so it must be tested first.
-            if isinstance(outcome, asyncio.TimeoutError):
-                notes.append(f"{retriever.name}: timed out after {self._policy.retriever_timeout}s")
-            elif isinstance(outcome, BaseException):
-                notes.append(f"{retriever.name}: {outcome}")
-            else:
-                groups.append(outcome)
-
-        if not groups:
-            return [], notes
-        return reciprocal_rank_fusion(groups, self._store, k=self._rrf_k), notes
+        """One query per attempt on this path; the rewriter supplies the next one."""
+        candidates, notes, _ = await retrieve(
+            [query],
+            source,
+            self._retrievers,
+            self._store,
+            timeout=self._policy.retriever_timeout,
+            rrf_k=self._rrf_k,
+            fallback_limit=self._retriever_limit,
+        )
+        return candidates, notes
 
     # --- one attempt -----------------------------------------------------------
 

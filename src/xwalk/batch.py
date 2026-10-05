@@ -31,13 +31,15 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from xwalk import __version__
+from xwalk.decide.base import DecisionClient
+from xwalk.decide.policy import DecisionPolicy
+from xwalk.decide.questions import QuestionSet
 from xwalk.fingerprint import hash_record, hash_value, result_key
 from xwalk.ledger import Ledger
 from xwalk.llm.base import LLMClient
-from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
 from xwalk.prompts.contract import PromptSet
 from xwalk.records import DecisionReason, MatchResult, MatchStatus, Record, Usage
@@ -63,6 +65,8 @@ MAPPING_COLUMNS = (
     # Appended in 0.2 so positional readers of the 0.1 columns keep working.
     "unknown_calls",
     "cache_hits",
+    # Appended with the decider path: provider-reported cost, 0.0 when none is reported.
+    "cost_usd",
 )
 
 # The status of a snapshot entry that has no result yet (`--limit`, an interrupted run).
@@ -106,6 +110,7 @@ def usage_to_dict(usage: Usage) -> dict[str, Any]:
         "completion_tokens": usage.completion_tokens,
         "unknown_calls": usage.unknown_calls,
         "cache_hits": usage.cache_hits,
+        "cost_usd": usage.cost_usd,
         "tokens": usage.describe_tokens(),
     }
 
@@ -171,6 +176,19 @@ def run_fingerprint_components(
     return components
 
 
+class MatcherLike(Protocol):
+    @property
+    def run_fingerprint(self) -> str: ...
+
+    @property
+    def policy(self) -> Any: ...  # anything with a `.concurrency: int`
+
+    @property
+    def store_fingerprint(self) -> str: ...
+
+    async def match(self, source: Record) -> MatchResult: ...
+
+
 def build_run_fingerprint(
     *,
     templates: TemplateSet,
@@ -195,6 +213,80 @@ def build_run_fingerprint(
             selector_policy=selector_policy,
             retriever_limit=retriever_limit,
             rrf_k=rrf_k,
+        )
+    )
+
+
+def decision_run_fingerprint_components(
+    *,
+    templates: TemplateSet,
+    questions: QuestionSet,
+    store: TargetStore,
+    retrievers: Sequence[Retriever],
+    decider: DecisionClient,
+    policy: DecisionPolicy,
+    rrf_k: int = 60,
+    rewrite: str | None = None,
+) -> dict[str, Any]:
+    """The decider path's counterpart of `run_fingerprint_components`.
+
+    Concurrency, timeouts, and credentials are excluded for the same reason as on the
+    LLM path: they change how fast an answer arrives, never what it means. `rewrite` is
+    the fingerprint of the optional miss-only query rewrite; it is included only when
+    set, so a job without one keeps the fingerprint (and the cached ledger) it had
+    before. The dict is stored in the manifest so a refused resume can name what changed.
+    """
+    extra: dict[str, str] = {} if rewrite is None else {"rewrite": rewrite}
+    return {
+        **extra,
+        "library_version": __version__,
+        "path": "decider",
+        "templates": templates.fingerprint,
+        "questions": questions.fingerprint,
+        "target": store.fingerprint,
+        "retrievers": sorted(f"{r.name}:{r.fingerprint}" for r in retrievers),
+        "retrieval": {
+            "depths": sorted(f"{r.name}:{getattr(r, 'default_limit', 20)}" for r in retrievers),
+            "rrf_k": rrf_k,
+            "max_candidates": policy.max_candidates,
+        },
+        "decider": decider.fingerprint,
+        "policy": {
+            "screen_floor": policy.screen_floor,
+            "shortlist_size": policy.shortlist_size,
+            "shortlist_floor": policy.shortlist_floor,
+            "none_at": policy.none_at,
+            "choose_at": policy.choose_at,
+            "accept_at": policy.accept_at,
+            "rubric_floor": policy.rubric_floor,
+            "property_floor": policy.property_floor,
+            "chunk_size": policy.chunk_size,
+        },
+    }
+
+
+def build_decision_run_fingerprint(
+    *,
+    templates: TemplateSet,
+    questions: QuestionSet,
+    store: TargetStore,
+    retrievers: Sequence[Retriever],
+    decider: DecisionClient,
+    policy: DecisionPolicy,
+    rrf_k: int = 60,
+    rewrite: str | None = None,
+) -> str:
+    """The hash of `decision_run_fingerprint_components`."""
+    return hash_value(
+        decision_run_fingerprint_components(
+            templates=templates,
+            questions=questions,
+            store=store,
+            retrievers=retrievers,
+            decider=decider,
+            policy=policy,
+            rrf_k=rrf_k,
+            rewrite=rewrite,
         )
     )
 
@@ -292,7 +384,7 @@ def _run_state(ledger: Ledger, run_fp: str) -> RunState:
 
 
 async def run_batch(
-    matcher: Matcher,
+    matcher: MatcherLike,
     source: Iterable[Record],
     *,
     out: str | Path,
@@ -466,7 +558,7 @@ async def run_batch(
 
 
 def run_batch_sync(
-    matcher: Matcher,
+    matcher: MatcherLike,
     source: Iterable[Record],
     *,
     out: str | Path,
@@ -581,6 +673,7 @@ def export_mapping_csv(
                         "elapsed_seconds": round(result.elapsed_seconds, 3),
                         "unknown_calls": result.usage.unknown_calls,
                         "cache_hits": result.usage.cache_hits,
+                        "cost_usd": result.usage.cost_usd,
                     }
                 )
             written += 1

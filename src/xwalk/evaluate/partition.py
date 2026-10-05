@@ -41,9 +41,13 @@ class Partitioner:
                 "every fraction must be positive; an empty partition disables its role"
             )
 
-    def assign(self, source_id: str) -> Partition:
+    def draw(self, source_id: str) -> float:
+        """The id's deterministic position in [0, 1), salted; what `assign` buckets."""
         digest = hashlib.sha256(f"{self.salt}\x00{source_id}".encode()).digest()
-        draw = int.from_bytes(digest[:8], "big") / float(1 << 64)
+        return int.from_bytes(digest[:8], "big") / float(1 << 64)
+
+    def assign(self, source_id: str) -> Partition:
+        draw = self.draw(source_id)
         train, validation, _ = self.fractions
         if draw < train:
             return Partition.PROMPT_TRAIN

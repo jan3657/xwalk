@@ -253,6 +253,13 @@ async def optimize_prompt(
         try:
             payload = parse_json_object(response.text)
             candidate_slots = PromptSlots.model_validate(payload)
+            if not candidate_slots.properties:
+                # The optimiser only ever sees the LLM-path skeletons, so it has no
+                # reason to repeat `properties` and every reason to drop it. Dropping it
+                # would silently disarm the decider path's gate, so carry it forward.
+                candidate_slots = candidate_slots.model_copy(
+                    update={"properties": best_slots.properties}
+                )
             validate_contract(PromptSet.from_slots(candidate_slots))
         except Exception as exc:  # a bad round must not end the run
             warnings.append(f"round {round_index} produced unusable slots: {exc}")

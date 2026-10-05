@@ -59,7 +59,14 @@ def test_an_invalid_selector_value_is_rejected():
 
 def test_a_missing_required_field_is_named():
     issues = _issues(_job(lambda d: d.pop("llm")))
-    assert issues == [("missing_field", "llm", "required field is missing")]
+    # Since the decider path, the message also names the alternative block.
+    assert issues == [
+        (
+            "missing_field",
+            "llm",
+            "required field is missing; a job needs exactly one of `llm:` or `decider:`",
+        )
+    ]
 
 
 @pytest.mark.parametrize(

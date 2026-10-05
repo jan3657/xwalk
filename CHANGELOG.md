@@ -7,6 +7,68 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Merged after 0.2.0rc1 was cut: the decider path, developed on the `jev-decider` and
+`jev-recall-cost` branches against 0.1.1 and adapted to the 0.2 contracts
+(`docs/claude-upgrade/CONTRACTS.md`). Accuracy and cost figures quoted in
+`docs/reference/decide.md` were measured on those branches against the live Jev endpoint
+before the merge; nothing was re-measured for this entry, and the merged tree was tested
+offline only (FakeDecider, no paid calls).
+
+### Added
+
+- A decider path: a `decider:` block on a job routes matching through a decision model
+  (TypeSafe's Jev, `JevClient`) that answers typed questions with probabilities instead
+  of writing prose -- screen every retrieved candidate, choose among the survivors, then
+  gate the choice on the rubric and on the identity-bearing properties declared in the
+  slots' `properties:`. `DecisionMatcher` returns the same `MatchResult` as `Matcher`;
+  results carry their calibrated `signals`. `FakeDecider` runs it offline.
+- `xwalk fit` fits `accept_at`, `property_floor` and `choose_at` on a completed decider
+  run and gold labels; `--holdout` fits on half the labelled rows and scores the
+  recommendation on the other half; `--write-job OUT.yaml` writes a copy of the job with
+  the fitted thresholds (the copy loses the YAML comments). It supports `--json`.
+- `Usage.cost_usd` (provider-reported cost; 0.0 when a provider reports none) and a
+  trailing `cost_usd` column in `mapping.csv`; `xwalk eval` reports `mean_cost_usd`.
+- `templates.queries`: several retrieval queries per source, fused by reciprocal rank
+  (decider jobs).
+- BM25 retriever options `analyzer: en_stem` and `fuzzy_distance`, both opt-in and part
+  of the index identity only when set; the sample jobs keep the defaults.
+- An opt-in `decider.rewrite` block: when the screen finds nothing, an LLM proposes new
+  queries and Jev screens what they retrieve. No shipped job sets it.
+- `xwalk.evaluate.recall` and `scripts/retrieval_recall.py`: offline recall@k of a job's
+  retrievers against gold, with no model calls.
+- Decider example jobs (`job_jev.yaml`) for cafeteria_fcd, chebi, ncbi_disease, nlm_gene
+  and Ref_zivila FoodOn. The four sample jobs add a dense `intfloat/multilingual-e5-small`
+  retriever beside BM25 and so need `xwalk[dense]`. cafeteria_fcd and ncbi_disease keep
+  their decider `properties:` in `slots_jev.yaml`, so the slots files pinned by the
+  benchmark manifests are unchanged.
+- `examples/ref_zivila/gold_adjudicated.csv` (built by `scripts/adjudication_to_gold.py`)
+  and the evaluation scripts `scripts/run_jev_eval.sh`, `compare_gates.py`,
+  `screen_recall.py` and `hop_headroom.py`.
+
+### Changed
+
+- Decider jobs run through `xwalk.ops` like LLM jobs: strict validation of the
+  `decider:` block and the decider `policy:` (unknown keys with did-you-mean, ranges,
+  `shortlist_floor <= accept_at`), `--json` envelopes, run states, exit codes, run
+  directories bound to one fingerprint (whose components are recorded in the manifest,
+  without secrets), index identity checks, and `validate` (credentials checked for
+  presence only). Decisions are cached in the run's ledger (`llm_cache` table), so a
+  resumed or `--no-resume` run replays them; the ledger schema is unchanged (v2).
+- Decider provider errors follow CONTRACTS.md section 3: a fatal error (auth, unknown
+  model, a spent call limit) from the decider or the rewrite LLM is a
+  `fatal_provider_failure` that aborts the run without committing the record (exit 3);
+  a malformed response or exhausted retries is a per-record `provider_failure`. On the
+  branch a fatal decider error raised out of `DecisionMatcher.match`.
+- `--max-calls` covers the decider path: Jev requests (each HTTP retry counts) and
+  rewrite LLM requests share one limit. A failed decision request counts as a call with
+  unknown usage instead of nothing; cache replays count as `cache_hits`.
+- A job needs exactly one of `llm:` or `decider:`. A decider job refuses `selector:`; an
+  `llm:` job refuses `templates.queries` with more than one entry (the LLM matcher
+  searches one query per attempt). `xwalk ablate` and `xwalk prompts` refuse decider
+  jobs (exit 2).
+- `TemplateSet.fingerprint` and `PromptSet.fingerprint` are unchanged for jobs that do
+  not use `queries` or slot `properties`, so 0.2.0rc1 runs keep resuming.
+
 ## [0.2.0rc1] — 2026-10-05
 
 Release candidate for 0.2.0. Not published: tagging and uploading are the maintainer's

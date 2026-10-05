@@ -7,6 +7,11 @@ from xwalk.prompts.contract import PromptSet, load_slots, validate_contract
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = sorted(p for p in (ROOT / "examples").iterdir() if (p / "job.yaml").exists())
+# Decider-path jobs live beside their LLM twins rather than in a directory of their own,
+# and some of them point at target files too large to ship. Only the parts that need no
+# data -- loading, templates, slots, credentials -- are exercised here.
+DECIDER_JOBS = sorted((ROOT / "examples").rglob("job_jev.yaml"))
+DECIDER_IDS = [str(p.relative_to(ROOT / "examples")) for p in DECIDER_JOBS]
 
 
 def _skip_if_loader_missing(job):
@@ -120,6 +125,43 @@ def test_no_job_file_contains_an_inline_api_key(example):
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda p: p.name)
 def test_every_example_has_a_readme(example):
     assert (example / "README.md").exists()
+
+
+def test_there_are_decider_example_jobs():
+    """A guard on the glob: if it matched nothing, every test below would pass by vacuum."""
+    assert len(DECIDER_JOBS) >= 2
+
+
+@pytest.mark.parametrize("job_path", DECIDER_JOBS, ids=DECIDER_IDS)
+def test_the_decider_job_file_loads(job_path):
+    job = load_job(job_path)
+    assert job.name
+    assert job.decider is not None, "a job_jev.yaml must declare a decider: block"
+    assert job.llm is None, "a job needs exactly one of llm: or decider:"
+    job.build_decision_policy()
+
+
+@pytest.mark.parametrize("job_path", DECIDER_JOBS, ids=DECIDER_IDS)
+def test_the_decider_job_templates_compile(job_path):
+    templates = load_job(job_path).build_templates()
+    assert templates.queries, "the decider path retrieves with templates.queries"
+
+
+@pytest.mark.parametrize("job_path", DECIDER_JOBS, ids=DECIDER_IDS)
+def test_the_decider_job_slots_build_questions(job_path):
+    """The slots must satisfy both contracts: the LLM skeletons and the question set."""
+    job = load_job(job_path)
+    slots = load_slots(job.base_dir / job.prompts.slots)
+    validate_contract(PromptSet.from_slots(slots))
+    questions = job.build_questions()
+    assert questions.property_questions(), "a decider job wants a properties: block"
+    questions.rubric_question()
+    questions.choose_question({"C01": "a candidate"})
+
+
+@pytest.mark.parametrize("job_path", DECIDER_JOBS, ids=DECIDER_IDS)
+def test_no_decider_job_file_contains_an_inline_api_key(job_path):
+    assert "api_key:" not in job_path.read_text(encoding="utf-8")
 
 
 def test_the_nlm_gene_example_uses_numeric_target_ids():

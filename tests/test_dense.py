@@ -3,6 +3,7 @@ import math
 
 import pytest
 
+from tests.conftest import load_encoder_or_skip
 from xwalk.records import Record
 from xwalk.retrieval.base import Retriever, SearchRequest
 from xwalk.retrieval.dense import DenseRetriever
@@ -176,10 +177,7 @@ async def test_an_empty_record_set_builds_and_searches_without_crashing(tmp_path
 
 @pytest.mark.dense
 def test_the_sentence_transformer_encoder_loads():
-    pytest.importorskip("sentence_transformers")
-    from xwalk.retrieval.dense import SentenceTransformerEncoder
-
-    encoder = SentenceTransformerEncoder("sentence-transformers/all-MiniLM-L6-v2")
+    encoder = load_encoder_or_skip("sentence-transformers/all-MiniLM-L6-v2")
     vectors = encoder.encode(["glucose"], is_query=True)
     assert len(vectors) == 1 and len(vectors[0]) == encoder.dimension
 

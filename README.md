@@ -191,6 +191,11 @@ command. BM25 runs on Tantivy, a base dependency with no silent fallback; see
 - **Evaluation and prompt tools**: `xwalk eval`, `compare`, `ablate`, `prompts draft` and
   `prompts optimize` against your gold labels ([evaluation](docs/guide/evaluation.md),
   [prompt optimisation](docs/guide/prompt-optimisation.md)).
+- **Decision-model path**: a job with a `decider:` block instead of `llm:` matches with
+  TypeSafe's Jev, which answers typed questions with probabilities (screen every
+  candidate, choose, gate on declared properties); `xwalk fit` fits its thresholds on
+  gold. Same run directories, exit codes and `--max-calls` as the LLM path
+  ([decision models](docs/reference/decide.md)).
 - **Agent access (optional extra)**: `xwalk mcp` serves bounded validate, search, match
   and read operations over the Model Context Protocol ([MCP guide](docs/guide/mcp.md)).
 - **Clustering (experimental)**: `xwalk cluster` groups one collection into clusters of

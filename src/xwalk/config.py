@@ -28,7 +28,12 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from xwalk._yaml import load_strict_yaml, yaml_error_message
-from xwalk.batch import run_fingerprint_components
+from xwalk.batch import decision_run_fingerprint_components, run_fingerprint_components
+from xwalk.decide.base import DecisionClient
+from xwalk.decide.jev import JevClient
+from xwalk.decide.matcher import DecisionMatcher
+from xwalk.decide.policy import DecisionPolicy
+from xwalk.decide.questions import QuestionSet
 from xwalk.fingerprint import hash_value
 from xwalk.llm.base import LLMClient
 from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
@@ -37,11 +42,14 @@ from xwalk.policy import MatchPolicy
 from xwalk.prompts.contract import PromptSet, load_slots
 from xwalk.records import Record
 from xwalk.retrieval.base import Retriever
-from xwalk.retrieval.bm25 import BM25Retriever
+from xwalk.retrieval.bm25 import MAX_FUZZY_DISTANCE, BM25Retriever
 from xwalk.retrieval.dense import Encoder
 from xwalk.sources.tabular import csv_source, jsonl_source
+from xwalk.stages.choose import Chooser
 from xwalk.stages.gate import Scorer, Verifier
+from xwalk.stages.property_gate import PropertyGate
 from xwalk.stages.rewrite import QueryRewriter
+from xwalk.stages.screen import Screener
 from xwalk.stages.select import Selector, SelectorPolicy
 from xwalk.stores.base import TargetStore
 from xwalk.stores.memory import MemoryStore
@@ -49,14 +57,15 @@ from xwalk.templates import TemplateSet
 
 
 class CredentialMissingError(ValueError):
-    """The environment variable named by `llm.api_key_env` is unset. Its value, when
-    set, is never printed or stored."""
+    """The environment variable named by an `api_key_env` is unset. Its value, when
+    set, is never printed or stored. `where` is the block's path in the job file."""
 
-    def __init__(self, variable: str) -> None:
+    def __init__(self, variable: str, where: str = "llm") -> None:
         self.variable = variable
+        self.where = where
         super().__init__(
             f"environment variable {variable} is not set; "
-            f"export it or change llm.api_key_env in the job file"
+            f"export it or change {where}.api_key_env in the job file"
         )
 
 
@@ -72,10 +81,17 @@ class _Spec(BaseModel):
 
 
 class TemplateSpec(_Spec):
-    query: str
+    query: str | None = None
+    queries: list[str] = Field(default_factory=list)
     context: str = ""
     doc: str
     candidate: str
+
+    @model_validator(mode="after")
+    def _need_a_query(self) -> TemplateSpec:
+        if not self.query and not self.queries:
+            raise ValueError("templates need a query or a non-empty queries list")
+        return self
 
 
 _FILE_KINDS = ("csv", "tsv", "jsonl", "obo", "owl")
@@ -184,6 +200,8 @@ class RetrieverSpec(_Spec):
     limit: int = Field(default=20, ge=1)
     # bm25 only
     exact_fields: list[str] | None = None
+    analyzer: Literal["default", "en_stem"] = "default"
+    fuzzy_distance: int = Field(default=0, ge=0, le=MAX_FUZZY_DISTANCE)
     # dense only
     model: str | None = None
     device: str | None = None
@@ -205,7 +223,9 @@ class RetrieverSpec(_Spec):
         if self.kind == "dense":
             if not self.model:
                 raise ValueError("a dense retriever needs a model name")
-            self._reject_inapplicable(("exact_fields",), kind=self.kind)
+            self._reject_inapplicable(
+                ("exact_fields", "analyzer", "fuzzy_distance"), kind=self.kind
+            )
         else:
             self._reject_inapplicable(_DENSE_ONLY, kind=self.kind)
         return self
@@ -254,6 +274,59 @@ class LLMSpec(_Spec):
         return self
 
 
+class RewriteSpec(_Spec):
+    """An LLM that proposes alternative queries after a screen miss. It never decides."""
+
+    llm: LLMSpec
+    max_queries: int = Field(default=3, ge=1, le=5)
+
+
+class DeciderSpec(_Spec):
+    kind: Literal["jev"] = "jev"
+    model: str = Field(min_length=1)
+    base_url: str = Field(default="https://openrouter.ai/api/alpha/decisions", min_length=1)
+    api_key_env: str | None = None
+    api_key: str | None = None  # present only so it can be rejected
+    timeout: float = Field(default=60.0, gt=0.0)
+    max_retries: int = Field(default=5, ge=0)
+    rewrite: RewriteSpec | None = None
+
+    @model_validator(mode="after")
+    def _no_inline_secrets(self) -> DeciderSpec:
+        if self.api_key is not None:
+            raise ValueError(
+                "api_key must not appear in a job file; use api_key_env with the name of "
+                "an environment variable"
+            )
+        return self
+
+
+class DecisionPolicySpec(_Spec):
+    """`policy:` of a decider job (the YAML key is shared; the path decides the model)."""
+
+    screen_floor: float = Field(default=0.30, ge=0.0, le=1.0)
+    shortlist_size: int = Field(default=15, ge=1)
+    shortlist_floor: float = Field(default=0.20, ge=0.0, le=1.0)
+    none_at: float = Field(default=0.70, ge=0.0, le=1.0)
+    choose_at: float = Field(default=0.50, ge=0.0, le=1.0)
+    accept_at: float = Field(default=0.85, ge=0.0, le=1.0)
+    rubric_floor: float | None = Field(default=None, ge=0.0)  # a rubric level, not a probability
+    property_floor: float = Field(default=0.50, ge=0.0, le=1.0)
+    chunk_size: int = Field(default=50, ge=1)
+    max_candidates: int = Field(default=300, ge=1)
+    concurrency: int = Field(default=32, ge=1)
+    retriever_timeout: float = Field(default=60.0, gt=0.0)
+
+    @model_validator(mode="after")
+    def _check(self) -> DecisionPolicySpec:
+        if self.shortlist_floor > self.accept_at:
+            raise ValueError(
+                f"shortlist_floor ({self.shortlist_floor}) must not exceed "
+                f"accept_at ({self.accept_at})"
+            )
+        return self
+
+
 class PolicySpec(_Spec):
     max_attempts: int = Field(default=4, ge=1)
     accept_at: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -294,15 +367,38 @@ class JobSpec(_Spec):
     target: RecordSpec
     source: RecordSpec
     retrievers: list[RetrieverSpec] = Field(min_length=1)
-    llm: LLMSpec
+    llm: LLMSpec | None = None
+    decider: DeciderSpec | None = None
     prompts: PromptSpec
     policy: PolicySpec = PolicySpec()
+    decision_policy: DecisionPolicySpec = DecisionPolicySpec()
     selector: SelectorSpec = SelectorSpec()
 
     base_dir: Path = Path(".")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _route_policy(cls, data: Any) -> Any:
+        # One YAML key, `policy:`, on both paths. Which model parses it depends on the
+        # path; `decision_policy` is internal and not a job-file key.
+        if isinstance(data, dict) and data.get("decider") is not None and "policy" in data:
+            data = dict(data)
+            data["decision_policy"] = data.pop("policy")
+        return data
+
     @model_validator(mode="after")
-    def _unique_retriever_names(self) -> JobSpec:
+    def _check(self) -> JobSpec:
+        if (self.llm is None) == (self.decider is None):
+            raise ValueError("a job needs exactly one of `llm:` or `decider:`")
+        if self.decider is not None and "selector" in self.model_fields_set:
+            raise ValueError("selector does not apply to a decider job")
+        if self.llm is not None and len(self.templates.queries) > 1:
+            # The LLM matcher searches one query per attempt (the rewriter supplies the
+            # next); extra queries would be fingerprinted and silently never searched.
+            raise ValueError(
+                "templates.queries with more than one entry applies to decider jobs; "
+                "an llm job searches templates.query (or a single queries entry)"
+            )
         seen: set[str] = set()
         for spec in self.retrievers:
             if spec.index_name in seen:
@@ -316,7 +412,13 @@ class JobSpec(_Spec):
     # --- builders ---------------------------------------------------------------
 
     def build_templates(self) -> TemplateSet:
-        return TemplateSet(**self.templates.model_dump())
+        return TemplateSet(
+            query=self.templates.query or self.templates.queries[0],
+            queries=tuple(self.templates.queries),
+            context=self.templates.context,
+            doc=self.templates.doc,
+            candidate=self.templates.candidate,
+        )
 
     def build_target_records(self) -> Iterator[Record]:
         return self.target.build(self.base_dir)
@@ -346,6 +448,8 @@ class JobSpec(_Spec):
                         name=spec.name or "bm25",
                         exact_fields=spec.effective_exact_fields,
                         default_limit=spec.limit,
+                        analyzer=spec.analyzer,
+                        fuzzy_distance=spec.fuzzy_distance,
                     )
                 )
             else:
@@ -379,32 +483,44 @@ class JobSpec(_Spec):
         )
 
     def build_llm(self) -> LLMClient:
-        api_key = None
-        if self.llm.api_key_env:
-            api_key = os.environ.get(self.llm.api_key_env)
-            if not api_key:
-                raise CredentialMissingError(self.llm.api_key_env)
-        if self.llm.kind == "openai_compat":
-            return OpenAICompatClient(
-                base_url=self.llm.base_url or "",
-                model=self.llm.model,
-                api_key=api_key,
-                profile=self.llm.profile,
-                temperature=self.llm.temperature,
-                max_tokens=self.llm.max_tokens,
-                seed=self.llm.seed,
-            )
-        from xwalk.llm.litellm import LiteLLMClient
+        if self.llm is None:
+            raise ValueError("this job has no llm: block")
+        return _build_llm_client(self.llm, where="llm")
 
-        return LiteLLMClient(
-            self.llm.model,
-            temperature=self.llm.temperature,
-            max_tokens=self.llm.max_tokens,
-            seed=self.llm.seed,
-        )
+    def build_rewrite_llm(self) -> LLMClient:
+        if self.decider is None or self.decider.rewrite is None:
+            raise ValueError("this job has no decider.rewrite: block")
+        return _build_llm_client(self.decider.rewrite.llm, where="decider.rewrite.llm")
+
+    @property
+    def is_decider(self) -> bool:
+        """True for a job that decides with a decision model (`decider:`), not an LLM."""
+        return self.decider is not None
 
     def build_prompts(self) -> PromptSet:
         return PromptSet.from_slots(load_slots(self.base_dir / self.prompts.slots))
+
+    def build_decider(self) -> DecisionClient:
+        if self.decider is None:
+            raise ValueError("this job has no decider: block")
+        api_key = None
+        if self.decider.api_key_env:
+            api_key = os.environ.get(self.decider.api_key_env)
+            if not api_key:
+                raise CredentialMissingError(self.decider.api_key_env, "decider")
+        return JevClient(
+            self.decider.base_url,
+            self.decider.model,
+            api_key=api_key,
+            timeout=self.decider.timeout,
+            max_retries=self.decider.max_retries,
+        )
+
+    def build_questions(self) -> QuestionSet:
+        return QuestionSet.from_slots(load_slots(self.base_dir / self.prompts.slots))
+
+    def build_decision_policy(self) -> DecisionPolicy:
+        return DecisionPolicy(**self.decision_policy.model_dump())
 
     def build_policy(self) -> MatchPolicy:
         return MatchPolicy(**self.policy.model_dump())
@@ -486,6 +602,115 @@ class JobSpec(_Spec):
             retriever_limit=self._retriever_limit(),
         )
 
+    def decision_run_fingerprint_components(
+        self, *, store: TargetStore, retrievers: Sequence[Retriever], decider: DecisionClient
+    ) -> dict[str, Any]:
+        return decision_run_fingerprint_components(
+            templates=self.build_templates(),
+            questions=self.build_questions(),
+            store=store,
+            retrievers=retrievers,
+            decider=decider,
+            policy=self.build_decision_policy(),
+            rewrite=self._rewrite_fingerprint(),
+        )
+
+    def decision_run_fingerprint(
+        self, *, store: TargetStore, retrievers: Sequence[Retriever], decider: DecisionClient
+    ) -> str:
+        return hash_value(
+            self.decision_run_fingerprint_components(
+                store=store, retrievers=retrievers, decider=decider
+            )
+        )
+
+    def _rewrite_fingerprint(self) -> str | None:
+        """What the rewrite would propose depends on its model, its prompt, and how many
+        queries it may return; credentials and the env var name do not change that."""
+        if self.decider is None or self.decider.rewrite is None:
+            return None
+        spec = self.decider.rewrite
+        return hash_value(
+            {
+                "llm": spec.llm.model_dump(exclude={"api_key", "api_key_env"}),
+                "max_queries": spec.max_queries,
+                "prompts": self.build_prompts().fingerprint,
+            }
+        )
+
+    def build_decision_matcher(
+        self,
+        *,
+        store: TargetStore,
+        retrievers: Sequence[Retriever],
+        decider: DecisionClient,
+        rewrite_llm: LLMClient | None = None,
+    ) -> DecisionMatcher:
+        """`rewrite_llm` is the client for `decider.rewrite`; it is built from the job
+        file when the block is present and none is passed."""
+        templates = self.build_templates()
+        questions = self.build_questions()
+        policy = self.build_decision_policy()
+        rewrite = None if self.decider is None else self.decider.rewrite
+        rewriter: QueryRewriter | None = None
+        if rewrite is None:
+            if rewrite_llm is not None:
+                raise ValueError("a rewrite LLM was passed but the job has no decider.rewrite:")
+        else:
+            rewriter = QueryRewriter(
+                rewrite_llm or self.build_rewrite_llm(),
+                self.build_prompts(),
+                templates,
+                max_queries=rewrite.max_queries,
+            )
+        return DecisionMatcher(
+            templates=templates,
+            retrievers=list(retrievers),
+            store=store,
+            screener=Screener(
+                decider,
+                questions,
+                templates,
+                chunk_size=policy.chunk_size,
+                shortlist_size=policy.shortlist_size,
+                shortlist_floor=policy.shortlist_floor,
+            ),
+            chooser=Chooser(decider, questions, templates),
+            gate=PropertyGate(decider, questions, templates),
+            policy=policy,
+            run_fingerprint=self.decision_run_fingerprint(
+                store=store, retrievers=retrievers, decider=decider
+            ),
+            rewriter=rewriter,
+        )
+
+
+def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
+    """`where` is the spec's path in the job file, for the missing-key error."""
+    api_key = None
+    if spec.api_key_env:
+        api_key = os.environ.get(spec.api_key_env)
+        if not api_key:
+            raise CredentialMissingError(spec.api_key_env, where)
+    if spec.kind == "openai_compat":
+        return OpenAICompatClient(
+            base_url=spec.base_url or "",
+            model=spec.model,
+            api_key=api_key,
+            profile=spec.profile,
+            temperature=spec.temperature,
+            max_tokens=spec.max_tokens,
+            seed=spec.seed,
+        )
+    from xwalk.llm.litellm import LiteLLMClient
+
+    return LiteLLMClient(
+        spec.model,
+        temperature=spec.temperature,
+        max_tokens=spec.max_tokens,
+        seed=spec.seed,
+    )
+
 
 @dataclass(frozen=True)
 class JobIssue:
@@ -534,10 +759,16 @@ def _issues_from(error: ValidationError, root: type[BaseModel] | None = None) ->
     issues: list[JobIssue] = []
     for item in error.errors():
         loc = [p for p in item["loc"] if not (isinstance(p, str) and p.startswith("function-"))]
-        dotted = ".".join(str(p) for p in loc)
+        # A decider job's `policy:` is parsed as `decision_policy`; report it as written.
+        shown = ["policy" if i == 0 and p == "decision_policy" else p for i, p in enumerate(loc)]
+        dotted = ".".join(str(p) for p in shown)
         if item["type"] == "extra_forbidden":
             parent = _model_at(loc[:-1], root)
-            known = [n for n in (parent.model_fields if parent else {}) if n != "base_dir"]
+            known = [
+                n
+                for n in (parent.model_fields if parent else {})
+                if n not in ("base_dir", "decision_policy")
+            ]
             close = difflib.get_close_matches(str(loc[-1]), known, n=1)
             hint = f"; did you mean {close[0]!r}?" if close else ""
             issues.append(JobIssue("unknown_field", dotted, f"unknown field{hint}"))
@@ -556,11 +787,14 @@ def parse_job(data: Any, *, path: str | Path | None = None) -> JobSpec:
     """Validate a job mapping strictly. Raises `JobValidationError`."""
     if not isinstance(data, dict):
         raise JobValidationError(path, [JobIssue("invalid_value", "", "a job must be a mapping")])
-    if "base_dir" in data:
-        raise JobValidationError(
-            path,
-            [JobIssue("unknown_field", "base_dir", "set by load_job; not a job-file field")],
-        )
+    for internal in ("base_dir", "decision_policy"):
+        if internal in data:
+            hint = (
+                "set by load_job; not a job-file field"
+                if internal == "base_dir"
+                else "not a job-file field; a decider job's thresholds go under policy:"
+            )
+            raise JobValidationError(path, [JobIssue("unknown_field", internal, hint)])
     if data.get("kind") == "cluster":
         raise JobValidationError(
             path,
@@ -572,10 +806,23 @@ def parse_job(data: Any, *, path: str | Path | None = None) -> JobSpec:
                 )
             ],
         )
+    neither = "llm" not in data and "decider" not in data
     try:
         return JobSpec.model_validate(data)
     except ValidationError as exc:
-        raise JobValidationError(path, _issues_from(exc)) from None
+        issues = _issues_from(exc)
+        if neither:
+            # Named at `llm`, with the alternative; the model-level "exactly one" check
+            # says the same thing and is dropped.
+            issues = [
+                JobIssue(
+                    "missing_field",
+                    "llm",
+                    "required field is missing; a job needs exactly one of `llm:` or `decider:`",
+                ),
+                *(i for i in issues if "exactly one of" not in i.message),
+            ]
+        raise JobValidationError(path, issues) from None
 
 
 def load_job_yaml(path: Path, text: str) -> Any:

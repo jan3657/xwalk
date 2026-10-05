@@ -118,3 +118,31 @@ def test_a_v0_1_usage_without_the_new_fields_reads_as_zero():
     restored = result_from_dict(data)
     assert restored.usage == Usage(prompt_tokens=100, completion_tokens=20, calls=2)
     assert restored.attempts[0].usage.unknown_calls == 0
+
+
+def test_signals_and_cost_round_trip():
+    original = sample_result()
+    attempt = Attempt(**{**original.attempts[0].__dict__, "signals": {"screen_chosen": 0.93}})
+    result = MatchResult(
+        **{
+            **original.__dict__,
+            "signals": {"screen_chosen": 0.93, "p_choice": 0.8},
+            "attempts": (attempt,),
+            "usage": Usage(prompt_tokens=10, completion_tokens=0, calls=2, cost_usd=0.0004),
+        }
+    )
+    back = result_from_dict(result_to_dict(result))
+    assert back.signals == {"screen_chosen": 0.93, "p_choice": 0.8}
+    assert back.attempts[0].signals == {"screen_chosen": 0.93}
+    assert back.usage.cost_usd == 0.0004
+
+
+def test_old_blobs_without_the_new_fields_still_load():
+    data = result_to_dict(sample_result())
+    del data["signals"]
+    del data["attempts"][0]["signals"]
+    del data["usage"]["cost_usd"]
+    back = result_from_dict(data)
+    assert back.signals == {}
+    assert back.attempts[0].signals == {}
+    assert back.usage.cost_usd == 0.0

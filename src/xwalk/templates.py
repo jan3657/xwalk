@@ -56,6 +56,9 @@ class TemplateSet:
     context: str
     doc: str
     candidate: str
+    # Extra retrieval queries, rendered per source alongside `query`. Empty on the LLM path
+    # unless the job declares them.
+    queries: tuple[str, ...] = ()
     _compiled: dict[str, Template] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -66,6 +69,11 @@ class TemplateSet:
                 self._compiled[name] = env.from_string(source)
             except JinjaSyntaxError as exc:
                 raise TemplateError(f"{name} template failed to compile: {exc}") from exc
+        for index, source in enumerate(self.queries):
+            try:
+                self._compiled[f"queries.{index}"] = env.from_string(source)
+            except JinjaSyntaxError as exc:
+                raise TemplateError(f"queries[{index}] template failed to compile: {exc}") from exc
 
     def _render(self, name: str, record: Record) -> str:
         variables: dict[str, Any] = dict(record.fields)
@@ -78,6 +86,20 @@ class TemplateSet:
     def render_query(self, record: Record) -> str:
         return self._render("query", record)
 
+    def render_queries(self, record: Record) -> list[str]:
+        """Every declared query for this record, in order, non-empty, de-duplicated.
+
+        Falls back to the single `query` template so the two paths share one call site.
+        """
+        if not self.queries:
+            return [self.render_query(record)]
+        rendered: list[str] = []
+        for index in range(len(self.queries)):
+            text = self._render(f"queries.{index}", record)
+            if text and text not in rendered:
+                rendered.append(text)
+        return rendered
+
     def render_context(self, record: Record) -> str:
         return self._render("context", record)
 
@@ -89,11 +111,14 @@ class TemplateSet:
 
     @property
     def fingerprint(self) -> str:
-        return hash_value(
-            {
-                "query": self.query,
-                "context": self.context,
-                "doc": self.doc,
-                "candidate": self.candidate,
-            }
-        )
+        identity: dict[str, Any] = {
+            "query": self.query,
+            "context": self.context,
+            "doc": self.doc,
+            "candidate": self.candidate,
+        }
+        # Only when declared, so a template set without extra queries keeps the
+        # fingerprint (and the run identity) it had before they existed.
+        if self.queries:
+            identity["queries"] = list(self.queries)
+        return hash_value(identity)

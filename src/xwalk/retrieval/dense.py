@@ -72,7 +72,11 @@ class SentenceTransformerEncoder:
 
     @property
     def dimension(self) -> int:
-        return int(self._model.get_sentence_embedding_dimension())
+        # sentence-transformers 6 renamed the method and warns on the old name.
+        get = getattr(self._model, "get_embedding_dimension", None)
+        if get is None:
+            get = self._model.get_sentence_embedding_dimension
+        return int(get())
 
     @property
     def settings(self) -> dict[str, Any]:

@@ -37,17 +37,20 @@ def _usage_to_dict(usage: Usage) -> dict[str, Any]:
         "calls": usage.calls,
         "unknown_calls": usage.unknown_calls,
         "cache_hits": usage.cache_hits,
+        "cost_usd": usage.cost_usd,
     }
 
 
 def _usage_from_dict(data: Mapping[str, Any]) -> Usage:
-    # Ledgers written before 0.2 carry only the first three fields.
+    # Ledgers written before 0.2 carry only the first three fields; cost_usd arrived
+    # with the decider path.
     return Usage(
         prompt_tokens=data["prompt_tokens"],
         completion_tokens=data["completion_tokens"],
         calls=data["calls"],
         unknown_calls=data.get("unknown_calls", 0),
         cache_hits=data.get("cache_hits", 0),
+        cost_usd=float(data.get("cost_usd", 0.0)),
     )
 
 
@@ -108,6 +111,7 @@ def _attempt_to_dict(attempt: Attempt) -> dict[str, Any]:
         "usage": _usage_to_dict(attempt.usage),
         "elapsed_seconds": attempt.elapsed_seconds,
         "finish_reason": attempt.finish_reason,
+        "signals": dict(attempt.signals),
     }
 
 
@@ -135,6 +139,7 @@ def _attempt_from_dict(data: Mapping[str, Any]) -> Attempt:
         usage=_usage_from_dict(data["usage"]),
         elapsed_seconds=data["elapsed_seconds"],
         finish_reason=data["finish_reason"],
+        signals=dict(data.get("signals") or {}),
     )
 
 
@@ -156,6 +161,7 @@ def result_to_dict(result: MatchResult) -> dict[str, Any]:
         "usage": _usage_to_dict(result.usage),
         "elapsed_seconds": result.elapsed_seconds,
         "run_fingerprint": result.run_fingerprint,
+        "signals": dict(result.signals),
     }
 
 
@@ -177,4 +183,5 @@ def result_from_dict(data: Mapping[str, Any]) -> MatchResult:
         usage=_usage_from_dict(data["usage"]),
         elapsed_seconds=data["elapsed_seconds"],
         run_fingerprint=data["run_fingerprint"],
+        signals=dict(data.get("signals") or {}),
     )

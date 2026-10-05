@@ -21,7 +21,8 @@ gold file is excluded entirely):
                         the fraction whose gold set is empty
 - no_match_recall     : of results whose gold set is empty, the fraction predicted no-match
 - duplicate_target_conflicts : target ids selected by more than one source record
-- mean_llm_calls / mean_tokens / mean_seconds : per completed (non-FAILED) result
+- mean_llm_calls / mean_tokens / mean_cost_usd / mean_seconds : per completed (non-FAILED)
+  result
 """
 
 from __future__ import annotations
@@ -69,6 +70,7 @@ class EvalReport:
     duplicate_target_conflicts: int
     mean_llm_calls: float | None
     mean_tokens: float | None
+    mean_cost_usd: float | None
     mean_seconds: float | None
     status_counts: dict[str, int]
     reason_counts: dict[str, int]
@@ -90,6 +92,7 @@ class EvalReport:
             "duplicate_target_conflicts": self.duplicate_target_conflicts,
             "mean_llm_calls": self.mean_llm_calls,
             "mean_tokens": self.mean_tokens,
+            "mean_cost_usd": self.mean_cost_usd,
             "mean_seconds": self.mean_seconds,
             "status_counts": self.status_counts,
             "reason_counts": self.reason_counts,
@@ -142,6 +145,7 @@ def evaluate_results(results: Sequence[MatchResult], gold: GoldSet) -> EvalRepor
         duplicate_target_conflicts=duplicates,
         mean_llm_calls=mean(r.usage.calls for r in completed) if completed else None,
         mean_tokens=mean(r.usage.total_tokens for r in completed) if completed else None,
+        mean_cost_usd=mean(r.usage.cost_usd for r in completed) if completed else None,
         mean_seconds=mean(r.elapsed_seconds for r in completed) if completed else None,
         status_counts=dict(Counter(r.status.value for r in results)),
         reason_counts=dict(Counter(r.reason.value for r in results)),

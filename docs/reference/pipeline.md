@@ -672,11 +672,16 @@ after `run_batch` returns:
 MAPPING_COLUMNS = (
     "source_id", "matched_id", "confidence", "status", "reason", "explanation",
     "attempts", "prompt_tokens", "completion_tokens", "llm_calls", "elapsed_seconds",
-    "unknown_calls", "cache_hits",
+    "unknown_calls", "cache_hits", "cost_usd",
 )
 ```
 
-`unknown_calls` and `cache_hits` were appended in 0.2, after the 0.1 columns.
+`unknown_calls` and `cache_hits` were appended in 0.2, after the 0.1 columns, and
+`cost_usd` after them with the decider path. `cost_usd` is `MatchResult.usage.cost_usd`,
+which stays `0.0` unless the provider reports a cost — today only the [decision
+path](decide.md) does. The column set is identical on both paths, so a mapping file is
+readable without knowing which one produced it; on the decision path `completion_tokens`
+is always `0` and `llm_calls` counts decision requests.
 
 ### Export functions
 

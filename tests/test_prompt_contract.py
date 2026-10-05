@@ -250,3 +250,15 @@ def test_the_shipped_chemistry_example_validates():
     # Anchored to this file, not to the working directory the suite happens to run in.
     path = Path(__file__).resolve().parent.parent / "examples" / "chemistry" / "slots.yaml"
     validate_contract(PromptSet.from_slots(load_slots(path)))
+
+
+def test_slots_without_properties_still_load():
+    from xwalk.prompts.contract import PromptSlots
+
+    slots = PromptSlots(
+        entity_noun="a",
+        target_noun="b",
+        domain_brief="c",
+        rubric=[{"score": 1.0, "name": "x", "when": "y"}, {"score": 0.5, "name": "z", "when": "w"}],
+    )
+    assert slots.properties == []

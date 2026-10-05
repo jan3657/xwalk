@@ -14,6 +14,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 | 07 Documentation and release | Done (awaiting review; not tagged or published) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv. Version 0.2.0rc1. `python -m build`: sdist + wheel, `twine check` PASSED; wheel has the 4 prompt skeletons, the 5 quickstart files, `py.typed`, `ops.py`, `mcp_server.py`, LICENSE, no tests. Fresh venv in the session scratchpad (outside the repo), `pip install <wheel>`: `pip check` clean, `xwalk --version` 0.2.0rc1, no heavy module importable (torch/numpy/rdflib/sqlalchemy/faiss/litellm/mcp), `xwalk mcp` exits 2 naming the extra. README quickstart run command for command from that install in an empty directory: `xwalk init demo`, `xwalk validate --job demo/job.yaml --no-credentials`, `python quickstart.py` (prints `complete {'matched': 3, 'unmatched': 1, 'total': 4} model calls: 7`), `xwalk inspect --run demo/run`, `xwalk explain --run demo/run s4`, `xwalk export --run demo/run --view reviewed --out demo/reviewed.csv`: all exit 0; also via `scripts/check_readme_quickstart.py --bin <venv>/bin`. `python -m pytest -q`: 1179 passed, 16 skipped; ruff check/format clean (src tests benchmarks examples scripts, 152 files); mypy clean (80 files). No paid calls; real-provider route documented, not executed |
 | 08 Independent review | Done: matching ready as 0.2.0rc1, clustering experimental, MCP optional (not tagged or published) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` (reviewed `c97b748`) | `REVIEW.md`. On `c97b748`: pytest 1179 passed / 16 skipped; ruff, format and mypy clean; build + `twine check` PASSED; fresh-venv wheel install clean (`pip check`, no heavy imports); README quickstart OK via the script and by hand; py3.12 with dev, mcp, ontology and sql extras: 1201 passed (1 environmental failure: no pip in uv venv); py3.10 with lowest runtime deps: 1171 passed. Probes in the scratchpad: 3,000 random trace on/off and usage scenarios (0 violations), lifecycle/limit/reviews, fatal/bug/cancel with concurrent work (no write after close), 0.1.1 fixture regenerated from f737099 (identical), generation params on the wire, call budget exact under concurrency, 429s and rewrites, dense index reuse with 0 encodes and mismatch refusal, CLI JSON matrix (23), raw MCP JSON-RPC from the wheel, clustering shuffles, chains, noisy judges, budget and cancel resume (partition invariant held). Fixed: duplicate YAML keys in job files (compat), YAML errors no longer quote file content, `inspect` exits 3 for failed rows without an invocation record, stale benchmarks note. Tests +6 (all failed before the fix); after: pytest 1188 passed / 16 skipped (incl. doc checks over REVIEW.md), gates clean. No paid calls |
 | 08a Review follow-up | Done (not tagged or published) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` (`a64d20e`, `53aea88`, `19cb3d1`, `c087538`) | Fixed REVIEW.md items: cluster resume retries failed sources (resume round from the exported state, history kept, interrupted round reproduces an uninterrupted one); cluster `--max-calls` below `2 + pool.max_expansion_pages` refused (exit 2); retriever names validated as safe identifiers; duplicate keys in slots files refused (shared `xwalk/_yaml.py` loader); `call_limit_reached` reported once; dev extra `pytest>=8.2`, `pytest-asyncio>=0.24` (lowest pair and 0.24 with pytest 8.3.5 each ran the suite in scratch venvs: 1205 passed / 24 skipped; old lowest pair INTERNALERROR). New tests +26: 21 failed before their fix, 5 guard that ordinary retriever names still load. Python 3.11 `.venv`: pytest 1214 passed / 16 skipped; ruff check/format clean (153 files); mypy clean (81 files); README quickstart check OK. Lax type coercion left open. No paid calls |
+| 09 Decider-path merge | Done (awaiting review; not tagged or published) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` (merge of `5e567d8` = `origin/jev-recall-cost~1`) | Python 3.11 `.venv`. 17 conflicts resolved, 0.2 contracts kept. New `tests/test_decide_ops.py` (16: ops envelope, cache replay as `cache_hits` in the v2 `llm_cache` table, fatal abort without commit + resume, `--max-calls` abort + resume, fingerprint mismatch refusal, strict decider validation with did-you-mean, credential presence, per-HTTP-retry call counting, shared budget). Adapted branch tests (0.2 behaviour): 2 matcher + 2 screen tests (fatal -> result not raise; failed request counted as unknown-usage call), bm25 pinned default fingerprint (0.2 components), fit note now a stderr warning, a queries test moved to a decider job, the missing-`llm` message. `python -m pytest -q`: 1443 passed, 28 skipped (rdflib, sqlalchemy, sentence-transformers not installed; live Jev/OpenAI tests skipped without `XWALK_TEST_API_KEY`; Ref_zivila data absent); ruff check/format clean (src tests benchmarks examples scripts); mypy clean (101 files); README quickstart check OK against a wheel built from the merge. FakeDecider/MockTransport only, no paid calls |
 Balances come from the actual promotional credit display, not a model estimate. Protect $55 for consolidation.
 
 ## Decisions recorded in task 00
@@ -266,3 +267,36 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - Still open from REVIEW.md: MCP path sandbox (`--root`), pydantic lax coercion, and the
   task 07 carry-overs (README install line, PyPI relative links, `inspect` model name,
   CONTRIBUTING lint paths).
+
+## Task 09 notes (decider-path merge)
+
+- Merged `5e567d8` (the `jev-recall-cost` branch without its final WIP commit). Decider
+  jobs run through `ops.run` (`decider=`/`decider_factory=` inject a client; the CLI keeps
+  `_build_decider`/`_build_rewrite_llm` for tests), so `--json`, run states, exit codes,
+  run-directory binding (decider fingerprint components in the manifest, secret-free) and
+  index identity apply. `xwalk fit` returns an `OpResult`; `ablate`/`prompts` refuse a
+  decider job with `wrong_job_path` (exit 2). MCP `--offline-model` uses a FakeDecider for
+  decider jobs.
+- Contract 3 on the decider path: `DecisionMatcher.match` no longer raises; a fatal decider
+  or rewrite-LLM error is `fatal_provider_failure` (run aborts, record not committed). A
+  malformed Jev response is the new `DecisionResponseError` (subclass of
+  `DecisionFatalError`, so branch tests still match) and is a per-record
+  `provider_failure`, like malformed LLM output.
+- Contract 5: `JevClient.attach_call_budget` reserves per HTTP request; `BudgetedDecider`
+  (`xwalk/decide/budget.py`) mirrors `BudgetedLLM`; `CallBudget.share()` lets the decider
+  and the rewrite LLM draw on one `--max-calls` without double counting. Failed requests
+  are `unknown_calls`; cache replays are `cache_hits`. `Usage.cost_usd` added (serde
+  reads old blobs as 0.0); `mapping.csv` gains a trailing `cost_usd` column.
+- Ledger: no schema change. Decisions are cached in the existing `llm_cache` table, so
+  v0.1.1 and v2 ledgers open as before.
+- Identity: `TemplateSet.fingerprint` includes `queries` only when set and
+  `PromptSet.fingerprint` excludes slot `properties`, so 0.2.0rc1 LLM runs keep their
+  fingerprints. BM25 `analyzer`/`fuzzy_distance` enter the index components only when not
+  the defaults. The benchmark-pinned `slots.yaml` of cafeteria_fcd and ncbi_disease are
+  unchanged; their decider `properties:` moved to `slots_jev.yaml`.
+- Strictness added: decider blocks forbid unknown keys and range-check thresholds at load
+  (`rubric_floor` is a level, so only `>= 0`); `selector:` refused on a decider job;
+  `templates.queries` with more than one entry refused on an `llm:` job.
+- Open: the accuracy/cost numbers in `docs/reference/decide.md` were measured on the branch
+  before the merge and not re-run; the live Jev tests were skipped (no key). The
+  job-file reference's stale "Gotchas" about unvalidated fields were corrected in passing.

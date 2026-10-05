@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
@@ -61,13 +61,15 @@ class Candidate:
 
 @dataclass(frozen=True)
 class Usage:
-    """Call and token accounting. Additive so attempts can be summed into a result.
+    """Call, token and cost accounting. Additive so attempts can be summed into a result.
 
     `calls` counts every upstream request that was dispatched, including client-side
     retries and calls that failed after dispatch. The token fields sum only what the
     provider reported. A call whose tokens were not reported (an error, an interrupted
     call, a provider that omitted usage) is counted in `unknown_calls` -- its tokens
     are unknown, not zero. Cache hits are not upstream calls and are counted apart.
+    `cost_usd` sums provider-reported cost (the Jev decider reports it per call); it is
+    0.0 for providers that report none.
     """
 
     prompt_tokens: int = 0
@@ -75,6 +77,7 @@ class Usage:
     calls: int = 0
     unknown_calls: int = 0
     cache_hits: int = 0
+    cost_usd: float = 0.0
 
     @classmethod
     def zero(cls) -> Usage:
@@ -105,6 +108,7 @@ class Usage:
             calls=self.calls + other.calls,
             unknown_calls=self.unknown_calls + other.unknown_calls,
             cache_hits=self.cache_hits + other.cache_hits,
+            cost_usd=self.cost_usd + other.cost_usd,
         )
 
     def __radd__(self, other: Any) -> Usage:
@@ -179,6 +183,8 @@ class Attempt:
     # UNRESOLVED_OUTPUT and is otherwise indistinguishable from a model that simply
     # answered badly.
     finish_reason: str | None
+    # Calibrated signals from a decision model. Empty on the LLM path.
+    signals: Mapping[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -197,3 +203,5 @@ class MatchResult:
     usage: Usage
     elapsed_seconds: float
     run_fingerprint: str
+    # Calibrated signals from a decision model. Empty on the LLM path.
+    signals: Mapping[str, float] = field(default_factory=dict)

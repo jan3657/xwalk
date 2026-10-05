@@ -69,3 +69,15 @@ def test_usage_adds_unknown_calls_and_cache_hits():
 def test_unknown_usage_is_never_displayed_as_a_bare_zero():
     assert Usage(prompt_tokens=3, completion_tokens=1, calls=1).describe_tokens() == "4"
     assert Usage.unreported(2).describe_tokens() == "0 (+2 calls with unknown usage)"
+
+
+def test_usage_adds_cost():
+    total = Usage(prompt_tokens=1, completion_tokens=0, calls=1, cost_usd=0.001) + Usage(
+        prompt_tokens=2, completion_tokens=0, calls=1, cost_usd=0.002
+    )
+    assert total.cost_usd == 0.003
+    assert total.calls == 2
+
+
+def test_usage_cost_defaults_to_zero():
+    assert Usage().cost_usd == 0.0

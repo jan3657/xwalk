@@ -40,7 +40,11 @@ from xwalk.ops import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from xwalk.config import JobSpec
+    from xwalk.decide.base import DecisionClient
+    from xwalk.decide.fit import FitPoint
     from xwalk.evaluate.ablate import MatcherConfig
+    from xwalk.llm.base import LLMClient
     from xwalk.matcher import Matcher
     from xwalk.prompts.contract import PromptSet
 
@@ -167,6 +171,31 @@ def _build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--gold", required=True)
     ev.add_argument("--out", default=None, help="write <out>.json and <out>.txt")
 
+    fit = sub.add_parser(
+        "fit",
+        parents=[common],
+        help="fit decider thresholds on a completed run and gold labels",
+    )
+    fit.add_argument("--run", required=True)
+    fit.add_argument("--gold", required=True)
+    fit.add_argument("--precision", type=float, default=0.95)
+    fit.add_argument(
+        "--job",
+        default=None,
+        help="the job the run used, so the gates that are not swept match the run",
+    )
+    fit.add_argument(
+        "--holdout",
+        action="store_true",
+        help="fit on half the labelled rows and report the recommendation on the other half",
+    )
+    fit.add_argument(
+        "--write-job",
+        default=None,
+        metavar="OUT.yaml",
+        help="write a copy of --job with the recommended thresholds in its policy: block",
+    )
+
     comp = sub.add_parser("compare", parents=[common], help="compare completed runs")
     comp.add_argument("--gold", required=True)
     comp.add_argument("--run", action="append", required=True, help="LABEL=PATH, repeatable")
@@ -228,6 +257,16 @@ def _cmd_init(args: argparse.Namespace) -> OpResult:
     return ops.init(args.dest)
 
 
+def _build_decider(job: JobSpec) -> DecisionClient:
+    """Module-level so a test can swap in a FakeDecider without an API key."""
+    return job.build_decider()
+
+
+def _build_rewrite_llm(job: JobSpec) -> LLMClient:
+    """Module-level so a test can swap in a FakeLLM without an API key."""
+    return job.build_rewrite_llm()
+
+
 def _cmd_validate(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
@@ -258,6 +297,9 @@ def _cmd_match(args: argparse.Namespace) -> OpResult:
         max_calls=args.max_calls,
         rebuild_index=args.rebuild_index,
         progress=_progress,
+        # Looked up at call time, so a test can swap in fakes without an API key.
+        decider_factory=lambda job: _build_decider(job),
+        rewrite_llm_factory=lambda job: _build_rewrite_llm(job),
     )
 
 
@@ -321,6 +363,132 @@ def _cmd_eval(args: argparse.Namespace) -> OpResult:
     return result
 
 
+def _write_fitted_job(job_path: str, out_path: str, point: FitPoint) -> None:
+    """Copy the job file with the fitted thresholds set; every other key is left as it was."""
+    import yaml
+
+    data = yaml.safe_load(Path(job_path).read_text(encoding="utf-8"))
+    policy = data.get("policy") or {}
+    policy["accept_at"] = point.accept_at
+    policy["property_floor"] = point.property_floor
+    policy["choose_at"] = point.choose_at
+    data["policy"] = policy
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
+def _cmd_fit(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+    from xwalk.decide import fit as fit_module
+    from xwalk.decide.policy import DecisionPolicy
+    from xwalk.evaluate.gold import load_gold_csv
+    from xwalk.ledger import Ledger
+
+    operation = "fit"
+    if args.write_job is not None and args.job is None:
+        raise OpError(
+            operation,
+            "usage",
+            "--write-job needs --job, the job file to copy",
+            exit_code=EXIT_USAGE,
+        )
+
+    result = OpResult(operation=operation)
+    # Only accept_at, property_floor and choose_at are swept. Every other gate --
+    # screen_floor, none_at, rubric_floor, shortlist_floor -- has to be the one the run
+    # actually used, or the fitted thresholds are tuned against a policy nobody ran.
+    if args.job is not None:
+        job = ops.load_valid_job(args.job, operation=operation)
+        if job.decider is None:
+            raise OpError(
+                operation,
+                "wrong_job_path",
+                f"{args.job} has no decider: block; fit works on the decider path",
+                exit_code=EXIT_USAGE,
+            )
+        base = job.build_decision_policy()
+    else:
+        base = DecisionPolicy()
+        result.warnings.append(
+            OpMessage(
+                "default_policy", "--job not given; fitting against default policy thresholds"
+            )
+        )
+
+    run_dir = Path(args.run)
+    if not (run_dir / "manifest.json").is_file() or not (run_dir / "ledger.sqlite").is_file():
+        raise OpError(
+            operation,
+            "run_not_found",
+            f"{run_dir} is not an xwalk run directory (no manifest.json and ledger.sqlite)",
+            exit_code=EXIT_USAGE,
+        )
+    gold = load_gold_csv(args.gold)
+    ledger = Ledger.open(run_dir / "ledger.sqlite")
+    fingerprint = _run_fingerprint_of(run_dir)
+    try:
+        results = list(ledger.iter_results(fingerprint))
+    finally:
+        ledger.close()
+    report = fit_module.fit_thresholds(results, gold, base=base, target_precision=args.precision)
+    result.lines.append(fit_module.render_fit(report))
+    recommended = report.recommended
+    result.data = {
+        "recommended": None
+        if recommended is None
+        else {
+            "accept_at": recommended.accept_at,
+            "property_floor": recommended.property_floor,
+            "choose_at": recommended.choose_at,
+            "precision": recommended.precision,
+            "coverage": recommended.coverage,
+        },
+        "target_precision": args.precision,
+    }
+    if args.holdout:
+        _, point = fit_module.fit_holdout(
+            results,
+            gold,
+            base=base,
+            seed_fingerprint=fingerprint,
+            target_precision=args.precision,
+        )
+        result.lines.append(fit_module.render_holdout(point, recommended))
+    if args.write_job is not None:
+        if recommended is None:
+            result.errors.append(
+                OpMessage(
+                    "no_recommendation",
+                    f"no recommendation, so nothing to write to {args.write_job}",
+                )
+            )
+            result.exit_code = EXIT_ATTENTION
+            return result
+        _write_fitted_job(args.job, args.write_job, recommended)
+        result.lines.append(f"wrote {args.write_job}")
+        result.artifacts["job"] = str(args.write_job)
+        if Path(args.write_job).resolve().parent != Path(args.job).resolve().parent:
+            result.warnings.append(
+                OpMessage(
+                    "relative_paths",
+                    "the copy is in another directory; relative paths in it now resolve from there",
+                )
+            )
+    result.exit_code = EXIT_OK if recommended is not None else EXIT_ATTENTION
+    return result
+
+
+def _refuse_decider_job(job: JobSpec, operation: str) -> None:
+    if job.decider is not None:
+        raise OpError(
+            operation,
+            "wrong_job_path",
+            "this command works on the LLM path; the job has a decider: block",
+            exit_code=EXIT_USAGE,
+        )
+
+
 def _cmd_compare(args: argparse.Namespace) -> OpResult:
     from xwalk.evaluate.compare import RunSummary, compare_runs, summarise_run
     from xwalk.evaluate.gold import load_gold_csv
@@ -353,6 +521,7 @@ def _cmd_ablate(args: argparse.Namespace) -> OpResult:
     from xwalk.stores.memory import MemoryStore
 
     job = ops.load_valid_job(args.job, operation="ablate")
+    _refuse_decider_job(job, "ablate")
     gold = load_gold_csv(args.gold)
     templates = job.build_templates()
     targets = list(job.build_target_records())
@@ -409,6 +578,8 @@ def _cmd_prompts(args: argparse.Namespace) -> OpResult:
         )
 
     job = ops.load_valid_job(args.job, operation=f"prompts {command}")
+
+    _refuse_decider_job(job, f"prompts {command}")
 
     if command == "draft":
         from xwalk.prompts.author import draft_slots, slots_diff, write_slots
@@ -512,6 +683,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
     "explain": _cmd_explain,
     "export": _cmd_export,
     "eval": _cmd_eval,
+    "fit": _cmd_fit,
     "compare": _cmd_compare,
     "ablate": _cmd_ablate,
     "prompts": _cmd_prompts,

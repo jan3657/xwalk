@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 from xwalk import __version__
 from xwalk.batch import (
     PENDING,
+    MatcherLike,
     RunState,
     export_history_jsonl,
     export_mapping_csv,
@@ -44,14 +45,18 @@ from xwalk.config import (
     CredentialMissingError,
     JobSpec,
     JobValidationError,
+    LLMSpec,
     RetrieverSpec,
     load_job,
 )
+from xwalk.decide.base import DecisionClient
+from xwalk.decide.budget import BudgetedDecider
+from xwalk.decide.cache import CachingDecider
 from xwalk.fingerprint import hash_value
 from xwalk.ledger import Ledger
 from xwalk.llm.base import LLMClient
 from xwalk.llm.budget import CALL_LIMIT_CODE, BudgetedLLM, CallBudget
-from xwalk.records import MatchResult, MatchStatus, Record, RetrievalHit
+from xwalk.records import MatchResult, MatchStatus, Record, RetrievalHit, Usage
 from xwalk.retrieval import bm25 as bm25_index
 from xwalk.retrieval import dense as dense_index
 from xwalk.retrieval.base import Retriever, SearchRequest, component_differences
@@ -251,8 +256,9 @@ def _extra_errors(job: JobSpec, *, custom_encoder: bool = False) -> list[OpMessa
     for index, retriever in enumerate(job.retrievers):
         if retriever.required_extra and not custom_encoder:
             needs.append((f"retrievers.{index}", *retriever.required_extra))
-    if job.llm.kind == "litellm":
-        needs.append(("llm", "litellm", "litellm"))
+    for where, llm_spec in _llm_specs(job):
+        if llm_spec.kind == "litellm":
+            needs.append((where, "litellm", "litellm"))
     errors: list[OpMessage] = []
     for where, extra, module in needs:
         if importlib.util.find_spec(module) is None:
@@ -278,19 +284,49 @@ def _file_errors(job: JobSpec) -> list[OpMessage]:
     return errors
 
 
+def _llm_specs(job: JobSpec) -> list[tuple[str, LLMSpec]]:
+    """Every LLM block of a job with its path: `llm`, or a decider's `rewrite.llm`.
+    Also used for clustering jobs, which have an `llm` and no `decider`."""
+    specs: list[tuple[str, LLMSpec]] = []
+    llm = getattr(job, "llm", None)
+    decider = getattr(job, "decider", None)
+    if llm is not None:
+        specs.append(("llm", llm))
+    if decider is not None and decider.rewrite is not None:
+        specs.append(("decider.rewrite.llm", decider.rewrite.llm))
+    return specs
+
+
+def job_model(job: JobSpec) -> str:
+    """The model that decides: the LLM's, or the decision model's on the decider path."""
+    if job.decider is not None:
+        return job.decider.model
+    assert job.llm is not None  # JobSpec requires exactly one of llm / decider
+    return job.llm.model
+
+
 def _credential_check(job: JobSpec) -> tuple[dict[str, str], list[OpMessage]]:
     """Presence only. The value is never read into the result."""
-    variable = job.llm.api_key_env
-    if not variable:
-        return {}, []
-    if os.environ.get(variable):
-        return {variable: "set"}, []
-    return {variable: "missing"}, [
-        OpMessage(
-            "credential_missing",
-            f"environment variable {variable} (llm.api_key_env) is not set",
+    variables = [(where, spec.api_key_env) for where, spec in _llm_specs(job)]
+    decider = getattr(job, "decider", None)
+    if decider is not None:
+        variables.insert(0, ("decider", decider.api_key_env))
+    states: dict[str, str] = {}
+    errors: list[OpMessage] = []
+    for where, variable in variables:
+        if not variable:
+            continue
+        if os.environ.get(variable):
+            states[variable] = "set"
+            continue
+        states[variable] = "missing"
+        errors.append(
+            OpMessage(
+                "credential_missing",
+                f"environment variable {variable} ({where}.api_key_env) is not set",
+            )
         )
-    ]
+    return states, errors
 
 
 def _scan(
@@ -360,7 +396,13 @@ def validate(
         errors.append(OpMessage("template_invalid", f"templates: {exc}"))
     if (spec.base_dir / spec.prompts.slots).is_file():
         try:
-            validate_contract(PromptSet.from_slots(load_slots(spec.base_dir / spec.prompts.slots)))
+            if spec.decider is None or spec.decider.rewrite is not None:
+                # The LLM path's prompts; on the decider path only the rewrite uses them.
+                validate_contract(
+                    PromptSet.from_slots(load_slots(spec.base_dir / spec.prompts.slots))
+                )
+            if spec.decider is not None:
+                spec.build_questions()
         except Exception as exc:
             errors.append(OpMessage("prompts_invalid", f"prompts.slots: {exc}"))
 
@@ -387,7 +429,8 @@ def validate(
     result.exit_code = EXIT_USAGE if errors else EXIT_OK
     result.data = {
         "job": spec.name,
-        "model": spec.llm.model,
+        "model": job_model(spec),
+        "path": "decider" if spec.decider is not None else "llm",
         "credentials": credentials,
         "retrievers": [r.index_name for r in spec.retrievers],
         "paid_calls": 0,
@@ -462,7 +505,11 @@ def plan_indexes(
         directory = Path(index_dir) / spec.index_name
         if spec.kind == "bm25":
             expected = bm25_index.index_components(
-                targets, templates, exact_fields=spec.effective_exact_fields
+                targets,
+                templates,
+                exact_fields=spec.effective_exact_fields,
+                analyzer=spec.analyzer,
+                fuzzy_distance=spec.fuzzy_distance,
             )
             plans.append(PlannedIndex(spec, directory, spec.name or "bm25", expected))
         else:
@@ -561,6 +608,8 @@ def prepare_indexes(
                     name=plan.name,
                     exact_fields=spec.effective_exact_fields,
                     default_limit=spec.limit,
+                    analyzer=spec.analyzer,
+                    fuzzy_distance=spec.fuzzy_distance,
                 )
             )
         else:
@@ -878,6 +927,9 @@ async def run_async(
     llm: LLMClient | None = None,
     encoder_factory: EncoderFactory | None = None,
     progress: Callable[[MatchResult], None] | None = None,
+    decider: DecisionClient | None = None,
+    decider_factory: Callable[[JobSpec], DecisionClient] | None = None,
+    rewrite_llm_factory: Callable[[JobSpec], LLMClient] | None = None,
 ) -> OpResult:
     """Match a job into `out`. See `run`."""
     operation = "match"
@@ -892,26 +944,69 @@ async def run_async(
 
     templates = spec.build_templates()
     targets, store = _read_targets(spec, operation)
-    if llm is None:
-        try:
-            llm = spec.build_llm()
-        except CredentialMissingError as exc:
-            raise OpError(operation, "credential_missing", str(exc), exit_code=EXIT_USAGE) from None
-    budgeted = BudgetedLLM(llm, CallBudget(max_calls))
+    budget = CallBudget(max_calls)
+    # Every metered client of this invocation; their usage is the run's accounting.
+    meters: list[BudgetedLLM | BudgetedDecider] = []
+    budgeted_decider: BudgetedDecider | None = None
+    rewrite_llm: BudgetedLLM | None = None
+    try:
+        if spec.decider is None:
+            budgeted = BudgetedLLM(llm or spec.build_llm(), budget)
+            meters.append(budgeted)
+        else:
+            client = decider or (decider_factory or JobSpec.build_decider)(spec)
+            # The decider and the rewrite LLM draw on one --max-calls allowance.
+            budgeted_decider = BudgetedDecider(client, budget.share())
+            meters.append(budgeted_decider)
+            if spec.decider.rewrite is not None:
+                inner = llm or (rewrite_llm_factory or JobSpec.build_rewrite_llm)(spec)
+                rewrite_llm = BudgetedLLM(inner, budget.share())
+                meters.append(rewrite_llm)
+    except CredentialMissingError as exc:
+        raise OpError(operation, "credential_missing", str(exc), exit_code=EXIT_USAGE) from None
 
     # The run's identity is known before any index or run directory is touched, so a
     # refusal leaves both exactly as they were.
     plans = plan_indexes(spec, targets, templates, index_root, encoder_factory=encoder_factory)
-    components = spec.run_fingerprint_components(store=store, retrievers=plans, llm=budgeted)
+    if budgeted_decider is None:
+        components = spec.run_fingerprint_components(store=store, retrievers=plans, llm=budgeted)
+    else:
+        components = spec.decision_run_fingerprint_components(
+            store=store, retrievers=plans, decider=budgeted_decider
+        )
     run_fp = hash_value(components)
     _check_out_dir(out_dir, run_fp, components, operation=operation)
     retrievers, actions = prepare_indexes(
         plans, targets, templates, rebuild=rebuild_index, operation=operation
     )
-    matcher = spec.build_matcher(store=store, retrievers=retrievers, llm=budgeted)
+
+    cache_ledger: Ledger | None = None
+    caching: CachingDecider | None = None
+    matcher: MatcherLike
+    if budgeted_decider is None:
+        matcher = spec.build_matcher(store=store, retrievers=retrievers, llm=budgeted)
+    else:
+        # Decisions are cached in the run's own ledger (its llm_cache table, no schema
+        # change): Jev's probabilities move between identical calls, and a resumed or
+        # --no-resume run must see the answers the first run saw. run_batch opens the
+        # same file again; each write is one short transaction, so the connections
+        # never hold a write open across each other's. This one is closed only after
+        # run_batch has cancelled and awaited every record task.
+        out_dir.mkdir(parents=True, exist_ok=True)
+        cache_ledger = Ledger.open(out_dir / "ledger.sqlite")
+        caching = CachingDecider(budgeted_decider, cache_ledger)
+        matcher = spec.build_decision_matcher(
+            store=store, retrievers=retrievers, decider=caching, rewrite_llm=rewrite_llm
+        )
     if matcher.run_fingerprint != run_fp:  # pragma: no cover - invariant
+        if cache_ledger is not None:
+            cache_ledger.close()
         raise RuntimeError("the built matcher does not have the planned run fingerprint")
 
+    path = "llm" if budgeted_decider is None else "decider"
+    # The model that decides, as the client reports it (a decider job may run on an
+    # injected client).
+    model = job_model(spec) if budgeted_decider is None else budgeted_decider.model
     try:
         report = await run_batch(
             matcher,
@@ -919,7 +1014,12 @@ async def run_async(
             out=out_dir,
             resume=resume,
             limit=limit,
-            manifest_extra={"job": spec.name, "model": spec.llm.model, "max_calls": max_calls},
+            manifest_extra={
+                "job": spec.name,
+                "model": model,
+                "path": path,
+                "max_calls": max_calls,
+            },
             fingerprint_components=components,
             progress=progress,
         )
@@ -931,6 +1031,11 @@ async def run_async(
             exit_code=EXIT_RUNTIME,
             run={"dir": str(out_dir), "run_fingerprint": run_fp, "run_state": "aborted"},
         ) from exc
+    finally:
+        if cache_ledger is not None:
+            cache_ledger.close()
+        if budgeted_decider is not None:
+            await budgeted_decider.aclose()
 
     view = _RunView(out_dir, run_fp, _read_manifest(out_dir) or {})
     ledger = Ledger.open(out_dir / "ledger.sqlite")
@@ -938,13 +1043,17 @@ async def run_async(
         result = _summarise_run(view, ledger, operation)
     finally:
         ledger.close()
-    # The budgeted client's accounting includes calls cancelled in flight (as calls
-    # with unknown usage), which the batch report cannot see.
-    result.usage = usage_to_dict(budgeted.usage)
+    # The budgeted clients' accounting includes calls cancelled in flight (as calls
+    # with unknown usage), which the batch report cannot see. Decisions replayed from
+    # the cache are not calls; they are counted as cache hits.
+    usage = sum((meter.usage for meter in meters), Usage.zero())
+    if caching is not None:
+        usage = usage + Usage(cache_hits=caching.hits)
+    result.usage = usage_to_dict(usage)
     result.usage["limit"] = max_calls
     result.errors = []
     for e in report.errors:
-        if budgeted.budget.exhausted and "call limit of" in e.message:
+        if budget.exhausted and "call limit of" in e.message:
             # One run-level stop, however many in-flight records the spent budget
             # refused (each is left unsettled and retried on resume).
             if all(m.code != CALL_LIMIT_CODE for m in result.errors):
@@ -953,7 +1062,7 @@ async def run_async(
         else:
             result.errors.append(OpMessage(e.code, e.message, e.source_id))
     result.artifacts["index"] = str(index_root)
-    result.data = {"indexes": actions, "job": spec.name, "model": spec.llm.model}
+    result.data = {"indexes": actions, "job": spec.name, "model": model, "path": path}
     result.lines += _run_lines(result, report.total)
     return result
 
@@ -970,15 +1079,21 @@ def run(
     llm: LLMClient | None = None,
     encoder_factory: EncoderFactory | None = None,
     progress: Callable[[MatchResult], None] | None = None,
+    decider: DecisionClient | None = None,
+    decider_factory: Callable[[JobSpec], DecisionClient] | None = None,
+    rewrite_llm_factory: Callable[[JobSpec], LLMClient] | None = None,
 ) -> OpResult:
     """Validate, prepare indexes, and match every unfinished source record.
 
     `out` absent or empty starts a run; the same run fingerprint resumes it; another
     fingerprint or a foreign directory is refused (exit 3) and nothing is overwritten.
-    `max_calls` caps upstream LLM requests in this invocation, retries and rewrites
-    included; reaching it aborts the run (resume continues). `llm` replaces the job's
-    client (credentials are then not needed). KeyboardInterrupt propagates after the
-    run directory records `interrupted`.
+    `max_calls` caps upstream requests in this invocation, retries and rewrites
+    included (on the decider path: decision requests plus rewrite LLM requests);
+    reaching it aborts the run (resume continues). `llm` replaces the job's client --
+    on a decider job, the `decider.rewrite` LLM (ignored without one); credentials are
+    then not needed. `decider` (or `decider_factory`, called with the job) replaces a
+    decider job's decision client. KeyboardInterrupt propagates after the run
+    directory records `interrupted`.
     """
     return asyncio.run(
         run_async(
@@ -992,6 +1107,9 @@ def run(
             llm=llm,
             encoder_factory=encoder_factory,
             progress=progress,
+            decider=decider,
+            decider_factory=decider_factory,
+            rewrite_llm_factory=rewrite_llm_factory,
         )
     )
 

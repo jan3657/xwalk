@@ -76,12 +76,17 @@ attempt and per-attempt usages sum into a result.
 | `completion_tokens` | `int` | `0` | completion tokens consumed |
 | `calls` | `int` | `0` | upstream requests dispatched, including client-side retries and calls that failed |
 | `unknown_calls` | `int` | `0` | calls whose token usage was not reported (errors, interrupted calls, providers that omit usage) |
-| `cache_hits` | `int` | `0` | responses served from the LLM cache; not upstream calls |
+| `cache_hits` | `int` | `0` | responses served from the LLM or decision cache; not upstream calls |
+| `cost_usd` | `float` | `0.0` | cost reported by the provider, in US dollars |
 
 Token fields sum only provider-reported tokens, so `total_tokens` is a lower bound
 whenever `unknown_calls > 0`; `describe_tokens()` renders it as
-`"N (+k calls with unknown usage)"`. Ledgers written before 0.2 read back with
-`unknown_calls=0` and `cache_hits=0`. No validation. Methods and properties:
+`"N (+k calls with unknown usage)"`. `cost_usd` is whatever the provider stated; a
+provider that reports no cost (every LLM adapter today) leaves it `0.0`, so it is a
+record of what was billed and never an estimate -- and, like the tokens, it is a lower
+bound when `unknown_calls > 0`. Ledgers written before 0.2 read back with
+`unknown_calls=0`, `cache_hits=0` and `cost_usd=0.0`. No validation. Methods and
+properties:
 
 ```python
 @classmethod
@@ -179,10 +184,18 @@ here. Nothing an attempt learned is discarded when the loop moves on.
 | `usage` | `Usage` | tokens and calls spent in this attempt |
 | `elapsed_seconds` | `float` | wall time for this attempt |
 | `finish_reason` | `str \| None` | `finish_reason` of the **last** provider response in the attempt |
+| `signals` | `Mapping[str, float]` | calibrated numbers from a decision model; `{}` on the LLM path |
 
 `finish_reason` earns its place: `"length"` is the tell for a truncated answer — the
 provider stopped mid-JSON, which surfaces as `UNRESOLVED_OUTPUT` and is otherwise
 indistinguishable from a model that simply answered badly.
+
+`signals` defaults to `{}` and is filled only by the [decider path](decide.md), with
+`Signals.flat()`: `screen_best`, `screen_chosen`, `p_choice`, `p_none`,
+`choice_confidence`, `rubric`, `rubric_levels`, `rubric_confidence`, one `prop_<name>` per
+declared property, and one `screen_<key>` per shortlisted candidate. Everything the policy
+thresholds is in there, which is what makes `xwalk fit` free: a finished run can be
+re-classified from the ledger without calling anything.
 
 ## MatchResult
 
@@ -206,6 +219,7 @@ are the evidence, and nothing summarised is unrecoverable from them.
 | `usage` | `Usage` | sum of all attempts' usage |
 | `elapsed_seconds` | `float` | wall time for the whole match |
 | `run_fingerprint` | `str` | the run configuration this result belongs to |
+| `signals` | `Mapping[str, float]` | the winning attempt's `signals`; `{}` on the LLM path |
 
 ## MatchPolicy
 

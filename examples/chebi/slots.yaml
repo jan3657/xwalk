@@ -34,3 +34,19 @@ disambiguation_steps: >-
   Read the surrounding context before choosing. "Sugar" in a clinical blood-glucose
   sentence is glucose; in a cooking sentence it is sucrose. When the mention carries a
   stereochemical or ionic qualifier, that qualifier is decisive and must be honoured.
+# Used only by the decider path (see docs/reference/decide.md); the LLM skeletons
+# ignore this block. Each property restates a hard rule as a yes/no question the
+# gate can score independently of the rubric.
+properties:
+  - name: salt_ester_or_hydrate
+    question: >-
+      Do the source and the candidate agree on whether the entity is the parent compound
+      or a salt, ester, or hydrate of it, wherever either states one?
+  - name: stereochemistry
+    question: >-
+      Do the source and the candidate agree on stereochemistry and anomeric form
+      (alpha/beta, D/L, R/S, cis/trans) wherever either states one?
+  - name: acid_or_conjugate_base
+    question: >-
+      Do the source and the candidate agree on whether the entity is the acid or its
+      conjugate base or ion, wherever either states one?

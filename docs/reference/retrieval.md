@@ -78,6 +78,8 @@ def build(
     name: str = "bm25",
     exact_fields: Sequence[str] = (),
     default_limit: int = 20,
+    analyzer: str = "default",
+    fuzzy_distance: int = 0,
     writer_heap_bytes: int = 50_000_000,
     writer_threads: int = 1,
 ) -> BM25Retriever
@@ -92,6 +94,8 @@ def open(
     name: str | None = None,
     expected: Mapping[str, Any] | None = None,
     default_limit: int | None = None,
+    analyzer: str | None = None,
+    fuzzy_distance: int | None = None,
 ) -> BM25Retriever
 ```
 
@@ -106,23 +110,28 @@ duplicated every document on a rebuild).
 `open` reopens a built index without re-reading the records; `name` and `default_limit`
 override the recorded ones. Opening a directory without `xwalk_meta.json` raises
 `FileNotFoundError` telling you to build first. With `expected` — the dict
-`index_components(records, templates, exact_fields=...)` returns, computed without
-building anything — an index whose stored components differ, or that predates stored
-components (built before 0.2), raises `IndexMismatchError` (a `ValueError` whose
-`differences` maps each component to `(stored, expected)`) and is left untouched.
-`xwalk match` and `xwalk index` always pass `expected` (see the [job
-file](job-file.md) for the command-level behaviour).
+`index_components(records, templates, exact_fields=..., analyzer=..., fuzzy_distance=...)`
+returns, computed without building anything — an index whose stored components differ,
+or that predates stored components (built before 0.2), raises `IndexMismatchError` (a
+`ValueError` whose `differences` maps each component to `(stored, expected)`) and is left
+untouched. `xwalk match` and `xwalk index` always pass `expected` (see the [job
+file](job-file.md) for the command-level behaviour). `analyzer` and `fuzzy_distance`,
+when passed, must match what the index was built with, or `open` raises `ValueError`
+naming both values; left as `None`, the recorded ones are used. An index whose metadata
+predates these options is treated as `default` / `0`.
 
 ### What is written to disk
 
 `index_dir` holds Tantivy's own index — its `meta.json` plus segment files, all managed
 by Tantivy — and one file xwalk adds: `xwalk_meta.json`, recording `engine`
 (`"tantivy-bm25"`), `name`, `fingerprint`, `components`, `exact_fields`,
-`default_limit`, `doc_count`, and `empty_doc_count`. `components` is the index identity:
-engine, index format version, normalisation version, the `doc` template,
-`exact_fields`, the record count and a digest of the sorted per-record hashes. The
+`default_limit`, `doc_count`, `empty_doc_count`, `analyzer`, and `fuzzy_distance`.
+`components` is the index identity: engine, index format version, normalisation version,
+the `doc` template, `exact_fields`, the record count, a digest of the sorted per-record
+hashes, and `analyzer` and `fuzzy_distance` when they differ from their defaults. The
 fingerprint is the hash of `components`, so any change to content or configuration
-changes the run fingerprint.
+changes the run fingerprint, while a default index keeps the identity it had before
+those options existed.
 
 ### `exact_fields`
 
@@ -135,6 +144,19 @@ the whole field value is one term, so `"glucose"` matches the label `glucose` bu
 `text` query under a boost of **10.0**, comfortably above any BM25 score the tokenised
 `text` field produces on a collection of this shape. Omit `exact_fields` for plain
 BM25.
+
+### `analyzer` and `fuzzy_distance`
+
+Both are off by default. `analyzer` picks the tokenizer for the `text` field (the `exact`
+field is always `raw`): `default` is Tantivy's own (split, drop tokens over 40 characters, lowercase); `en_stem` is a
+simple tokenizer followed by lowercase, ASCII folding and the English stemmer, so
+`anesthetics` finds `anesthetic`. `fuzzy_distance` is 0 to 2 (Tantivy's Levenshtein limit;
+`build` refuses anything else). Above 0 it adds, for each distinct
+whitespace-separated query term of five or more characters, a Levenshtein fuzzy term
+query on `text` (transpositions cost 1) boosted by **0.5**, OR-ed with the text query,
+so `anaesthetic` also finds `anesthetic`. Fuzzy terms bypass the query parser, so each is
+lowercased and, under `en_stem`, run through the same analyzer, landing in the index's
+term space (`anesthet`, not `anesthetics`).
 
 ### `sanitise_query`
 

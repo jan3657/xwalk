@@ -72,6 +72,36 @@ class CallBudget:
             )
         self.dispatched += 1
 
+    def share(self) -> CallBudget:
+        """A view that draws on this budget but counts its own dispatches.
+
+        Two clients of one run (the decider and its rewrite LLM) share one limit this
+        way while each wrapper's `usage` still counts only its own requests.
+        """
+        return _SharedBudget(self)
+
+
+class _SharedBudget(CallBudget):
+    def __init__(self, parent: CallBudget) -> None:
+        super().__init__(parent.limit)
+        self._parent = parent
+
+    @property
+    def remaining(self) -> int | None:
+        return self._parent.remaining
+
+    @property
+    def exhausted(self) -> bool:
+        return self._parent.exhausted
+
+    def acquire(self) -> None:
+        try:
+            self._parent.acquire()
+        except CallLimitExceeded:
+            self.refused += 1
+            raise
+        self.dispatched += 1
+
 
 class BudgetedLLM:
     """An `LLMClient` that enforces a `CallBudget` and keeps complete usage accounting.

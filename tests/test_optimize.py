@@ -10,7 +10,7 @@ from xwalk.evaluate.partition import Partition, Partitioner
 from xwalk.llm.fake import FakeLLM
 from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
-from xwalk.prompts.contract import PromptSet, PromptSlots
+from xwalk.prompts.contract import PromptSet, PromptSlots, PropertyQuestion
 from xwalk.prompts.optimize import OptimizeConfig, estimate_calls, optimize_prompt
 from xwalk.records import Record
 from xwalk.stages.gate import Scorer, Verifier
@@ -175,6 +175,24 @@ async def test_an_improving_round_is_retained(tmp_path):
     )
     assert report.best_slots.domain_brief == "better"
     assert report.rounds[0].improved is True
+
+
+async def test_properties_survive_an_optimiser_that_omits_them(tmp_path):
+    """The optimiser never sees the decider path, so it drops `properties`. Carry it."""
+    with_properties = SLOTS.model_copy(
+        update={"properties": [PropertyQuestion(name="form", question="Same form?")]}
+    )
+    report = await optimize_prompt(
+        matcher_factory=make_factory({"better": 1.0}),
+        source_records=SOURCES,
+        gold=GOLD,
+        initial=with_properties,
+        optimiser_llm=optimiser_llm("better"),
+        config=OptimizeConfig(role=PromptRole.SELECTOR, rounds=1),
+        work_dir=tmp_path,
+    )
+    assert report.best_slots.domain_brief == "better"
+    assert [p.name for p in report.best_slots.properties] == ["form"]
 
 
 async def test_a_regressing_round_is_discarded(tmp_path):

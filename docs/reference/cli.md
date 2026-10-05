@@ -24,7 +24,7 @@ a library function and never raises `SystemExit` at you.
 | Code | Name | Meaning |
 |---|---|---|
 | `0` | success | the command did what it said; for a run: complete, no review rows, no failed rows |
-| `1` | attention | completed, but something needs a human: a non-empty review bucket, a `partial` run from `--limit`, or rejected review rows |
+| `1` | attention | completed, but something needs a human: a non-empty review bucket, a `partial` run from `--limit`, rejected review rows, or a `fit` sweep in which no grid point met the target precision |
 | `2` | usage / configuration | bad invocation (no command, unknown command or flag, bad flag value, malformed `--run`), an invalid or unreadable job file, a missing credential variable or optional extra, duplicate record ids, an unknown source id or a path that is not a run directory |
 | `3` | runtime | a real failure: an `aborted` run (fatal provider error, `--max-calls` reached, an exception), any current row `failed`, an IO error, an incompatible index or run directory, a stale review snapshot |
 | `130` | interrupted | Ctrl-C; the run directory records `interrupted` and resumes from there |
@@ -76,7 +76,8 @@ Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missi
 `invalid_value`, `missing_file`, `missing_extra`, `credential_missing`, `duplicate_id`,
 `index_mismatch`, `run_fingerprint_mismatch`, `out_not_a_run`, `run_not_found`,
 `source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
-`interrupted` and `usage`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
+`interrupted` and `usage`. The decider path adds `wrong_job_path` (`ablate`, `prompts` or
+`fit` given the wrong kind of job) and, from `fit`, `no_recommendation`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
 to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`, and the
 `experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
 `--offline-model` adds the `offline_model` warning.
@@ -107,7 +108,7 @@ An offline preflight. It never builds an LLM client and never calls a model.
 | Flag | Required | Default | Meaning |
 |---|---|---|---|
 | `--job` | yes | — | path to the job file |
-| `--no-credentials` | no | — | do not require the `llm.api_key_env` variable to be set |
+| `--no-credentials` | no | — | do not require the `api_key_env` variables (`llm`, `decider`, `decider.rewrite.llm`) to be set |
 | `--no-scan` | no | — | do not read the collections (skips duplicate-id and empty-text checks) |
 
 Checks, reporting every problem rather than the first: the job file strictly (unknown or
@@ -228,9 +229,9 @@ Writes into the run directory:
 
 | File | What it is |
 |---|---|
-| `mapping.csv` | the deliverable, one row per current source record: `source_id, matched_id, confidence, status, reason, explanation, attempts, prompt_tokens, completion_tokens, llm_calls, elapsed_seconds, unknown_calls, cache_hits`; records not yet processed have status `pending` |
-| `results.jsonl` | one full current result per line, attempts and candidates included |
-| `manifest.json` | run fingerprint and its components, library version, target fingerprint, job name, model, run state, usage, errors, status counts (with `pending`), duplicate targets, removed sources, ledger schema version |
+| `mapping.csv` | the deliverable, one row per current source record: `source_id, matched_id, confidence, status, reason, explanation, attempts, prompt_tokens, completion_tokens, llm_calls, elapsed_seconds, unknown_calls, cache_hits, cost_usd`; records not yet processed have status `pending` |
+| `results.jsonl` | one full current result per line, attempts and candidates included (decider results also carry `signals`) |
+| `manifest.json` | run fingerprint and its components, library version, target fingerprint, job name, model, path (`llm` or `decider`), run state, usage, errors, status counts (with `pending`), duplicate targets, removed sources, ledger schema version |
 | `ledger.sqlite` | the source of truth; makes the run resumable and evaluation free |
 
 Returns `1` — not `0` — whenever the review bucket is non-empty or the run is `partial`
@@ -405,6 +406,20 @@ $ xwalk export --run runs/chebi --view reviewed --out runs/chebi/reviewed.csv
 exported 50 reviewed rows to runs/chebi/reviewed.csv
 ```
 
+A job that declares `decider:` instead of `llm:` runs the
+[decision-model path](decide.md) here: same flags, same run directory, same exports, same
+resume, same `--json` envelope, run states and exit codes. A few differences are worth
+knowing. The manifest records `"path": "decider"` and the decider's model rather than the
+LLM's. `--max-calls` caps decision requests (every HTTP retry counts) and the optional
+rewrite LLM's requests together; reaching it aborts with `call_limit_reached`, as on the LLM
+path. A fatal decider error (an invalid key, an unknown model) aborts the run with
+`fatal_provider_failure` and exit `3`; a malformed response or exhausted retries fails only
+that record. And the decider is always wrapped in a ledger-backed cache — there is no flag
+for it — because the model's probabilities jitter by up to about 0.04 between identical
+calls, and a resumed run must classify a record the way the first run did. A cached answer
+is a `cache_hit`, not a call, and contributes no tokens and no cost, so a resumed run's
+`cost_usd` is what *it* spent, not what the work was worth.
+
 ## `eval`
 
 Scores a completed run against gold labels. Reads the ledger and calls nothing: no
@@ -447,8 +462,9 @@ $ xwalk eval --run runs/chebi --gold examples/chebi/sample/gold.csv --out runs/c
   gold surfaced by   : bm25 (45)
 
 ## Cost
-  llm calls / record   : 2.14
+  model calls / record : 2.14
   tokens / record      : 1834.00
+  cost / record        : $0.000171
   seconds / record     : 1.91
   duplicate targets    : 2
 ```
@@ -466,6 +482,88 @@ the model saw it and chose otherwise, which is a prompt problem. Collapsing trun
 
 Always returns `0`. A source id absent from the gold file is unlabelled and excluded from
 every metric — it is not a wrong answer.
+
+## `fit`
+
+Fits the three swept decider thresholds on a completed run and its gold labels. Reads the
+ledger and calls nothing — it re-derives every status from the signals already recorded — so
+fitting is free, repeatable, and needs no credentials. Decider path only.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | run directory; its `manifest.json` supplies the run fingerprint |
+| `--gold` | yes | — | the gold CSV; unlabelled source ids are skipped |
+| `--precision` | no | `0.95` | target accepted precision |
+| `--job` | no | none | the job the run used, so the gates that are *not* swept match the run |
+| `--holdout` | no | off | also fit on half the labelled rows and score that fit on the other half |
+| `--write-job` | no | none | `OUT.yaml`: a copy of `--job` with the recommendation in its `policy:` block |
+
+```console
+$ xwalk fit --run runs/cfcd_jev --gold examples/cafeteria_fcd/sample/gold.csv \
+    --job examples/cafeteria_fcd/job_jev.yaml --precision 0.95
+labelled rows: 120; target precision: 0.95
+
+accept_at prop_floor choose_at accepted correct precision coverage near
+     0.75       0.50      0.50       96      85      0.89     0.80   31
+     0.80       0.50      0.50       88      82      0.93     0.73   24
+     0.85       0.00      0.50       81      76      0.94     0.68   17
+     0.85       0.50      0.50       74      72      0.97     0.62   17
+     0.90       0.50      0.50       61      61      1.00     0.51    9
+
+recommended: accept_at=0.85 property_floor=0.50 choose_at=0.50 (72/74 correct, coverage 0.62, 17 rows within the jitter margin of accept_at)
+```
+
+Only `accept_at`, `property_floor` and `choose_at` are swept: `accept_at` over `0.50`–`0.95`
+in steps of `0.05`, `property_floor` over `(0.0, 0.3, 0.5, 0.7)`, and `choose_at` over
+`(0.3, 0.5, 0.7)` plus the job's own value, so the run's own setting is always a candidate.
+Every other gate — `screen_floor`, `none_at`, `rubric_floor`, `shortlist_floor` — must be the
+one the run actually used, or the fitted thresholds are tuned against a policy nobody ran.
+The table above is abridged.
+
+**`--job` is optional and you almost always want it.** Without it the sweep runs against
+`DecisionPolicy()` defaults and prints, on stderr:
+
+```
+warning: --job not given; fitting against default policy thresholds
+```
+
+That is correct only for a run whose job overrode none of the unswept gates. Passing a job
+with no `decider:` block is an error: `<path> has no decider: block; fit works on the
+decider path`, exit `2`. With `--json`, `data.recommended` holds the recommended point (or
+`null`).
+
+`near` is the column that keeps you honest. It counts labelled rows whose screen probability
+sits within `0.05` of that row's `accept_at` — within the jitter the model itself
+introduces. A high `near` beside a precision that just clears the target means the number is
+an artefact of where the jitter landed, and the same run repeated would give a different one.
+The recommendation is chosen by accepted count alone, so overruling it on `near` is your job.
+
+Returns `0` when a grid point meets the target precision. Returns `1` when none does, after
+printing `no grid point meets the target precision; lower the target or improve the
+questions` — the thresholds are not the problem, the questions are.
+
+**`--holdout`** answers "does the recommendation hold on rows it was not fitted on?" The
+labelled ids are split into two halves, deterministically from the run fingerprint. The sweep
+is refitted on one half and its recommendation is scored on the other. One line follows the
+recommendation:
+
+```
+holdout: accept_at=0.85 property_floor=0.50 choose_at=0.50 accepted=36 correct=34 precision=0.94 coverage=0.60
+```
+
+The half-data fit can pick different thresholds from the full-data one printed above it. When
+it does, the line ends `(holdout of the dev-half recommendation, which differs from the
+full-data recommendation)`, and its numbers are not a check on the point `--write-job`
+writes. When the dev half has no recommendation the line reads `holdout: no holdout point`.
+
+**`--write-job OUT.yaml`** writes a copy of the `--job` file with `policy.accept_at`,
+`policy.property_floor` and `policy.choose_at` set to the full-data recommendation. If the
+job has no `policy:` block, one is created. Every other key is kept, in order, but the
+file goes through a YAML load and dump, so comments and anchors are dropped. Relative paths
+are not rewritten: if `OUT.yaml` is in another directory, they now resolve from there, and a
+warning on stderr says so. Without `--job` the command is a usage error (exit `2`). With no
+recommendation it writes nothing and exits `1`. Without `--write-job`, fit writes nothing;
+copy the recommended thresholds into the job's `policy:` block yourself.
 
 ## `compare`
 
@@ -513,6 +611,12 @@ $ xwalk ablate --job examples/chebi/job.yaml --gold examples/chebi/sample/gold.c
   no_retries       one attempt only; no reformulation delta -0.024
   half_budget      halve the selector budget          delta -0.012
 ```
+
+**This command works on the LLM path only.** Given a job with a `decider:` block it prints
+`error: wrong_job_path: this command works on the LLM path; the job has a decider: block`
+and returns `2`
+before building anything. None of its variants has a meaning there: the decider path has no
+verifier, no retries, and no selector budget.
 
 `half_budget` is in the standard set because the ceiling decomposition separates budget
 misses from retrieval misses — an ablation that confirms a diagnosis is worth more than one
@@ -588,6 +692,14 @@ test accepted precision: 0.9166666666666666
 Writes `<out>/index/`, one `round_NN/` directory per usable round holding `slots.yaml` and
 `validation.json`, `best/slots.yaml` — the file to copy over your job's slots — and
 `report.json`. Returns `0`.
+
+**`prompts` works on the LLM path only** — `draft` and `optimize` alike. The check runs
+before the subcommand branch, so a job with a `decider:` block gets
+`error: wrong_job_path: this command works on the LLM path; the job has a decider: block`
+and exit `2` from
+either one. The optimiser measures itself by re-running the LLM matcher with mutated slots
+and there is no decider equivalent yet; edit `slots.yaml` by hand and re-fit with
+[`fit`](#fit).
 
 The job's own LLM plays both parts: it matches *and* it revises the slots. Use a strong
 model as the optimiser and a cheap one for matching by calling `optimize_prompt` from

@@ -304,6 +304,7 @@ async def test_mapping_csv_columns_are_the_documented_set(tmp_path):
         "elapsed_seconds",
         "unknown_calls",
         "cache_hits",
+        "cost_usd",
     ]
 
 
@@ -551,3 +552,64 @@ async def test_the_manifest_reports_state_schema_and_snapshot(tmp_path):
     assert manifest["ledger_schema_version"] == 2
     assert manifest["snapshot"]["size"] == 2
     assert manifest["usage"]["calls"] == 4
+
+
+async def test_run_batch_accepts_a_decision_matcher(tmp_path):
+    from xwalk.batch import run_batch
+    from xwalk.decide.fake import FakeDecider
+    from xwalk.decide.matcher import DecisionMatcher
+    from xwalk.decide.policy import DecisionPolicy
+    from xwalk.decide.questions import QuestionSet
+    from xwalk.prompts.contract import PromptSlots
+    from xwalk.records import Record, RetrievalHit
+    from xwalk.retrieval.base import SearchRequest
+    from xwalk.stages.choose import Chooser
+    from xwalk.stages.property_gate import PropertyGate
+    from xwalk.stages.screen import Screener
+    from xwalk.stores.memory import MemoryStore
+    from xwalk.templates import TemplateSet
+
+    templates = TemplateSet(
+        query="{{ mention }}", context="", doc="{{ label }}", candidate="{{ label }}"
+    )
+    questions = QuestionSet.from_slots(
+        PromptSlots(
+            entity_noun="m",
+            target_noun="t",
+            domain_brief="d",
+            rubric=[
+                {"score": 1.0, "name": "A", "when": "a"},
+                {"score": 0.5, "name": "B", "when": "b"},
+            ],
+        )
+    )
+    store = MemoryStore.from_source([Record(id="T1", fields={"label": "glucose"})])
+
+    class One:
+        name = "r"
+        fingerprint = "r"
+        default_limit = 5
+
+        async def search(self, request: SearchRequest):
+            return [RetrievalHit(record_id="T1", retriever="r", raw_score=1.0, rank=1)]
+
+    decider = FakeDecider()
+    matcher = DecisionMatcher(
+        templates=templates,
+        retrievers=[One()],
+        store=store,
+        screener=Screener(decider, questions, templates),
+        chooser=Chooser(decider, questions, templates),
+        gate=PropertyGate(decider, questions, templates),
+        policy=DecisionPolicy(
+            concurrency=2, accept_at=0.5, shortlist_floor=0.0, screen_floor=0.1, rubric_floor=0.0
+        ),
+        run_fingerprint="fp-decide",
+    )
+    report = await run_batch(
+        matcher, [Record(id="s1", fields={"mention": "glucose"})], out=tmp_path / "run"
+    )
+    assert report.total == 1
+    assert (tmp_path / "run" / "mapping.csv").exists()
+    header = (tmp_path / "run" / "mapping.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert header.split(",")[-1] == "cost_usd"

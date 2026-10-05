@@ -278,7 +278,15 @@ def build_server(
 
         async def work() -> ops.OpResult:
             llm = make_llm() if make_llm is not None else None
-            result = await ops.run_async(job, out, limit=limit, max_calls=max_calls, llm=llm)
+            # A decider job offline gets the deterministic overlap FakeDecider, never Jev.
+            decider = None
+            if offline:
+                from xwalk.decide.fake import FakeDecider
+
+                decider = FakeDecider(model="xwalk-offline")
+            result = await ops.run_async(
+                job, out, limit=limit, max_calls=max_calls, llm=llm, decider=decider
+            )
             if offline:
                 result.warnings.append(
                     ops.OpMessage(
