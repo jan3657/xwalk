@@ -6,17 +6,25 @@ never values in the file.
 
 Paths inside a job file resolve against **the job file's own directory**, so a job
 directory is movable as a unit.
+
+Validation is strict (docs/claude-upgrade/CONTRACTS.md section 8): every spec forbids
+unknown fields, so a misspelled key fails instead of silently falling back to a default;
+numeric settings are range-checked; a field that does not apply to the declared `kind` is
+rejected rather than ignored. `load_job` raises `JobValidationError`, whose `issues` name
+each problem with a dotted location and, for an unknown key, the nearest valid one.
 """
 
 from __future__ import annotations
 
+import difflib
 import os
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from xwalk.batch import run_fingerprint_components
 from xwalk.fingerprint import hash_value
@@ -37,14 +45,31 @@ from xwalk.stores.memory import MemoryStore
 from xwalk.templates import TemplateSet
 
 
-class TemplateSpec(BaseModel):
+class _Spec(BaseModel):
+    """Every job spec forbids unknown keys: a typo must fail, not become a default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    def _reject_inapplicable(self, fields: Sequence[str], *, kind: str) -> None:
+        stray = [name for name in fields if name in self.model_fields_set]
+        if stray:
+            raise ValueError(f"{', '.join(stray)} does not apply to kind {kind!r}")
+
+
+class TemplateSpec(_Spec):
     query: str
     context: str = ""
     doc: str
     candidate: str
 
 
-class RecordSpec(BaseModel):
+_FILE_KINDS = ("csv", "tsv", "jsonl", "obo", "owl")
+_TABULAR_ONLY = ("multivalue_columns", "multivalue_sep")
+_SQL_ONLY = ("url", "query")
+_ONTOLOGY_ONLY = ("id_prefix", "include_obsolete")
+
+
+class RecordSpec(_Spec):
     kind: Literal["csv", "tsv", "jsonl", "obo", "owl", "sql"]
     path: str | None = None
     id_column: str = "id"
@@ -57,6 +82,37 @@ class RecordSpec(BaseModel):
     # ontology
     id_prefix: str | None = None
     include_obsolete: bool = False
+
+    @model_validator(mode="after")
+    def _check(self) -> RecordSpec:
+        if self.kind in _FILE_KINDS and not self.path:
+            raise ValueError(f"a {self.kind} collection needs a path")
+        if self.kind == "sql":
+            if not (self.url and self.query):
+                raise ValueError("a sql collection needs url and query")
+            self._reject_inapplicable(("path", *_ONTOLOGY_ONLY), kind=self.kind)
+        else:
+            self._reject_inapplicable(_SQL_ONLY, kind=self.kind)
+        if self.kind not in ("obo", "owl"):
+            self._reject_inapplicable(_ONTOLOGY_ONLY, kind=self.kind)
+        if self.kind in ("jsonl", "obo", "owl"):
+            self._reject_inapplicable(_TABULAR_ONLY, kind=self.kind)
+        if self.kind != "jsonl":
+            self._reject_inapplicable(("id_field",), kind=self.kind)
+        if not self.id_column:
+            raise ValueError("id_column must not be empty")
+        if not self.multivalue_sep:
+            raise ValueError("multivalue_sep must not be empty")
+        return self
+
+    @property
+    def required_extra(self) -> tuple[str, str] | None:
+        """`(extra, module)` this collection needs beyond the base install."""
+        if self.kind == "owl":
+            return ("ontology", "rdflib")
+        if self.kind == "sql":
+            return ("sql", "sqlalchemy")
+        return None
 
     def _resolve(self, base_dir: Path) -> Path:
         if self.path is None:
@@ -103,10 +159,13 @@ class RecordSpec(BaseModel):
         )
 
 
-class RetrieverSpec(BaseModel):
+_DENSE_ONLY = ("model", "device", "query_prefix", "doc_prefix", "revision", "normalize")
+
+
+class RetrieverSpec(_Spec):
     kind: Literal["bm25", "dense"]
     name: str | None = None
-    limit: int = 20
+    limit: int = Field(default=20, ge=1)
     # bm25 only
     exact_fields: list[str] | None = None
     # dense only
@@ -114,23 +173,40 @@ class RetrieverSpec(BaseModel):
     device: str | None = None
     query_prefix: str = ""
     doc_prefix: str = ""
+    revision: str | None = None  # a pinned model revision; unpinned is recorded "unknown"
+    normalize: bool = True
 
     @model_validator(mode="after")
     def _check(self) -> RetrieverSpec:
-        if self.kind == "dense" and not self.model:
-            raise ValueError("a dense retriever needs a model name")
+        if self.name is not None and not self.name.strip():
+            raise ValueError("a retriever name must not be blank")
+        if self.kind == "dense":
+            if not self.model:
+                raise ValueError("a dense retriever needs a model name")
+            self._reject_inapplicable(("exact_fields",), kind=self.kind)
+        else:
+            self._reject_inapplicable(_DENSE_ONLY, kind=self.kind)
         return self
 
+    @property
+    def index_name(self) -> str:
+        """The index subdirectory: `name`, or the kind when unnamed."""
+        return self.name or self.kind
 
-class LLMSpec(BaseModel):
+    @property
+    def required_extra(self) -> tuple[str, str] | None:
+        return ("dense", "sentence_transformers") if self.kind == "dense" else None
+
+
+class LLMSpec(_Spec):
     kind: Literal["openai_compat", "litellm"] = "openai_compat"
     model: str
     base_url: str | None = None
     api_key_env: str | None = None
     api_key: str | None = None  # present only so it can be rejected
     profile: str = "unknown"
-    temperature: float = 0.0
-    max_tokens: int = 1024
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=1024, ge=1)
     seed: int | None = None
 
     @model_validator(mode="after")
@@ -145,28 +221,42 @@ class LLMSpec(BaseModel):
         return self
 
 
-class PolicySpec(BaseModel):
-    max_attempts: int = 4
-    accept_at: float = 0.6
-    review_floor: float = 0.4
+class PolicySpec(_Spec):
+    max_attempts: int = Field(default=4, ge=1)
+    accept_at: float = Field(default=0.6, ge=0.0, le=1.0)
+    review_floor: float = Field(default=0.4, ge=0.0, le=1.0)
     verify_band: tuple[float, float] | None = (0.6, 0.8)
-    audit_rate: float = 0.0
-    concurrency: int = 32
+    audit_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    concurrency: int = Field(default=32, ge=1)
     legacy_id_resolution: bool = False
-    retriever_timeout: float = 60.0
+    retriever_timeout: float = Field(default=60.0, gt=0.0)
+
+    @model_validator(mode="after")
+    def _check(self) -> PolicySpec:
+        if self.review_floor > self.accept_at:
+            raise ValueError(
+                f"review_floor ({self.review_floor}) must not exceed accept_at ({self.accept_at})"
+            )
+        if self.verify_band is not None:
+            low, high = self.verify_band
+            if not 0.0 <= low <= high <= 1.0:
+                raise ValueError(
+                    f"verify_band must be an ordered pair within [0, 1], got [{low}, {high}]"
+                )
+        return self
 
 
-class SelectorSpec(BaseModel):
-    max_candidates: int = 30
-    max_candidate_tokens: int = 8_000
+class SelectorSpec(_Spec):
+    max_candidates: int = Field(default=30, ge=1)
+    max_candidate_tokens: int = Field(default=8_000, ge=1)
 
 
-class PromptSpec(BaseModel):
+class PromptSpec(_Spec):
     slots: str
 
 
-class JobSpec(BaseModel):
-    name: str
+class JobSpec(_Spec):
+    name: str = Field(min_length=1)
     templates: TemplateSpec
     target: RecordSpec
     source: RecordSpec
@@ -177,6 +267,18 @@ class JobSpec(BaseModel):
     selector: SelectorSpec = SelectorSpec()
 
     base_dir: Path = Path(".")
+
+    @model_validator(mode="after")
+    def _unique_retriever_names(self) -> JobSpec:
+        seen: set[str] = set()
+        for spec in self.retrievers:
+            if spec.index_name in seen:
+                raise ValueError(
+                    f"two retrievers share the name {spec.index_name!r}; each needs its own "
+                    f"index directory, so give them distinct names"
+                )
+            seen.add(spec.index_name)
+        return self
 
     # --- builders ---------------------------------------------------------------
 
@@ -201,7 +303,7 @@ class JobSpec(BaseModel):
         index_dir = Path(index_dir)
         built: list[Retriever] = []
         for spec in self.retrievers:
-            target = index_dir / (spec.name or spec.kind)
+            target = index_dir / spec.index_name
             if spec.kind == "bm25":
                 built.append(
                     BM25Retriever.build(
@@ -350,8 +452,97 @@ class JobSpec(BaseModel):
         )
 
 
+@dataclass(frozen=True)
+class JobIssue:
+    """One problem with a job file. `loc` is a dotted path such as `policy.accept_at`."""
+
+    code: str
+    loc: str
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.loc}: {self.message}" if self.loc else self.message
+
+
+class JobValidationError(ValueError):
+    """The job file is missing, unreadable or invalid. `issues` lists every problem."""
+
+    def __init__(self, path: str | Path | None, issues: Sequence[JobIssue]) -> None:
+        self.path = None if path is None else Path(path)
+        self.issues = tuple(issues)
+        where = f"{self.path}: " if self.path is not None else ""
+        lines = "\n".join(f"  - {issue}" for issue in self.issues)
+        super().__init__(f"{where}invalid job file\n{lines}")
+
+
+def _model_at(loc: Sequence[int | str]) -> type[BaseModel] | None:
+    """The spec class a pydantic error location points into (for "did you mean")."""
+    model: type[BaseModel] = JobSpec
+    for part in loc:
+        if isinstance(part, int):
+            continue
+        field = model.model_fields.get(str(part))
+        if field is None:
+            return None
+        annotation = field.annotation
+        inner = getattr(annotation, "__args__", None) or (annotation,)
+        nested = [a for a in inner if isinstance(a, type) and issubclass(a, BaseModel)]
+        if not nested:
+            return None
+        model = nested[0]
+    return model
+
+
+def _issues_from(error: ValidationError) -> list[JobIssue]:
+    issues: list[JobIssue] = []
+    for item in error.errors():
+        loc = [p for p in item["loc"] if not (isinstance(p, str) and p.startswith("function-"))]
+        dotted = ".".join(str(p) for p in loc)
+        if item["type"] == "extra_forbidden":
+            parent = _model_at(loc[:-1])
+            known = [n for n in (parent.model_fields if parent else {}) if n != "base_dir"]
+            close = difflib.get_close_matches(str(loc[-1]), known, n=1)
+            hint = f"; did you mean {close[0]!r}?" if close else ""
+            issues.append(JobIssue("unknown_field", dotted, f"unknown field{hint}"))
+        elif item["type"] == "missing":
+            issues.append(JobIssue("missing_field", dotted, "required field is missing"))
+        else:
+            message = str(item["msg"]).removeprefix("Value error, ")
+            given = item.get("input")
+            if isinstance(given, (str, int, float, bool)):
+                message = f"{message} (got {given!r})"
+            issues.append(JobIssue("invalid_value", dotted, message))
+    return issues
+
+
+def parse_job(data: Any, *, path: str | Path | None = None) -> JobSpec:
+    """Validate a job mapping strictly. Raises `JobValidationError`."""
+    if not isinstance(data, dict):
+        raise JobValidationError(path, [JobIssue("invalid_value", "", "a job must be a mapping")])
+    if "base_dir" in data:
+        raise JobValidationError(
+            path,
+            [JobIssue("unknown_field", "base_dir", "set by load_job; not a job-file field")],
+        )
+    try:
+        return JobSpec.model_validate(data)
+    except ValidationError as exc:
+        raise JobValidationError(path, _issues_from(exc)) from None
+
+
 def load_job(path: str | Path) -> JobSpec:
+    """Read and strictly validate a job file. Raises `JobValidationError`."""
     path = Path(path)
-    data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
-    spec = JobSpec.model_validate(data)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        reason = "not found" if isinstance(exc, FileNotFoundError) else str(exc)
+        raise JobValidationError(
+            path, [JobIssue("job_not_found", "", f"cannot read {path}: {reason}")]
+        ) from None
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise JobValidationError(path, [JobIssue("job_yaml_invalid", "", str(exc))]) from None
+    spec = parse_job(data, path=path)
     return spec.model_copy(update={"base_dir": path.parent.resolve()})
