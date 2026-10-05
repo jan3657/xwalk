@@ -171,3 +171,18 @@ def test_bm25_satisfies_the_retriever_protocol(retriever):
     from xwalk.retrieval.base import Retriever
 
     assert isinstance(retriever, Retriever)
+
+
+def test_open_with_the_expected_components_refuses_a_different_index(targets_csv, tmp_path):
+    """CONTRACTS.md section 7: an index is reused only when its stored identity matches."""
+    from xwalk.retrieval.base import IndexMismatchError
+    from xwalk.retrieval.bm25 import index_components
+
+    records = list(csv_source(targets_csv, id_column="id", multivalue_columns=["synonyms"]))
+    built = BM25Retriever.build(records, DOC_TEMPLATES, tmp_path / "idx", exact_fields=("label",))
+    same = index_components(records, DOC_TEMPLATES, exact_fields=("label",))
+    assert BM25Retriever.open(tmp_path / "idx", expected=same).fingerprint == built.fingerprint
+    other = index_components(records, DOC_TEMPLATES, exact_fields=("label", "synonyms"))
+    with pytest.raises(IndexMismatchError) as info:
+        BM25Retriever.open(tmp_path / "idx", expected=other)
+    assert set(info.value.differences) == {"exact_fields"}

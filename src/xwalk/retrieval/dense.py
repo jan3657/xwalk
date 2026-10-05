@@ -14,19 +14,20 @@ from __future__ import annotations
 import asyncio
 import json
 import struct
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from xwalk._extras import require
 from xwalk.fingerprint import hash_record, hash_value
 from xwalk.records import Record, RetrievalHit
-from xwalk.retrieval.base import SearchRequest
+from xwalk.retrieval.base import IndexMismatchError, SearchRequest, component_differences
 from xwalk.templates import TemplateSet
 
 _META_FILE = "xwalk_meta.json"
 _VECTOR_FILE = "vectors.f32"
 _IDS_FILE = "record_ids.json"
+INDEX_FORMAT_VERSION = 1
 
 
 @runtime_checkable
@@ -102,6 +103,39 @@ class SentenceTransformerEncoder:
         return [[float(v) for v in row] for row in vectors]
 
 
+def encoder_identity(encoder: Encoder) -> dict[str, Any]:
+    """Name, dimension and every setting that changes what a vector means.
+
+    An encoder may expose a `settings` mapping (`SentenceTransformerEncoder` does:
+    revision, normalize, prefixes, max sequence length). Reading the dimension may load
+    the model; it never encodes anything.
+    """
+    settings = getattr(encoder, "settings", None) or {}
+    return {"name": encoder.name, "dimension": encoder.dimension, **dict(settings)}
+
+
+def index_components(
+    records: Iterable[Record], templates: TemplateSet, encoder: Encoder
+) -> dict[str, Any]:
+    """The identity of a dense index, computed without encoding anything."""
+    digests = sorted(hash_record(record) for record in records)
+    return {
+        "engine": "dense",
+        "format_version": INDEX_FORMAT_VERSION,
+        "doc_template": templates.doc,
+        "record_count": len(digests),
+        "records": hash_value(digests),
+        "encoder": encoder_identity(encoder),
+    }
+
+
+def read_components(index_dir: str | Path) -> dict[str, Any] | None:
+    """The components stored with a built index; `None` for an index built before 0.2."""
+    meta = json.loads((Path(index_dir) / _META_FILE).read_text(encoding="utf-8"))
+    components = meta.get("components")
+    return dict(components) if isinstance(components, dict) else None
+
+
 def _write_vectors(path: Path, vectors: Sequence[Sequence[float]]) -> None:
     with path.open("wb") as handle:
         for vector in vectors:
@@ -153,8 +187,7 @@ class DenseRetriever:
         with a different query prefix changes every query vector, so it must change the
         run identity too. An encoder may expose a `settings` mapping for this.
         """
-        settings = getattr(self._encoder, "settings", None) or {}
-        return {"name": self._encoder.name, "dimension": self._encoder.dimension, **settings}
+        return encoder_identity(self._encoder)
 
     @property
     def default_limit(self) -> int:
@@ -182,13 +215,9 @@ class DenseRetriever:
         index_dir = Path(index_dir)
         index_dir.mkdir(parents=True, exist_ok=True)
 
-        record_ids: list[str] = []
-        texts: list[str] = []
-        digests: list[str] = []
-        for record in records:
-            record_ids.append(record.id)
-            texts.append(templates.render_doc(record))
-            digests.append(hash_record(record))
+        records = list(records)
+        record_ids = [record.id for record in records]
+        texts = [templates.render_doc(record) for record in records]
 
         vectors: list[list[float]] = []
         for start in range(0, len(texts), batch):
@@ -201,15 +230,8 @@ class DenseRetriever:
                     f"but produced a vector of length {len(vector)}"
                 )
 
-        fingerprint = hash_value(
-            {
-                "engine": "dense",
-                "encoder": encoder.name,
-                "dimension": encoder.dimension,
-                "doc_template": templates.doc,
-                "records": sorted(digests),
-            }
-        )
+        components = index_components(records, templates, encoder)
+        fingerprint = hash_value(components)
 
         _write_vectors(index_dir / _VECTOR_FILE, vectors)
         (index_dir / _IDS_FILE).write_text(json.dumps(record_ids), encoding="utf-8")
@@ -222,6 +244,7 @@ class DenseRetriever:
                     "dimension": encoder.dimension,
                     "default_limit": default_limit,
                     "fingerprint": fingerprint,
+                    "components": components,
                     "doc_count": len(record_ids),
                 },
                 indent=2,
@@ -245,7 +268,15 @@ class DenseRetriever:
         *,
         name: str | None = None,
         default_limit: int | None = None,
+        expected: Mapping[str, Any] | None = None,
     ) -> DenseRetriever:
+        """Reopen a built index without encoding anything.
+
+        The encoder's name and dimension must match the index. With `expected` (from
+        `index_components`) every stored component is compared -- encoder revision,
+        normalize, prefixes and max sequence length included -- and a difference raises
+        `IndexMismatchError`. `xwalk match` and `xwalk index` always pass `expected`.
+        """
         index_dir = Path(index_dir)
         meta_path = index_dir / _META_FILE
         if not meta_path.exists():
@@ -253,6 +284,10 @@ class DenseRetriever:
                 f"{index_dir} is not an xwalk dense index (no {_META_FILE}); build it first"
             )
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if expected is not None:
+            differences = component_differences(meta.get("components"), expected)
+            if differences:
+                raise IndexMismatchError(index_dir, differences)
         if meta["encoder"] != encoder.name:
             raise ValueError(
                 f"index was built with encoder {meta['encoder']!r} but {encoder.name!r} "

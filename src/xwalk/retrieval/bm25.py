@@ -12,17 +12,47 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import tantivy
 
 from xwalk.fingerprint import hash_record, hash_value
 from xwalk.records import Record, RetrievalHit
-from xwalk.retrieval.base import SearchRequest
+from xwalk.retrieval.base import IndexMismatchError, SearchRequest, component_differences
 from xwalk.templates import TemplateSet
 
 _META_FILE = "xwalk_meta.json"
+# Bump when the on-disk layout changes, or when exact-form normalisation
+# (`_exact_forms`) changes: either makes an old index answer differently.
+INDEX_FORMAT_VERSION = 1
+NORMALIZATION_VERSION = 1
+
+
+def index_components(
+    records: Iterable[Record], templates: TemplateSet, *, exact_fields: Sequence[str] = ()
+) -> dict[str, Any]:
+    """The identity of a BM25 index, computed from the records without building it."""
+    digests = sorted(hash_record(record) for record in records)
+    return {
+        "engine": "tantivy-bm25",
+        "format_version": INDEX_FORMAT_VERSION,
+        "normalization_version": NORMALIZATION_VERSION,
+        "doc_template": templates.doc,
+        "exact_fields": list(exact_fields),
+        "record_count": len(digests),
+        "records": hash_value(digests),
+    }
+
+
+def read_components(index_dir: str | Path) -> dict[str, Any] | None:
+    """The components stored with a built index; `None` for an index built before 0.2.
+    Raises FileNotFoundError when there is no index."""
+    meta = json.loads((Path(index_dir) / _META_FILE).read_text(encoding="utf-8"))
+    components = meta.get("components")
+    return dict(components) if isinstance(components, dict) else None
+
 
 # Tantivy's query parser gives these characters meaning. Real mentions contain them —
 # "glucose (D-)", "IL-2", "5-HT2A", "Ca2+" — so they are stripped rather than escaped.
@@ -131,7 +161,7 @@ class BM25Retriever:
         # would notice. Duplicates then spend the retrieval limit, costing recall.
         writer.delete_all_documents()
 
-        digests: list[str] = []
+        records = list(records)
         empty = 0
         for record in records:
             text = templates.render_doc(record)
@@ -141,27 +171,21 @@ class BM25Retriever:
             for form in _exact_forms(record, exact_fields):
                 document.add_text("exact", form)
             writer.add_document(document)
-            digests.append(hash_record(record))
         writer.commit()
         index.reload()
 
-        fingerprint = hash_value(
-            {
-                "engine": "tantivy-bm25",
-                "doc_template": templates.doc,
-                "exact_fields": list(exact_fields),
-                "records": sorted(digests),
-            }
-        )
+        components = index_components(records, templates, exact_fields=exact_fields)
+        fingerprint = hash_value(components)
         (index_dir / _META_FILE).write_text(
             json.dumps(
                 {
                     "engine": "tantivy-bm25",
                     "name": name,
                     "fingerprint": fingerprint,
+                    "components": components,
                     "exact_fields": list(exact_fields),
                     "default_limit": default_limit,
-                    "doc_count": len(digests),
+                    "doc_count": len(records),
                     "empty_doc_count": empty,
                 },
                 indent=2,
@@ -178,8 +202,20 @@ class BM25Retriever:
         )
 
     @classmethod
-    def open(cls, index_dir: str | Path, *, name: str | None = None) -> BM25Retriever:
-        """Reopen a built index. `name` overrides the one recorded at build time."""
+    def open(
+        cls,
+        index_dir: str | Path,
+        *,
+        name: str | None = None,
+        expected: Mapping[str, Any] | None = None,
+        default_limit: int | None = None,
+    ) -> BM25Retriever:
+        """Reopen a built index. `name` and `default_limit` override the recorded ones.
+
+        With `expected` (from `index_components`), an index whose stored components
+        differ -- or that predates stored components -- raises `IndexMismatchError`
+        instead of being reused.
+        """
         index_dir = Path(index_dir)
         meta_path = index_dir / _META_FILE
         if not meta_path.exists():
@@ -187,6 +223,10 @@ class BM25Retriever:
                 f"{index_dir} is not an xwalk BM25 index (no {_META_FILE}); build it first"
             )
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if expected is not None:
+            differences = component_differences(meta.get("components"), expected)
+            if differences:
+                raise IndexMismatchError(index_dir, differences)
         index = tantivy.Index(_build_schema(), path=str(index_dir))
         index.reload()
         return cls(
@@ -194,7 +234,9 @@ class BM25Retriever:
             name=name or meta["name"],
             fingerprint=meta["fingerprint"],
             exact_fields=meta.get("exact_fields", ()),
-            default_limit=meta.get("default_limit", 20),
+            default_limit=(
+                default_limit if default_limit is not None else meta.get("default_limit", 20)
+            ),
             empty_doc_count=meta.get("empty_doc_count", 0),
         )
 
