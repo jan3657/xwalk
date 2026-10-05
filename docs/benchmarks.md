@@ -199,8 +199,8 @@ prompts per run):
 So the saving is large when the model is fast (local models, cache hits, tests) and
 about 1.5% when each call takes 200 ms. No speedup is claimed for network-bound runs.
 The fix (an `lru_cache` keyed by the skeleton text, as in
-`benchmarks/profile_workload.py`) belongs in `xwalk/prompts/contract.py`, which was
-outside this task's permitted file set; it is recorded as a follow-up.
+`benchmarks/profile_workload.py`) was applied afterwards to `xwalk/prompts/contract.py`
+in commit `d75463b`. The smoke results above were generated at `cd88923`, before it.
 
 Other candidates inspected and not changed:
 
