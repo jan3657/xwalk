@@ -53,10 +53,13 @@ class SentenceTransformerEncoder:
         query_prefix: str = "",
         doc_prefix: str = "",
         batch_size: int = 32,
+        revision: str | None = None,
     ) -> None:
         st = require("dense", "sentence_transformers", purpose="SentenceTransformerEncoder")
-        self._model = st.SentenceTransformer(model_name, device=device)
+        extra = {} if revision is None else {"revision": revision}
+        self._model = st.SentenceTransformer(model_name, device=device, **extra)
         self._model_name = model_name
+        self._revision = revision
         self._normalize = normalize
         self._query_prefix = query_prefix
         self._doc_prefix = doc_prefix
@@ -69,6 +72,22 @@ class SentenceTransformerEncoder:
     @property
     def dimension(self) -> int:
         return int(self._model.get_sentence_embedding_dimension())
+
+    @property
+    def settings(self) -> dict[str, Any]:
+        """Everything besides the name that changes what a vector means.
+
+        Device and batch size are absent: they change speed, not vectors. A revision
+        that was not pinned is recorded as "unknown" rather than guessed.
+        """
+        max_seq_length = getattr(self._model, "max_seq_length", None)
+        return {
+            "revision": self._revision or "unknown",
+            "normalize": self._normalize,
+            "query_prefix": self._query_prefix,
+            "doc_prefix": self._doc_prefix,
+            "max_seq_length": None if max_seq_length is None else int(max_seq_length),
+        }
 
     def encode(self, texts: Sequence[str], *, is_query: bool = False) -> list[list[float]]:
         prefix = self._query_prefix if is_query else self._doc_prefix
@@ -125,6 +144,17 @@ class DenseRetriever:
     @property
     def fingerprint(self) -> str:
         return self._fingerprint
+
+    @property
+    def encoder_identity(self) -> dict[str, Any]:
+        """The live encoder's identity, for the run fingerprint.
+
+        Read from the encoder in use, not from the index meta file: reopening an index
+        with a different query prefix changes every query vector, so it must change the
+        run identity too. An encoder may expose a `settings` mapping for this.
+        """
+        settings = getattr(self._encoder, "settings", None) or {}
+        return {"name": self._encoder.name, "dimension": self._encoder.dimension, **settings}
 
     @property
     def default_limit(self) -> int:

@@ -18,7 +18,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from xwalk.batch import build_run_fingerprint
+from xwalk.batch import run_fingerprint_components
+from xwalk.fingerprint import hash_value
 from xwalk.llm.base import LLMClient
 from xwalk.llm.openai_compat import OpenAICompatClient
 from xwalk.matcher import Matcher
@@ -274,6 +275,26 @@ class JobSpec(BaseModel):
     def build_selector_policy(self) -> SelectorPolicy:
         return SelectorPolicy(**self.selector.model_dump())
 
+    def run_fingerprint_components(
+        self,
+        *,
+        store: TargetStore,
+        retrievers: Sequence[Retriever],
+        llm: LLMClient,
+        prompts: PromptSet | None = None,
+    ) -> dict[str, Any]:
+        return run_fingerprint_components(
+            templates=self.build_templates(),
+            prompts=prompts or self.build_prompts(),
+            store=store,
+            retrievers=retrievers,
+            llm=llm,
+            policy=self.build_policy(),
+            selector_policy=self.build_selector_policy(),
+            # The same fallback depth `build_matcher` hands the Matcher.
+            retriever_limit=self._retriever_limit(),
+        )
+
     def run_fingerprint(
         self,
         *,
@@ -282,15 +303,14 @@ class JobSpec(BaseModel):
         llm: LLMClient,
         prompts: PromptSet | None = None,
     ) -> str:
-        return build_run_fingerprint(
-            templates=self.build_templates(),
-            prompts=prompts or self.build_prompts(),
-            store=store,
-            retrievers=retrievers,
-            llm=llm,
-            policy=self.build_policy(),
-            selector_policy=self.build_selector_policy(),
+        return hash_value(
+            self.run_fingerprint_components(
+                store=store, retrievers=retrievers, llm=llm, prompts=prompts
+            )
         )
+
+    def _retriever_limit(self) -> int:
+        return max(spec.limit for spec in self.retrievers)
 
     def build_matcher(
         self,
@@ -326,7 +346,7 @@ class JobSpec(BaseModel):
             run_fingerprint=self.run_fingerprint(
                 store=store, retrievers=retrievers, llm=llm, prompts=resolved
             ),
-            retriever_limit=max(spec.limit for spec in self.retrievers),
+            retriever_limit=self._retriever_limit(),
         )
 
 

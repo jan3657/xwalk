@@ -5,9 +5,10 @@ exit code. Nothing worth testing lives here.
 
 Exit codes:
   0  success
-  1  the run completed but something needs attention (non-empty review bucket)
+  1  something needs attention (non-empty review bucket, or a partial run from --limit)
   2  usage error
-  3  runtime failure (missing key, unreadable file, unsupported platform)
+  3  runtime failure (missing key, unreadable file, unsupported platform, a run that
+     aborted or has failed records)
 """
 
 from __future__ import annotations
@@ -115,7 +116,7 @@ def _cmd_index(args: argparse.Namespace) -> int:
 
 
 def _cmd_match(args: argparse.Namespace) -> int:
-    from xwalk.batch import run_batch
+    from xwalk.batch import RunState, run_batch
     from xwalk.config import load_job
 
     job = load_job(args.job)
@@ -127,28 +128,41 @@ def _cmd_match(args: argparse.Namespace) -> int:
     llm = job.build_llm()
     matcher = job.build_matcher(store=store, retrievers=retrievers, llm=llm)
 
-    records = list(job.build_source_records())
-    if args.limit is not None:
-        records = records[: args.limit]
-
+    # The whole source is read even with --limit: the run's snapshot is the full
+    # collection, and the records beyond the limit are reported as pending.
     report = asyncio.run(
         run_batch(
             matcher,
-            records,
+            job.build_source_records(),
             out=args.out,
             resume=args.resume,
+            limit=args.limit,
             manifest_extra={"job": job.name, "model": job.llm.model},
+            fingerprint_components=job.run_fingerprint_components(
+                store=store, retrievers=retrievers, llm=llm
+            ),
         )
     )
     print(f"matched {report.total} records into {report.out_dir}")
+    print(f"  run state     : {report.run_state.value}")
     for status, count in sorted(report.by_status().items(), key=lambda kv: kv[0].value):
         print(f"  {status.value:<14}: {count}")
+    if report.pending:
+        print(f"  {'pending':<14}: {report.pending}")
+    print(f"  tokens        : {report.usage.describe_tokens()} in {report.usage.calls} calls")
+    for error in report.errors:
+        print(f"error: {error.source_id or '-'}: {error.code}: {error.message}", file=sys.stderr)
     duplicates = report.duplicate_targets()
     if duplicates:
         print(f"  duplicate targets: {len(duplicates)} (see manifest.json)")
+    # Interim mapping until task 03's shared operations: failures are never a success.
+    if report.run_state in (RunState.ABORTED, RunState.FAILED):
+        return EXIT_RUNTIME
     review_count = len(report.needs_review())
     if review_count:
         print(f"\n{review_count} rows need review: xwalk review export --run {args.out}")
+        return EXIT_ATTENTION
+    if report.run_state is RunState.PARTIAL:
         return EXIT_ATTENTION
     return EXIT_OK
 

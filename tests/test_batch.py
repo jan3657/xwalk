@@ -302,6 +302,8 @@ async def test_mapping_csv_columns_are_the_documented_set(tmp_path):
         "completion_tokens",
         "llm_calls",
         "elapsed_seconds",
+        "unknown_calls",
+        "cache_hits",
     ]
 
 
@@ -452,3 +454,100 @@ async def test_two_csvs_in_a_mapping_table_out(tmp_path, targets_csv, sources_cs
     assert rows["s1"]["matched_id"] == "CHEBI:17234"  # glucose
     assert rows["s2"]["matched_id"] == "CHEBI:17234"  # dextrose, via synonym
     assert rows["s4"]["status"] in ("unmatched", "needs_review")  # unobtainium
+
+
+# --- run identity -------------------------------------------------------------------
+
+
+def _fp_kwargs(**overrides):
+    kwargs = dict(
+        templates=TEMPLATES,
+        prompts=PROMPTS,
+        store=STORE,
+        retrievers=[ScriptedRetriever(RETRIEVER)],
+        llm=FakeLLM(["x"]),
+        policy=MatchPolicy(),
+        selector_policy=SelectorPolicy(),
+    )
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_the_fingerprint_is_the_hash_of_its_recorded_components():
+    from xwalk.batch import run_fingerprint_components
+    from xwalk.fingerprint import hash_value
+
+    components = run_fingerprint_components(**_fp_kwargs())
+    assert hash_value(components) == build_run_fingerprint(**_fp_kwargs())
+
+
+class _Encoder:
+    name = "toy"
+    dimension = 2
+
+    def __init__(self, **settings):
+        self.settings = {"normalize": True, "query_prefix": "", "doc_prefix": "", **settings}
+
+    def encode(self, texts, *, is_query=False):
+        return [[1.0, 0.0] for _ in texts]
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [{"query_prefix": "query: "}, {"doc_prefix": "passage: "}, {"normalize": False}],
+)
+def test_encoder_settings_change_the_run_fingerprint(tmp_path, setting):
+    from xwalk.retrieval.dense import DenseRetriever
+
+    targets = [Record(id="T1", fields={"label": "glucose"})]
+    plain = DenseRetriever.build(targets, TEMPLATES, tmp_path / "a", _Encoder(), name="dense")
+    changed = DenseRetriever.build(
+        targets, TEMPLATES, tmp_path / "b", _Encoder(**setting), name="dense"
+    )
+    assert build_run_fingerprint(**_fp_kwargs(retrievers=[plain])) != build_run_fingerprint(
+        **_fp_kwargs(retrievers=[changed])
+    )
+
+
+def test_a_reopened_index_reports_the_live_encoder_settings(tmp_path):
+    """The run identity follows the encoder in use, not only what the meta file says."""
+    from xwalk.retrieval.dense import DenseRetriever
+
+    targets = [Record(id="T1", fields={"label": "glucose"})]
+    DenseRetriever.build(targets, TEMPLATES, tmp_path / "idx", _Encoder(), name="dense")
+    built = DenseRetriever.open(tmp_path / "idx", _Encoder())
+    prefixed = DenseRetriever.open(tmp_path / "idx", _Encoder(query_prefix="query: "))
+    assert build_run_fingerprint(**_fp_kwargs(retrievers=[built])) != build_run_fingerprint(
+        **_fp_kwargs(retrievers=[prefixed])
+    )
+
+
+async def test_the_manifest_records_the_fingerprint_components_without_secrets(tmp_path):
+    from xwalk.batch import run_fingerprint_components
+    from xwalk.llm.litellm import LiteLLMClient
+
+    components = run_fingerprint_components(
+        **_fp_kwargs(llm=LiteLLMClient("gpt-4o", api_key="sk-secret-value"))
+    )
+    out = tmp_path / "run"
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)),
+        SOURCES,
+        out=out,
+        fingerprint_components=components,
+    )
+    text = (out / "manifest.json").read_text(encoding="utf-8")
+    assert json.loads(text)["fingerprint_components"]["policy"]["accept_at"] == 0.6
+    assert "sk-secret-value" not in text
+
+
+async def test_the_manifest_reports_state_schema_and_snapshot(tmp_path):
+    out = tmp_path / "run"
+    await run_batch(
+        make_matcher(two_good_matches(), ScriptedRetriever(RETRIEVER)), SOURCES, out=out
+    )
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["run_state"] == "complete"
+    assert manifest["ledger_schema_version"] == 2
+    assert manifest["snapshot"]["size"] == 2
+    assert manifest["usage"]["calls"] == 4

@@ -11,6 +11,7 @@ from xwalk.review import (
     apply_review,
     export_review,
     read_review,
+    review_history,
 )
 
 
@@ -253,3 +254,136 @@ async def test_the_latest_review_wins_when_a_row_is_reviewed_twice(ledger, tmp_p
 async def test_unreviewed_rows_appear_with_their_model_status(ledger, tmp_path):
     [row] = list(adjudicated(ledger, "fp1"))
     assert row.reviewer is None and row.final_status is MatchStatus.NEEDS_REVIEW
+
+
+# --- reviews across resume ----------------------------------------------------------
+
+
+def _review_everything(ledger, run_fp, decision="accept"):
+    from xwalk.review import ReviewDecision, ReviewRow
+
+    rows = [
+        ReviewRow(
+            result_key=r.result_key,
+            run_fingerprint=run_fp,
+            source_id=r.source_id,
+            source_hash=r.source_hash,
+            proposed_target_id=r.matched_id,
+            decision=ReviewDecision(decision),
+            corrected_target_id=None,
+            reviewer="jan",
+            review_note="checked",
+            reviewed_at="2026-10-05T10:00:00Z",
+        )
+        for r in ledger.iter_results(run_fp)
+    ]
+    from tests.test_matcher import STORE
+
+    apply_review(ledger, rows, target_store_fingerprint=STORE.fingerprint)
+
+
+def _uncertain():
+    from tests.test_matcher import score_reply, select_reply
+    from xwalk.llm.fake import FakeLLM
+
+    def handler(request):
+        return select_reply("C01") if "## Candidates" in request.user else score_reply(0.5)
+
+    return FakeLLM(handler=handler)
+
+
+async def _run(out, sources, **kwargs):
+    from tests.test_batch import RETRIEVER, make_matcher
+    from tests.test_matcher import ScriptedRetriever
+    from xwalk.batch import run_batch
+
+    return await run_batch(
+        make_matcher(_uncertain(), ScriptedRetriever(RETRIEVER)), sources, out=out, **kwargs
+    )
+
+
+async def _reviewed_run(tmp_path):
+    from tests.test_batch import SOURCES
+
+    out = tmp_path / "run"
+    await _run(out, SOURCES)
+    led = Ledger.open(out / "ledger.sqlite")
+    _review_everything(led, "fp1")
+    led.close()
+    return out
+
+
+def _adjudicated(out):
+    led = Ledger.open(out / "ledger.sqlite")
+    try:
+        rows = {row.source_id: row for row in adjudicated(led, "fp1")}
+        history = list(review_history(led, "fp1"))
+        return rows, history
+    finally:
+        led.close()
+
+
+async def test_a_review_still_applies_after_an_unchanged_resume(tmp_path):
+    from tests.test_batch import SOURCES
+
+    out = await _reviewed_run(tmp_path)
+    await _run(out, SOURCES)
+    rows, history = _adjudicated(out)
+    assert rows["s1"].reviewer == "jan" and rows["s1"].final_status is MatchStatus.MATCHED
+    assert [h.state for h in history] == ["applied", "applied"]
+
+
+async def test_a_review_of_an_edited_source_is_stale_not_applied(tmp_path):
+    from tests.test_batch import SOURCES
+    from xwalk.records import Record
+
+    out = await _reviewed_run(tmp_path)
+    await _run(out, [Record(id="s1", fields={"mention": "glucose", "x": 1}), SOURCES[1]])
+    rows, history = _adjudicated(out)
+    assert rows["s1"].reviewer is None
+    assert rows["s1"].final_status is MatchStatus.NEEDS_REVIEW
+    assert rows["s2"].reviewer == "jan"
+    states = {h.review["source_id"]: h.state for h in history}
+    assert states == {"s1": "stale", "s2": "applied"}
+
+
+async def test_a_review_of_a_recomputed_result_is_stale_not_applied(tmp_path):
+    from tests.test_batch import SOURCES
+
+    out = await _reviewed_run(tmp_path)
+    await _run(out, SOURCES, resume=False)
+    rows, history = _adjudicated(out)
+    assert rows["s1"].reviewer is None
+    assert [h.state for h in history] == ["stale", "stale"]
+
+
+async def test_reviewing_a_result_that_is_no_longer_current_is_refused(tmp_path):
+    from tests.test_batch import SOURCES
+    from xwalk.records import Record
+
+    out = tmp_path / "run"
+    await _run(out, SOURCES)
+    led = Ledger.open(out / "ledger.sqlite")
+    stale_csv = tmp_path / "review.csv"
+    export_review(led, "fp1", stale_csv)
+    led.close()
+
+    await _run(out, [Record(id="s1", fields={"mention": "glucose", "x": 1}), SOURCES[1]])
+    rows = [
+        {**row, "decision": "accept", "reviewer": "jan"}
+        for row in csv.DictReader(stale_csv.open(encoding="utf-8"))
+    ]
+    with stale_csv.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    from tests.test_matcher import STORE
+
+    led = Ledger.open(out / "ledger.sqlite")
+    try:
+        with pytest.raises(SnapshotMismatch, match="no longer current"):
+            apply_review(led, read_review(stale_csv), target_store_fingerprint=STORE.fingerprint)
+        assert list(led.iter_reviews("fp1")) == []  # all-or-nothing
+    finally:
+        led.close()

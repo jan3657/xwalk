@@ -218,10 +218,38 @@ def test_match_honours_an_explicit_index_directory(tmp_path, scripted_job):
 
 
 def test_match_limit_processes_only_the_first_n_records(tmp_path, scripted_job):
+    """The snapshot is still the whole source: the rest is pending, the run partial."""
     out = tmp_path / "run"
-    assert main(["match", "--job", JOB, "--out", str(out), "--limit", "2"]) == 0
+    assert main(["match", "--job", JOB, "--out", str(out), "--limit", "2"]) == 1
     rows = list(csv.DictReader((out / "mapping.csv").open(encoding="utf-8")))
-    assert [r["source_id"] for r in rows] == ["s1", "s2"]
+    assert [(r["source_id"], r["status"] == "pending") for r in rows] == [
+        ("s1", False),
+        ("s2", False),
+        ("s3", True),
+        ("s4", True),
+    ]
+    assert json.loads((out / "manifest.json").read_text(encoding="utf-8"))["run_state"] == (
+        "partial"
+    )
+
+
+def test_match_returns_three_when_a_fatal_provider_error_aborts_the_run(
+    tmp_path, monkeypatch, capsys
+):
+    from xwalk.config import JobSpec
+    from xwalk.llm.base import LLMFatalError
+    from xwalk.llm.fake import FakeLLM
+
+    def handler(request):
+        raise LLMFatalError("invalid api key")
+
+    monkeypatch.setattr(JobSpec, "build_llm", lambda self: FakeLLM(handler=handler))
+    out = tmp_path / "run"
+    assert main(["match", "--job", JOB, "--out", str(out)]) == 3
+    assert "fatal_provider_failure" in capsys.readouterr().err
+    assert json.loads((out / "manifest.json").read_text(encoding="utf-8"))["run_state"] == (
+        "aborted"
+    )
 
 
 def test_match_prints_a_status_breakdown(tmp_path, scripted_job, capsys):
