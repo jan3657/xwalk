@@ -126,3 +126,47 @@ def test_no_page_advertises_a_symbol_the_library_does_not_export(page: Path):
                 if part and not hasattr(module, part):
                     missing.append(f"{name}.{part}")
     assert not missing, f"{page.relative_to(ROOT)} imports names that do not exist: {missing}"
+
+
+def _quickstart_checker():
+    import importlib.util
+    import sys
+
+    path = ROOT / "scripts" / "check_readme_quickstart.py"
+    spec = importlib.util.spec_from_file_location("check_readme_quickstart", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses resolve annotations through sys.modules
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_readme_quickstart_is_offline_and_complete():
+    """The quickstart is the first thing a reader runs; it must need no credentials."""
+    steps = _quickstart_checker().quickstart_steps((ROOT / "README.md").read_text("utf-8"))
+    commands = [s.command for s in steps if s.command]
+    assert commands[0][:2] == ("xwalk", "init")
+    assert ("python", "quickstart.py") in commands
+    assert not any("match" in c for c in commands), "`xwalk match` needs a real endpoint"
+    validate = next(c for c in commands if c[:2] == ("xwalk", "validate"))
+    assert "--no-credentials" in validate
+
+
+def test_the_readme_quickstart_runs_exactly_as_written(tmp_path):
+    """Runs every quickstart command against this environment's `xwalk`. CI and the
+    release workflow run the same script against a clean install of the built wheel."""
+    import subprocess
+    import sys
+
+    done = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_readme_quickstart.py")]
+        + ["--bin", str(Path(sys.executable).parent), "--workdir", str(tmp_path / "w")],
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stdout[-2000:] + done.stderr[-2000:]
+    # The README quotes this line; keep the two in step.
+    quoted = "complete {'matched': 3, 'unmatched': 1, 'total': 4} model calls: 7"
+    assert quoted in done.stdout
+    assert quoted in " ".join((ROOT / "README.md").read_text("utf-8").split())
+    assert (tmp_path / "w" / "demo" / "reviewed.csv").exists()

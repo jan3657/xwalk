@@ -359,14 +359,17 @@ fingerprint.) The prompt drafting and optimising tools still pass their own
 `max_tokens=2048`. A per-stage value can be set only from Python, by passing
 `temperature=`/`max_tokens=` to a stage constructor.
 
-**Two unnamed retrievers of the same kind share an index directory.** The subdirectory is
-`spec.name or spec.kind`, so two `kind: dense` entries with different models both write to
-`<index>/dense`. Name them.
+**Two retrievers of the same kind need distinct names.** The index subdirectory is
+`spec.name or spec.kind`, so two unnamed `kind: dense` entries would share `<index>/dense`;
+validation refuses that (`invalid_value`) and asks you to name them.
 
-**Every command that needs retrieval calls `build`, not `open`.** Building replaces the
-contents of an index directory rather than adding to them, so pointing two runs at one
-`--index` directory is safe — but it does re-index the whole target collection each time.
-On a large collection, build once with `xwalk index` and pass `--index` to reuse it.
+**A persisted index is reused only when it matches.** `xwalk match` and `xwalk index`
+compute each index's identity components from the job and the target records (without
+encoding anything), then open a matching index, build an absent one, and refuse an
+incompatible one (exit 3, naming the differing components) unless `--rebuild-index` is
+given. Building replaces the directory's contents rather than adding to them. On a large
+collection, build once with `xwalk index` and pass the same `--index` to every `match`.
+`xwalk ablate` and `xwalk prompts optimize` still build their own indexes under `--out`.
 
 **Anything that changes what a result *means* changes the run fingerprint**: templates,
 slots, target snapshot, retriever set and depths, RRF constant, retriever timeout, LLM

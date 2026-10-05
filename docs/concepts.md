@@ -27,6 +27,10 @@ whole point.
 | `unmatched` | Positive evidence that nothing here corresponds. | Ship it as a non-match. |
 | `failed` | The infrastructure broke. | Fix the infrastructure and re-run. |
 
+Exports can also show `pending`: a source in the current collection that this run has
+not processed yet (for example beyond `--limit`). It is not a result, and the next
+invocation picks it up.
+
 `unmatched` and `failed` are separate because a provider returning 500 is not evidence
 about your data. Collapsing them means an outage silently becomes a batch of confident
 "no such record" answers, and you will not notice until someone downstream asks why
@@ -139,6 +143,14 @@ Every parse failure and every ambiguity in the pipeline resolves in the same dir
 
 None of these can produce an automatic match. That is the one direction where being
 wrong is expensive, because an automatic match is the one nobody looks at.
+
+## Cardinality
+
+Matching is many-to-one. Each source record gets at most one target, and several source
+records may get the same target; `duplicate_targets()` (and a warning from `xwalk match`)
+reports those, and both stay matched. There is no one-to-one assignment and no
+one-to-many output. Clustering (experimental) is a different relation: it partitions
+one collection into equivalence classes.
 
 ## Fingerprints and resume
 

@@ -2,9 +2,10 @@
 
 Matching records from any collection to any other, using retrieval plus an LLM.
 
-New here? Read [getting started](guide/getting-started.md), then
-[concepts](concepts.md). Looking for one specific signature? Go straight to the
-reference.
+New here? Run the offline quickstart in the [README](../README.md), then read
+[getting started](guide/getting-started.md) and [concepts](concepts.md). Changing the
+code? Start with [architecture](architecture.md). Looking for one specific signature? Go
+straight to the reference.
 
 ## Guides
 
@@ -13,8 +14,10 @@ Task-oriented, in the order you will need them.
 | Guide | Read it when |
 |---|---|
 | [Getting started](guide/getting-started.md) | You have two CSV files and want a mapping table. |
+| [The Python SDK, component by component](guide/python-sdk.md) | A job file cannot express what you need and you want to build every component by hand. |
 | [Concepts](concepts.md) | You want to know why the loop is shaped this way before you trust it. |
-| [What each component does](components.md) | You need to find the right module without reading forty of them. |
+| [Architecture](architecture.md) | You are changing xwalk: layers, invariants, and which modules and tests a change touches. |
+| [What each component does](components.md) | You need to find the right module without reading sixty of them. |
 | [Measuring a run](guide/evaluation.md) | You have gold labels and need to know what to change next. |
 | [Human review](guide/review.md) | You have a review bucket and need decisions back into the run. |
 | [Clustering one collection](guide/clustering.md) | You want one collection's equivalent records grouped (experimental). |
@@ -47,6 +50,7 @@ Complete API documentation. Every signature and default here is taken from the s
 | [Releasing](releasing.md) | Cutting a release. Maintainers only. |
 | [Benchmarks](benchmarks.md) | The pilot benchmark: data, the three tracks, how to reproduce, what is synthetic and what is pending, measured performance. |
 | [Contributing](../CONTRIBUTING.md) | The four gates, test markers, and the invariants the design will not give up. |
+| [Historical design plans](superpowers/README.md) | A one-page summary of the superseded July 2026 plans, so nobody needs to read them. |
 
 ## Worked examples
 
@@ -72,7 +76,7 @@ If you read nothing else:
    right.
 3. **The ledger is the source of truth.** `mapping.csv`, `results.jsonl` and
    `manifest.json` are exports regenerable from it.
-4. **Evaluation calls nothing.** Scoring a run is free, repeatable, and works with no
-   credentials.
+4. **Evaluation calls nothing.** Scoring a run makes no model calls, is repeatable, and
+   works with no credentials.
 5. **Everything fails toward review.** Unparseable output, an unrecognised verdict, an
    invented key — none of them can produce an automatic match.

@@ -105,8 +105,13 @@ without it they are indistinguishable.
 
 `failed` means infrastructure, not data. Check `attempt.error`:
 
-- `selector: ...` or `scorer: ...` — the provider. Auth failures raise `LLMFatalError` and
-  abort the record immediately rather than retrying.
+- `selector: ...` or `scorer: ...` — the provider. Recoverable errors (timeouts, rate
+  limits, unparseable output) are retried within `max_attempts`.
+- reason `fatal_provider_failure` — authentication, an unknown model or an invalid
+  request (`LLMFatalError`). `run_batch` does not commit that record, stops scheduling,
+  cancels what is in flight and records the run as `aborted` (exit 3). Fix the
+  configuration and run the same command again: completed records are kept and the rest
+  resume.
 - `retriever_failure` — every retriever raised or timed out. Check the index exists and
   `retriever_timeout` (default `60.0` seconds) is long enough.
 
@@ -184,14 +189,19 @@ See [platforms](../platforms.md) for the supported matrix and the explicit alter
 ## The CLI returned 1 and the run looks fine
 
 It is fine. `xwalk match` returns `1` when the run completed but the review bucket is
-non-empty — that is "something needs your attention", not failure.
+non-empty, or when `--limit` left records `pending` — that is "something needs your
+attention", not failure.
 
 | Code | Meaning |
 |---|---|
-| `0` | success |
-| `1` | completed, but something needs attention |
-| `2` | usage error |
-| `3` | runtime failure |
+| `0` | complete: nothing to review, nothing failed |
+| `1` | attention: `needs_review` rows, a `partial` run, or rejected review rows |
+| `2` | usage or configuration: bad flags, an invalid job file, a missing credential or extra |
+| `3` | runtime failure: an aborted run (including `--max-calls` reached), any `failed` row, an incompatible index or run directory |
+| `130` | interrupted (Ctrl-C); the next run resumes |
+
+`3` wins over `1`, and `1` over `0`. The full list is in the [CLI
+reference](../reference/cli.md#exit-codes).
 
 A `set -e` script needs to handle `1` explicitly:
 

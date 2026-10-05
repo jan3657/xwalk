@@ -85,7 +85,14 @@ def build(
 
 ```python
 @classmethod
-def open(cls, index_dir: str | Path, *, name: str | None = None) -> BM25Retriever
+def open(
+    cls,
+    index_dir: str | Path,
+    *,
+    name: str | None = None,
+    expected: Mapping[str, Any] | None = None,
+    default_limit: int | None = None,
+) -> BM25Retriever
 ```
 
 `build` renders each record through `templates.render_doc` and indexes it. Records that
@@ -93,18 +100,29 @@ render to empty text are still indexed (they remain reachable via `exact_fields`
 counted in `empty_doc_count` — a non-zero count usually means the `doc` template names
 fields your source does not produce.
 
-`open` reopens a built index without re-reading the records; `name` overrides the one
-recorded at build time. Opening a directory without `xwalk_meta.json` raises
-`FileNotFoundError` telling you to build first.
+`build` replaces whatever the directory held; it never appends (0.1.0 appended, which
+duplicated every document on a rebuild).
+
+`open` reopens a built index without re-reading the records; `name` and `default_limit`
+override the recorded ones. Opening a directory without `xwalk_meta.json` raises
+`FileNotFoundError` telling you to build first. With `expected` — the dict
+`index_components(records, templates, exact_fields=...)` returns, computed without
+building anything — an index whose stored components differ, or that predates stored
+components (built before 0.2), raises `IndexMismatchError` (a `ValueError` whose
+`differences` maps each component to `(stored, expected)`) and is left untouched.
+`xwalk match` and `xwalk index` always pass `expected` (see the [job
+file](job-file.md) for the command-level behaviour).
 
 ### What is written to disk
 
 `index_dir` holds Tantivy's own index — its `meta.json` plus segment files, all managed
 by Tantivy — and one file xwalk adds: `xwalk_meta.json`, recording `engine`
-(`"tantivy-bm25"`), `name`, `fingerprint`, `exact_fields`, `default_limit`,
-`doc_count`, and `empty_doc_count`. The fingerprint digests the engine, the `doc`
-template, `exact_fields`, and the sorted per-record hashes, so any change to content or
-configuration changes the run fingerprint.
+(`"tantivy-bm25"`), `name`, `fingerprint`, `components`, `exact_fields`,
+`default_limit`, `doc_count`, and `empty_doc_count`. `components` is the index identity:
+engine, index format version, normalisation version, the `doc` template,
+`exact_fields`, the record count and a digest of the sorted per-record hashes. The
+fingerprint is the hash of `components`, so any change to content or configuration
+changes the run fingerprint.
 
 ### `exact_fields`
 
@@ -211,6 +229,7 @@ def open(
     *,
     name: str | None = None,
     default_limit: int | None = None,
+    expected: Mapping[str, Any] | None = None,
 ) -> DenseRetriever
 ```
 
@@ -222,13 +241,18 @@ omitted it defaults to `dense:{encoder.name}`. Three files are written to `index
 |---|---|
 | `vectors.f32` | vectors as packed little-endian float32, one row per record |
 | `record_ids.json` | record IDs in row order |
-| `xwalk_meta.json` | engine, name, encoder, dimension, limit, fingerprint, doc count |
+| `xwalk_meta.json` | engine, name, encoder, dimension, limit, fingerprint, `components`, doc count |
 
 `open` requires the same encoder the index was built with, because a vector index is
 meaningless to a different encoder. It raises `FileNotFoundError` when
 `xwalk_meta.json` is absent, `ValueError` when `encoder.name` differs from the recorded
 encoder, and `ValueError` when `encoder.dimension` differs from the recorded dimension.
-`default_limit=None` keeps the value recorded at build time (falling back to 20).
+`default_limit=None` keeps the value recorded at build time (falling back to 20). With
+`expected` (from `xwalk.retrieval.dense.index_components(records, templates, encoder)`,
+which encodes nothing) every stored component is compared — engine, format version, `doc`
+template, record digest, and the encoder identity: model name, revision (`"unknown"`
+when unpinned), dimension, `normalize`, both prefixes and max sequence length — and a
+difference raises `IndexMismatchError` before any vector is read.
 
 ### FAISS vs pure Python
 

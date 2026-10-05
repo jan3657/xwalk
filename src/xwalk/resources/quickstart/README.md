@@ -12,5 +12,7 @@ xwalk export --run run --view reviewed --out reviewed.csv
 ```
 
 `match` needs the endpoint in `job.yaml` (the OpenAI API by default, key read from
-`OPENAI_API_KEY`). To run without any endpoint, use the Python route with a scripted
-model: see `docs/guide/getting-started.md` in the xwalk repository.
+`OPENAI_API_KEY`) and its calls are billed by the provider; `--max-calls` caps them. To
+run without any endpoint, validate with `xwalk validate --job job.yaml --no-credentials`
+and run the job from Python with a scripted model, as in the quickstart of the xwalk
+README (https://github.com/jan3657/xwalk#readme).

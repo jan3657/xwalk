@@ -9,6 +9,9 @@ By the end you will have a run directory you can score, resume, and hand to a re
 pip install xwalk
 ```
 
+(0.2 is a release candidate and not on PyPI yet; until it is, install from the
+repository with `pip install "xwalk @ git+https://github.com/jan3657/xwalk"`.)
+
 That is BM25 retrieval plus any OpenAI-compatible endpoint, and it does not install
 PyTorch. Add extras only when you need them:
 
@@ -17,6 +20,7 @@ pip install 'xwalk[dense]'      # sentence-transformers, torch, faiss-cpu
 pip install 'xwalk[ontology]'   # rdflib, for OWL sources
 pip install 'xwalk[sql]'        # SQLAlchemy, for database sources
 pip install 'xwalk[litellm]'    # the LiteLLM adapter
+pip install 'xwalk[mcp]'        # the MCP SDK, for `xwalk mcp`
 pip install 'xwalk[all]'
 ```
 
@@ -29,9 +33,13 @@ If a job file is all you need, the operations layer does the wiring below for yo
 
 ```bash
 xwalk init demo                     # a bundled job: five targets, four mentions
-xwalk validate --job demo/job.yaml  # strict and offline: no model call
-xwalk match --job demo/job.yaml --out demo/run --max-calls 50
+xwalk validate --job demo/job.yaml  # strict and offline: no model call; checks the key is set
+xwalk match --job demo/job.yaml --out demo/run --max-calls 50   # real endpoint: billed calls
 ```
+
+`match` calls the endpoint in `job.yaml` (OpenAI, key from `OPENAI_API_KEY`) and spends
+at most 50 upstream requests. With no endpoint, use the offline route below or the
+[README quickstart](../../README.md#quickstart-offline-no-credentials-no-inference-spending).
 
 The same from Python, offline, with a scripted stand-in for the model
 (`examples/quickstart.py` runs it):

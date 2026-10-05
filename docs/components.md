@@ -1,16 +1,18 @@
 # What each component does
 
-xwalk is roughly forty modules in seven layers. This page says what every one of them
+xwalk is roughly sixty modules in eight layers. This page says what every one of them
 is for, in one or two sentences, so you can find the right file without reading all of
 them. Each entry links to the reference page that documents its API in full.
 
 The layers depend downward only: prompts and stages depend on core types, the matcher
 depends on stages, batch depends on the matcher, and evaluation depends on nothing but
-the ledger. Nothing depends on the CLI.
+the ledger. Nothing depends on the CLI or the MCP server; both only format what
+`ops.py` returns. [Architecture](architecture.md) has the compact layer map, the
+invariants and a contributor map from a change to its modules and tests.
 
 ```
-cli/main.py ── config.py ─────────────────┐
-                                          ▼
+cli/main.py, mcp_server.py ── ops.py ── config.py ──┐
+                                                    ▼
   batch.py ──► matcher.py ──► stages/ ──► prompts/ ──► llm/
                   │              │
                   ├──► retrieval/│         records.py  policy.py
@@ -34,7 +36,7 @@ result you hold is a result nobody can edit behind your back.
 | `templates.py` | `TemplateSet`: the four Jinja templates (`query`, `context`, `doc`, `candidate`) that carry your entire domain mapping. Compiles eagerly so a typo fails at construction, and renders a missing record field as an empty string rather than aborting a 100k-row run. |
 | `fingerprint.py` | Deterministic hashing. `hash_record`, `run_fingerprint`, and `result_key` are what decide whether a previously computed result still applies — the whole resume mechanism rests here. |
 | `serde.py` | Converts a `MatchResult` tree to and from plain JSON-safe dicts, so the ledger can store one blob per result without knowing the shape of a result. |
-| `ledger.py` | The SQLite run store. Every completed result is committed the moment it finishes, so a crash at record 9,000 of 10,000 costs you one record. `mapping.csv`, `results.jsonl` and `manifest.json` are exports regenerated from here — this file is the source of truth. |
+| `ledger.py` | The SQLite run store. Every completed result is committed the moment it finishes, so a crash at record 9,000 of 10,000 costs you only the records in flight. Keeps the current view (one row per source in the latest snapshot), the full history, run invocations and the review overlay. `mapping.csv`, `results.jsonl` and `manifest.json` are exports regenerated from here — this file is the source of truth. |
 | `_extras.py` | The one place a missing optional dependency is explained. `require()` raises `MissingExtra` naming the extra and the exact `pip install` line, instead of an `ImportError` from a library you have never heard of. |
 
 ## Getting records in — [reference](reference/sources.md)
@@ -81,6 +83,7 @@ qualify equally.
 | `llm/openai_compat.py` | Chat Completions over httpx: retry with backoff, capability profiles per provider family, and a structured-output fallback that asks once and remembers. The API key is deliberately excluded from the fingerprint so rotating a key does not invalidate a resumable run. |
 | `llm/litellm.py` | A thin adapter over LiteLLM for the hundred providers it proxies. No retry loop and no profiles — it cannot know what any given backend supports, so it asks for nothing by default. Needs `xwalk[litellm]`. |
 | `llm/fake.py` | A scripted client. This is the reason the entire matcher loop is testable offline, and it is why the test suite runs in seconds with no credentials. |
+| `llm/budget.py` | `CallBudget` and `BudgetedLLM`: a per-invocation cap on upstream requests, reserved before each dispatch (retries included), so concurrent records cannot overshoot it. This is `--max-calls`. |
 | `llm/cache.py` | `CachingLLM` — serves an identical repeated request from the ledger. Delegates its identity to the wrapped client, so caching changes how an answer was obtained and never what it means. |
 | `llm/parsing.py` | Getting JSON out of what a model actually returns: thinking blocks (including the truncated and dangling-tag cases), fenced code blocks, trailing commas. Anything unsalvageable raises, and the matcher routes it to review — a malformed answer is a signal, not a non-match. |
 
@@ -115,7 +118,9 @@ makes scoring a run free, repeatable, and runnable on a machine with no credenti
 | Module | What it does |
 |---|---|
 | `config.py` | `JobSpec` — a job file is serialized constructor arguments and nothing more. Every field maps to something you would otherwise pass by hand, no config field gates behaviour the SDK cannot express, and credentials are environment variable *names*, never values. |
-| `cli/main.py` | Argument parsing and dispatch for the nine subcommands. Each one parses, calls one library function, prints, and returns an exit code. |
+| `ops.py` | The operations layer: `validate`, `index`, `run`, `search`, `inspect`, `explain`, `results`, `export`, `review_export`, `review_apply`, `init`, `cluster`. Each returns an `OpResult`, the versioned `--json` envelope with its exit code; strict job loading, index reuse checks, run-directory collision checks and the call budget live here. |
+| `cli/main.py` | Argument parsing and dispatch for the sixteen subcommands. Each one parses, calls one `ops` operation (or, for `eval`, `compare`, `ablate` and `prompts`, one library function), prints, and returns an exit code. |
+| `mcp_server.py` | `xwalk mcp`: six bounded tools over the Model Context Protocol, each calling one `ops` operation. Needs `xwalk[mcp]`. See the [MCP guide](guide/mcp.md). |
 
 ## Clustering (experimental) — [guide](guide/clustering.md)
 
