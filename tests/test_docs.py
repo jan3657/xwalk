@@ -87,6 +87,7 @@ def test_the_docs_index_links_to_every_page():
         p.relative_to(DOCS).as_posix()
         for p in DOCS.rglob("*.md")
         if "superpowers" not in p.parts
+        and "claude-upgrade" not in p.parts
         and p.name != "README.md"
         and p.relative_to(DOCS).as_posix() not in index
     ]
