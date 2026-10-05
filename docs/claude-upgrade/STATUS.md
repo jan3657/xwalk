@@ -11,7 +11,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 | 04 Flat clustering | Done, **experimental** (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `src/xwalk/cluster/` (engine, incremental pool index, SQLite store, prompts, job, ops operation), `xwalk cluster`, `ops.cluster`. New tests: `test_cluster_engine.py` (30), `test_cluster_ops.py` (16), `test_cluster_pool.py` (7), fixture `tests/fixtures/cluster_tiny/`; all with a scripted judge (FakeLLM handler), no paid calls. `python -m pytest -q`: 1124 passed, 15 skipped; `-m "not integration"`: 1124 passed, 14 skipped, 1 deselected; ruff check/format and mypy clean. Gates: all implementation gates met; real labelled sample **not** evaluated (no endpoint) -> experimental. Decision record: `CLUSTERING_DECISIONS.md` (incl. scaling table) |
 | 05 Benchmark and performance | Done (awaiting review; real eval pending) | unreported | unreported | worktree branch `worktree-agent-ad4549e848904883e` (off `d8fa82f`) | Python 3.11 venv `pip install -e ".[dev,ontology]"`. `python -m benchmarks.run --smoke` (SYNTHETIC judge, offline) on 4 pilot variants, raw output `benchmarks/results/smoke/` at `cd88923`; new `tests/test_benchmarks.py` (17). Profile + experiment in `benchmarks/results/perf/`: per-call Jinja recompilation in `PromptSet._render` is ~70% of xwalk's own CPU (0.440 s -> 0.188 s median with a cached template, prompts identical; ~1.5% at 200 ms/call). No library change made (fix is in `prompts/`, outside this task's file set). `python -m pytest -q`: 1097 passed, 3 skipped; `-m "not integration"`: 1097 passed, 2 skipped, 1 deselected; ruff check/format clean on src tests examples scripts benchmarks (133 files); mypy clean (67 files; benchmarks/ also strict-clean, 12 files). Without rdflib the cafeteria test skips. No paid calls; dense/LinkTransformer/real-model not run |
 | 06 Optional MCP | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"` + `mcp==2.3.0` (latest on PyPI at implementation; extra `xwalk[mcp]` = `mcp>=2.3,<3`). New `src/xwalk/mcp_server.py` (MCPServer, 6 tools), `xwalk mcp`, `ops.search`/`ops.list_results`/`ops.failure_result`, `xwalk search`/`xwalk results`. New tests: `test_ops_read.py` (16, base), `test_mcp.py` (9: 7 marked `mcp` via the SDK's in-process and stdio-subprocess clients plus a raw JSON-RPC stdout check; 2 missing-extra tests unmarked). `python -m pytest -q`: 1171 passed, 16 skipped; `-m "not integration"`: 1171 passed, 15 skipped, 1 deselected; `-m mcp`: 7 passed; without mcp installed `test_mcp.py`: 2 passed, 7 skipped; ruff check/format clean on src tests benchmarks examples scripts (151 files); mypy clean (79 files) with and without mcp installed. Offline scripted model only, no paid calls; host configs (Claude Code/Desktop) documented but not exercised |
-| 07 Documentation and release | Not started | | | | |
+| 07 Documentation and release | Done (awaiting review; not tagged or published) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv. Version 0.2.0rc1. `python -m build`: sdist + wheel, `twine check` PASSED; wheel has the 4 prompt skeletons, the 5 quickstart files, `py.typed`, `ops.py`, `mcp_server.py`, LICENSE, no tests. Fresh venv in the session scratchpad (outside the repo), `pip install <wheel>`: `pip check` clean, `xwalk --version` 0.2.0rc1, no heavy module importable (torch/numpy/rdflib/sqlalchemy/faiss/litellm/mcp), `xwalk mcp` exits 2 naming the extra. README quickstart run command for command from that install in an empty directory: `xwalk init demo`, `xwalk validate --job demo/job.yaml --no-credentials`, `python quickstart.py` (prints `complete {'matched': 3, 'unmatched': 1, 'total': 4} model calls: 7`), `xwalk inspect --run demo/run`, `xwalk explain --run demo/run s4`, `xwalk export --run demo/run --view reviewed --out demo/reviewed.csv`: all exit 0; also via `scripts/check_readme_quickstart.py --bin <venv>/bin`. `python -m pytest -q`: 1179 passed, 16 skipped; ruff check/format clean (src tests benchmarks examples scripts, 152 files); mypy clean (80 files). No paid calls; real-provider route documented, not executed |
 | 08 Independent review | Not started | | | | |
 
 Balances come from the actual promotional credit display, not a model estimate. Protect $55 for consolidation.
@@ -218,3 +218,33 @@ Balances come from the actual promotional credit display, not a model estimate. 
   host configurations are untested. CLI vs MCP consistency is tested for `inspect`,
   `results` and `validate` envelopes (byte-identical JSON objects).
 - Next recommended task: 07 (documentation and release).
+
+## Task 07 notes (for task 08 and the release)
+
+- **Docs**: README rewritten problem-first with an offline quickstart (FakeLLM script) and
+  a separate real-provider route; the 0.1 constructor tour moved intact to
+  `docs/guide/python-sdk.md`; new `docs/architecture.md` (layers, 11 invariants,
+  contributor map); `docs/superpowers/README.md` summarises the superseded plans.
+  Reconciled: index build/open behaviour (job-file, retrieval reference), troubleshooting
+  exit codes and fatal errors, components (ops, MCP, budget, subcommand count), the
+  prompt-optimise `max_calls` wording, getting-started install and extras, concepts
+  (pending, cardinality).
+- **README check**: the quickstart is marked `<!-- quickstart:begin/end -->`;
+  `scripts/check_readme_quickstart.py` runs it exactly; `tests/test_docs.py` runs it
+  in-repo, CI `build` and release `build` run it against the clean wheel install.
+- **Release**: `release.yml` gained a `gates` job on the tagged commit (build needs it),
+  wider wheel-content checks, artefact SHA-256s in the run summary, `pip check`, the README
+  check. Not executed on GitHub (no tag pushed).
+- **PyPI**: still 404 on 2026-10-05. The v0.1.1 publish log (run 30898407571) shows
+  `invalid-publisher` with claims repo `jan3657/xwalk`, workflow `release.yml`,
+  environment `pypi`; the workflow still sends these, so Jan must register the pending
+  Trusted Publisher (docs/releasing.md step 3) before tagging `v0.2.0rc1`. The 0.1.1
+  changelog entry no longer says it was published.
+- **Test fix**: two cluster oscillation tests assumed which of two tied clusters the
+  ambiguous record joins; the tie-break follows hash ids that include the version, so the
+  bump broke one. They now read the joined cluster from the scripted judge.
+- **Open**: the README install line uses the git URL of the default branch, which has
+  0.2 only once this branch is merged; the README's relative links will not resolve on
+  a PyPI project page; `xwalk inspect` shows the job's model name for a run made with an
+  injected offline model. CONTRIBUTING's lint paths omit `benchmarks` (CI includes it).
+- Next: task 08 (independent review), then the user's tag/publish decision.
