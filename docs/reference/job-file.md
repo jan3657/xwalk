@@ -242,6 +242,15 @@ retrieved and the budget cut it before the model saw it.
 
 See [prompts.md](prompts.md) for the slot reference.
 
+## Clustering jobs (`kind: cluster`)
+
+A file with `kind: cluster` at the top level is a clustering job for `xwalk cluster`
+(experimental). It has one collection (`source`), no `target`, `retrievers` or
+`prompts`; `templates` takes `query`, `context` and `candidate`; `llm` and `source` read
+exactly as here. Its own keys (`relation`, `order`, `pool`, `policy`, `dense`) are listed
+in [Clustering one collection](../guide/clustering.md). Validation is just as strict, and
+`xwalk match` refuses a clustering job with `wrong_job_kind`.
+
 ## Paths
 
 Every path inside a job file resolves against **the job file's own directory**, never the

@@ -77,6 +77,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Experimental flat equivalence clustering: `xwalk cluster --job cluster.yaml --out DIR`
+  (`kind: cluster` job files), `ops.cluster`, and `xwalk.cluster.run_clustering`. Groups
+  one collection's equivalent records with LLM decisions under bounded candidate lists
+  and `--max-calls`; outcomes `assigned`, `singleton`, `needs_review`, `failed`; verified
+  cluster merges without transitive closure; bounded refinement with a recorded stop
+  reason and the selected revision exported; one SQLite transaction per step, so an
+  interrupted run resumes to the same result; exports `members.csv`, `clusters.csv`,
+  `unresolved.csv`, `decisions.jsonl`. Tested with a scripted judge only; not evaluated
+  on a real model. See `docs/guide/clustering.md`.
+- `xwalk validate` accepts clustering jobs; `xwalk match` refuses one with
+  `wrong_job_kind` (exit 2).
 - `xwalk.ops`: one operations layer (`validate`, `index`, `run`/`run_async`, `inspect`,
   `explain`, `export`, `review_export`, `review_apply`, `init`) returning `OpResult`, the
   versioned machine-readable result; the CLI only formats it. The high-level Python

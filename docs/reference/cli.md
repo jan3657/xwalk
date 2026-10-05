@@ -76,7 +76,9 @@ Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missi
 `invalid_value`, `missing_file`, `missing_extra`, `credential_missing`, `duplicate_id`,
 `index_mismatch`, `run_fingerprint_mismatch`, `out_not_a_run`, `run_not_found`,
 `source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
-`interrupted` and `usage`.
+`interrupted` and `usage`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
+to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`, and the
+`experimental` warning.
 
 ## `init`
 
@@ -241,6 +243,30 @@ record and rerun: the record is matched again and `mapping.csv` keeps one row fo
 Remove a source record and rerun: it disappears from the exports (the manifest counts it
 under `removed_sources`). Earlier results are never deleted; they stay in the ledger's
 history (`xwalk export --view history`).
+
+## `cluster`
+
+Experimental. Groups the records of one collection into clusters of equivalent records,
+from a `kind: cluster` job. The workflow, the job keys, the outputs and the outcomes are
+described in [Clustering one collection](../guide/clustering.md).
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--job` | yes | — | a `kind: cluster` job file |
+| `--out` | yes | — | run directory |
+| `--max-calls` | no | none | cap the upstream LLM requests of this invocation; reaching it aborts at a step boundary (exit `3`, `call_limit_reached`) and the next invocation resumes |
+
+Run directories follow the `match` rules, with one difference: the ordered source
+snapshot is part of the run identity, so an edited source collection is a new run and an
+existing `--out` is refused. Writes `members.csv`, `clusters.csv`, `unresolved.csv`,
+`decisions.jsonl`, `manifest.json` and `cluster.sqlite`. Per-record progress goes to
+stderr. Exit codes: `0` complete, `1` complete with `needs_review` records, `2` usage or
+job error, `3` aborted run, failed records or a foreign run directory, `130` interrupted.
+`--json` data: `stop_reason`, `selected_revision`, `last_revision`, `exported_revision`,
+`experimental`.
+
+`validate` (and `doctor`) accept clustering jobs too: strict schema, source file,
+extras, credential presence and duplicate source ids, with no model call.
 
 ## `inspect`
 

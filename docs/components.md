@@ -117,6 +117,15 @@ makes scoring a run free, repeatable, and runnable on a machine with no credenti
 | `config.py` | `JobSpec` — a job file is serialized constructor arguments and nothing more. Every field maps to something you would otherwise pass by hand, no config field gates behaviour the SDK cannot express, and credentials are environment variable *names*, never values. |
 | `cli/main.py` | Argument parsing and dispatch for the nine subcommands. Each one parses, calls one library function, prints, and returns an exit code. |
 
+## Clustering (experimental) — [guide](guide/clustering.md)
+
+| Module | What it does |
+|---|---|
+| `cluster/engine.py` | The stream and refinement steps: assign, create, defer or fail each record; verified merges; reassignment with the incumbent always shown; stopping and the selected revision. |
+| `cluster/pool.py` | The cluster pool's retrieval index, updated per change instead of rebuilt per new cluster; fused with the matcher's RRF. |
+| `cluster/store.py` | Its own SQLite schema: one transaction per step, versioned cluster revisions, every decision with the clusters retrieved and shown. |
+| `cluster/run.py`, `cluster/operation.py` | Run identity, resume, call limits, exports; the `xwalk cluster` operation and `kind: cluster` validation. |
+
 ---
 
 ## Where to go next

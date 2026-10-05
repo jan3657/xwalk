@@ -8,7 +8,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 | 01 Matching correctness | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11, fresh venv `pip install -e ".[dev]"`. New `tests/test_matching_regressions.py` (audit cases 1-6 + generation precedence): 28 of 34 failed before the fix, 34 passed after. `python -m pytest -q -m "not integration"`: 946 passed, 14 skipped, 1 deselected; `python -m pytest -q`: 946 passed, 15 skipped; `ruff check src tests examples scripts`: all passed; `ruff format --check ...`: 110 files formatted; `mypy`: no issues in 64 files. FakeLLM/MockTransport only, no paid calls; dense/ontology/sql/integration not run. `audit/diagnose_audited_source.py` no longer runs (imports removed private `_clamp`); superseded by the package tests |
 | 02 Persistence and lifecycle | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `tests/test_lifecycle.py` (21), `tests/test_ledger_compat.py` (6, on the preserved 0.1.1 fixture), plus additions to test_ledger/test_review/test_batch/test_fingerprint/test_cli. Before the fix: 18 failed in test_batch+test_ledger and 3 new modules failed at import (new API); the two credential tests failed against the old clients. After: `python -m pytest -q`: 996 passed, 15 skipped; `-m "not integration"`: 996 passed, 14 skipped, 1 deselected; ruff check/format clean (113 files); mypy clean (64 files). FakeLLM/ScriptedRetriever only, no paid calls; dense/ontology/sql/integration not run |
 | 03 Shared operations and CLI | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"` (+ hatchling, now in the dev extra). Reproduced before the fix on `ae55e4c`: a misspelled `policy.accept_att` loaded with `accept_at=0.6`. New tests: `test_job_validation.py` (19), `test_call_budget.py` (7), `test_ops.py` (30), `test_cli_json.py` (11), plus test_bm25/test_packaging (wheel contents) additions; 4 CLI tests migrated to the contract exit codes / stderr warnings. `python -m pytest -q`: 1065 passed, 15 skipped; `-m "not integration"`: 1065 passed, 14 skipped, 1 deselected; ruff check/format clean (120 files); mypy clean (67 files). FakeLLM/MockTransport/toy encoders only, no paid calls; dense extra not installed (dense paths tested with fake encoders); ontology/sql/integration not run |
-| 04 Flat clustering | Not started | | | | |
+| 04 Flat clustering | Done, **experimental** (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `src/xwalk/cluster/` (engine, incremental pool index, SQLite store, prompts, job, ops operation), `xwalk cluster`, `ops.cluster`. New tests: `test_cluster_engine.py` (30), `test_cluster_ops.py` (16), `test_cluster_pool.py` (7), fixture `tests/fixtures/cluster_tiny/`; all with a scripted judge (FakeLLM handler), no paid calls. `python -m pytest -q`: 1124 passed, 15 skipped; `-m "not integration"`: 1124 passed, 14 skipped, 1 deselected; ruff check/format and mypy clean. Gates: all implementation gates met; real labelled sample **not** evaluated (no endpoint) -> experimental. Decision record: `CLUSTERING_DECISIONS.md` (incl. scaling table) |
 | 05 Benchmark and performance | Not started | | | | |
 | 06 Optional MCP | Not started | | | | |
 | 07 Documentation and release | Not started | | | | |
@@ -127,3 +127,33 @@ Balances come from the actual promotional credit display, not a model estimate. 
   0.1.x has no `fingerprint_components`, so a refusal there reports the component diff as
   unknown; indexes built before 0.2 are refused until `--rebuild-index`.
 - Next recommended task: 04 (flat equivalence clustering), reusing the above.
+
+## Task 04 notes (for task 05 and later)
+
+- **Experimental.** Every implementation gate of the task is met with a scripted judge
+  (`tests/cluster_helpers.Oracle`, a FakeLLM handler that answers from ground truth by
+  parsing the real prompts). No real model was run: the labelled-sample gate is open and
+  thresholds are uncalibrated. Task 05 can reuse `Oracle` for synthetic clustering
+  benchmarks and should add a real labelled sample (B-cubed/pairwise metrics are not
+  implemented yet) when an endpoint and budget exist.
+- Decisions and the eight reconciled conflicts: `CLUSTERING_DECISIONS.md`. Contract
+  additions (converged export, `mint_requires`, seed outcome): CONTRACTS.md section 10.
+- Default `pool.mint_requires` is `bounded` (after the configured expansion). The draft
+  default `retrieval_exhausted` deferred every late novel record whenever a common
+  token was shared; found by a test, kept as an option.
+- Scaling: the pool index is incremental pure-Python BM25 (+ optional brute-force dense
+  head). 16,000 query+mint steps took 1.7 s; Tantivy rebuild-per-mint took 5.8 s for 250.
+  Two quadratic per-search costs were found by the measurement and removed. Engine
+  overhead with the scripted judge: about 1 ms per call (1,200 sources, 4,101 calls,
+  4.0 s).
+- Ops/CLI: `ops.cluster`/`cluster_async` delegate to `xwalk.cluster.operation`;
+  `ops.validate` delegates for `kind: cluster` files; `config.parse_job` refuses a
+  clustering job (`wrong_job_kind`); `config._issues_from` takes the root spec so
+  "did you mean" works for cluster jobs. The CLI's Ctrl-C path reports a cluster run
+  only as exit 130 (no run summary; the manifest records `interrupted`).
+- Not done: `inspect`/`explain`/`review apply` for cluster runs, a clustering review
+  overlay, concurrency (processing is sequential), cluster names, LLM-judged or gold
+  metrics for clusters, any hierarchy.
+- Next recommended task: 05 (benchmarks), with a small labelled clustering sample
+  evaluated on a real endpoint before clustering loses its experimental label.
+
