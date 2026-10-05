@@ -29,13 +29,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from xwalk.batch import run_fingerprint_components
 from xwalk.fingerprint import hash_value
 from xwalk.llm.base import LLMClient
-from xwalk.llm.openai_compat import OpenAICompatClient
+from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
 from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
 from xwalk.prompts.contract import PromptSet, load_slots
 from xwalk.records import Record
 from xwalk.retrieval.base import Retriever
 from xwalk.retrieval.bm25 import BM25Retriever
+from xwalk.retrieval.dense import Encoder
 from xwalk.sources.tabular import csv_source, jsonl_source
 from xwalk.stages.gate import Scorer, Verifier
 from xwalk.stages.rewrite import QueryRewriter
@@ -43,6 +44,18 @@ from xwalk.stages.select import Selector, SelectorPolicy
 from xwalk.stores.base import TargetStore
 from xwalk.stores.memory import MemoryStore
 from xwalk.templates import TemplateSet
+
+
+class CredentialMissingError(ValueError):
+    """The environment variable named by `llm.api_key_env` is unset. Its value, when
+    set, is never printed or stored."""
+
+    def __init__(self, variable: str) -> None:
+        self.variable = variable
+        super().__init__(
+            f"environment variable {variable} is not set; "
+            f"export it or change llm.api_key_env in the job file"
+        )
 
 
 class _Spec(BaseModel):
@@ -189,6 +202,13 @@ class RetrieverSpec(_Spec):
         return self
 
     @property
+    def effective_exact_fields(self) -> tuple[str, ...]:
+        """bm25 `exact_fields`, defaulting to label and synonyms."""
+        if self.exact_fields is None:
+            return ("label", "synonyms")
+        return tuple(self.exact_fields)
+
+    @property
     def index_name(self) -> str:
         """The index subdirectory: `name`, or the kind when unnamed."""
         return self.name or self.kind
@@ -218,6 +238,10 @@ class LLMSpec(_Spec):
             )
         if self.kind == "openai_compat" and not self.base_url:
             raise ValueError("openai_compat needs a base_url")
+        if self.profile not in CAPABILITY_PROFILES:
+            raise ValueError(
+                f"unknown profile {self.profile!r}; choose from {sorted(CAPABILITY_PROFILES)}"
+            )
         return self
 
 
@@ -311,44 +335,46 @@ class JobSpec(_Spec):
                         templates,
                         target,
                         name=spec.name or "bm25",
-                        exact_fields=tuple(
-                            spec.exact_fields
-                            if spec.exact_fields is not None
-                            else ("label", "synonyms")
-                        ),
+                        exact_fields=spec.effective_exact_fields,
                         default_limit=spec.limit,
                     )
                 )
             else:
-                from xwalk.retrieval.dense import DenseRetriever, SentenceTransformerEncoder
+                from xwalk.retrieval.dense import DenseRetriever
 
-                encoder = SentenceTransformerEncoder(
-                    spec.model or "",
-                    device=spec.device,
-                    query_prefix=spec.query_prefix,
-                    doc_prefix=spec.doc_prefix,
-                )
                 built.append(
                     DenseRetriever.build(
                         records,
                         templates,
                         target,
-                        encoder,
+                        self.build_encoder(spec),
                         name=spec.name,
                         default_limit=spec.limit,
                     )
                 )
         return built
 
+    @staticmethod
+    def build_encoder(spec: RetrieverSpec) -> Encoder:
+        """The encoder a dense retriever spec describes. Loads the model (requires
+        xwalk[dense]); never encodes anything."""
+        from xwalk.retrieval.dense import SentenceTransformerEncoder
+
+        return SentenceTransformerEncoder(
+            spec.model or "",
+            device=spec.device,
+            normalize=spec.normalize,
+            query_prefix=spec.query_prefix,
+            doc_prefix=spec.doc_prefix,
+            revision=spec.revision,
+        )
+
     def build_llm(self) -> LLMClient:
         api_key = None
         if self.llm.api_key_env:
             api_key = os.environ.get(self.llm.api_key_env)
             if not api_key:
-                raise ValueError(
-                    f"environment variable {self.llm.api_key_env} is not set; "
-                    f"export it or change llm.api_key_env in the job file"
-                )
+                raise CredentialMissingError(self.llm.api_key_env)
         if self.llm.kind == "openai_compat":
             return OpenAICompatClient(
                 base_url=self.llm.base_url or "",

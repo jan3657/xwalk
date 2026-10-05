@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
@@ -190,3 +192,25 @@ def test_the_sdist_excludes_developer_scaffolding():
     useless to the recipient and a needless disclosure."""
     assert "[tool.hatch.build.targets.sdist]" in PYPROJECT
     assert '"_env.sh"' in PYPROJECT
+
+
+def test_the_wheel_ships_the_bundled_example_and_prompt_skeletons(tmp_path):
+    """`xwalk init` and `ops.bundled_example()` read package data; a wheel without it
+    would install a CLI whose first suggested command fails."""
+    import zipfile
+
+    pytest.importorskip("hatchling", reason="building the wheel needs hatchling (dev extra)")
+    built = subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "-w"]
+        + [str(tmp_path), str(ROOT)],
+        capture_output=True,
+        text=True,
+    )
+    assert built.returncode == 0, built.stderr[-2000:]
+    (wheel,) = tmp_path.glob("xwalk-*.whl")
+    names = set(zipfile.ZipFile(wheel).namelist())
+    for name in ("job.yaml", "slots.yaml", "targets.csv", "sources.csv", "README.md"):
+        assert f"xwalk/resources/quickstart/{name}" in names
+    for name in ("select.j2", "score.j2", "verify.j2", "rewrite.j2"):
+        assert any(n.endswith(f"/{name}") for n in names), name
+    assert "xwalk/ops.py" in names and "xwalk/py.typed" in names

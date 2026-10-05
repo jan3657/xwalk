@@ -1,0 +1,51 @@
+# xwalk quickstart: map free-text chemical mentions (sources.csv) to ChEBI-style terms
+# (targets.csv). Every relative path resolves against this file's directory.
+#
+#   xwalk validate --job job.yaml       # offline: no model call, credentials checked by name
+#   xwalk match --job job.yaml --out run --max-calls 50
+#   xwalk inspect --run run
+#
+# The llm block below targets the OpenAI API. Point base_url/model at any
+# OpenAI-compatible endpoint instead (vLLM, Ollama at http://localhost:11434/v1, ...),
+# and drop api_key_env if it needs no key.
+name: quickstart
+
+templates:
+  query: "{{ mention }}"
+  context: "{{ context_left }} [{{ mention }}] {{ context_right }}"
+  doc: "{{ label }} {{ synonyms | join(' ') }}"
+  candidate: "ID: {{ id }} Label: {{ label }} Synonyms: {{ synonyms | join('; ') }}"
+
+target:
+  kind: csv
+  path: targets.csv
+  id_column: id
+  multivalue_columns: [synonyms]
+
+source:
+  kind: csv
+  path: sources.csv
+  id_column: mention_id
+
+retrievers:
+  - kind: bm25
+    name: bm25
+    limit: 20
+    exact_fields: [label, synonyms]
+
+llm:
+  kind: openai_compat
+  model: gpt-4o-mini
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY
+  profile: openai
+
+prompts:
+  slots: slots.yaml
+
+policy:
+  max_attempts: 3
+  accept_at: 0.6
+  review_floor: 0.4
+  verify_band: [0.6, 0.8]
+  concurrency: 4

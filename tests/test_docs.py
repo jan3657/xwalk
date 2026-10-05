@@ -104,6 +104,7 @@ def test_no_page_advertises_a_symbol_the_library_does_not_export(page: Path):
     import xwalk.batch
     import xwalk.evaluate
     import xwalk.llm
+    import xwalk.ops
     import xwalk.prompts.contract
     import xwalk.retrieval.bm25
     import xwalk.review
@@ -113,6 +114,7 @@ def test_no_page_advertises_a_symbol_the_library_does_not_export(page: Path):
         "xwalk.review": xwalk.review,
         "xwalk.batch": xwalk.batch,
         "xwalk.llm": xwalk.llm,
+        "xwalk.ops": xwalk.ops,
         "xwalk.prompts.contract": xwalk.prompts.contract,
         "xwalk.retrieval.bm25": xwalk.retrieval.bm25,
     }

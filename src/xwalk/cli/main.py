@@ -1,14 +1,18 @@
-"""The CLI: a thin shell over the SDK.
+"""The CLI: argument parsing and formatting over `xwalk.ops`.
 
-Every subcommand parses arguments, calls one library function, prints, and returns an
-exit code. Nothing worth testing lives here.
+Every subcommand parses arguments, calls one operation, and prints its `OpResult`:
+human lines on stdout, or with `--json` exactly one JSON envelope (schema 1) on stdout.
+Warnings, errors and progress go to stderr, so stdout stays parseable on success and on
+failure.
 
-Exit codes:
-  0  success
-  1  something needs attention (non-empty review bucket, or a partial run from --limit)
-  2  usage error
-  3  runtime failure (missing key, unreadable file, unsupported platform, a run that
-     aborted or has failed records)
+Exit codes (docs/claude-upgrade/CONTRACTS.md section 8):
+  0    complete: no review rows, no failed rows
+  1    attention: rows need review, a partial run from --limit, or rejected review rows
+  2    usage or configuration error: bad flags, invalid job file, missing credential
+       or optional extra
+  3    runtime failure: aborted or failed run, IO error, incompatible index or run
+       directory
+  130  interrupted (Ctrl-C)
 """
 
 from __future__ import annotations
@@ -17,21 +21,36 @@ import argparse
 import asyncio
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from xwalk import __version__
+from xwalk.ops import (
+    EXIT_ATTENTION,
+    EXIT_INTERRUPTED,
+    EXIT_OK,
+    EXIT_RUNTIME,
+    EXIT_USAGE,
+    EXPORT_VIEWS,
+    OpError,
+    OpMessage,
+    OpResult,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from xwalk.evaluate.ablate import MatcherConfig
     from xwalk.matcher import Matcher
     from xwalk.prompts.contract import PromptSet
 
-EXIT_OK = 0
-EXIT_ATTENTION = 1
-EXIT_USAGE = 2
-EXIT_RUNTIME = 3
+__all__ = [
+    "EXIT_ATTENTION",
+    "EXIT_INTERRUPTED",
+    "EXIT_OK",
+    "EXIT_RUNTIME",
+    "EXIT_USAGE",
+    "main",
+]
 
 
 def _run_fingerprint_of(run_dir: Path) -> str:
@@ -40,48 +59,99 @@ def _run_fingerprint_of(run_dir: Path) -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    # `--json` lives on every leaf parser through this parent. argparse binds an option
+    # to whichever parser is active when it is seen, so a flag declared only on the
+    # top-level parser but typed after the subcommand would be unrecognised.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--json",
+        action="store_true",
+        help="print one JSON result object (schema 1) on stdout; logs stay on stderr",
+    )
+
     parser = argparse.ArgumentParser(
         prog="xwalk", description="Match records from any collection to any other."
     )
     parser.add_argument("--version", action="store_true", help="print the version and exit")
     sub = parser.add_subparsers(dest="command")
 
-    index = sub.add_parser("index", help="build retriever indexes for a job")
+    init = sub.add_parser("init", parents=[common], help="copy the bundled quickstart job")
+    init.add_argument("dest", nargs="?", default="xwalk-quickstart", help="new directory")
+
+    validate = sub.add_parser(
+        "validate",
+        aliases=["doctor"],
+        parents=[common],
+        help="offline preflight of a job: no model calls",
+    )
+    validate.add_argument("--job", required=True)
+    validate.add_argument(
+        "--no-credentials",
+        dest="check_credentials",
+        action="store_false",
+        help="do not require the llm.api_key_env variable to be set",
+    )
+    validate.add_argument(
+        "--no-scan",
+        dest="scan_records",
+        action="store_false",
+        help="do not read the collections (skips duplicate-id checks)",
+    )
+
+    index = sub.add_parser("index", parents=[common], help="build or open retriever indexes")
     index.add_argument("--job", required=True)
     index.add_argument("--out", required=True, help="index directory")
+    index.add_argument("--rebuild-index", action="store_true", help="replace an incompatible index")
 
-    match = sub.add_parser("match", help="run a matching job")
+    match = sub.add_parser("match", parents=[common], help="run a matching job")
     match.add_argument("--job", required=True)
     match.add_argument("--out", required=True, help="run directory")
     match.add_argument("--index", default=None, help="index directory (default: <out>/index)")
     match.add_argument("--resume", action="store_true", default=True)
     match.add_argument("--no-resume", dest="resume", action="store_false")
     match.add_argument("--limit", type=int, default=None, help="process only the first N records")
+    match.add_argument(
+        "--max-calls",
+        type=int,
+        default=None,
+        help="cap upstream LLM requests in this invocation (retries and rewrites included)",
+    )
+    match.add_argument("--rebuild-index", action="store_true", help="replace an incompatible index")
 
-    ev = sub.add_parser("eval", help="evaluate a completed run against gold labels")
+    inspect = sub.add_parser("inspect", parents=[common], help="summarise a run directory")
+    inspect.add_argument("--run", required=True)
+
+    explain = sub.add_parser("explain", parents=[common], help="explain one source's decision")
+    explain.add_argument("source_id")
+    explain.add_argument("--run", required=True)
+    explain.add_argument("--full", action="store_true", help="include the stored result")
+
+    export = sub.add_parser("export", parents=[common], help="export a view of a run")
+    export.add_argument("--run", required=True)
+    export.add_argument("--view", choices=EXPORT_VIEWS, default="raw")
+    export.add_argument("--out", required=True)
+
+    ev = sub.add_parser("eval", parents=[common], help="evaluate a run against gold labels")
     ev.add_argument("--run", required=True)
     ev.add_argument("--gold", required=True)
     ev.add_argument("--out", default=None, help="write <out>.json and <out>.txt")
 
-    comp = sub.add_parser("compare", help="compare completed runs")
+    comp = sub.add_parser("compare", parents=[common], help="compare completed runs")
     comp.add_argument("--gold", required=True)
     comp.add_argument("--run", action="append", required=True, help="LABEL=PATH, repeatable")
 
-    abl = sub.add_parser("ablate", help="re-run with each component disabled")
+    abl = sub.add_parser("ablate", parents=[common], help="re-run with each component disabled")
     abl.add_argument("--job", required=True)
     abl.add_argument("--gold", required=True)
     abl.add_argument("--out", required=True)
 
-    # Flags live on the leaf subparsers, never on the group. argparse binds an option
-    # to whichever parser is active when it is seen, so a flag declared on the group
-    # but typed after the subcommand is simply unrecognised.
     prompts = sub.add_parser("prompts", help="draft or optimise prompt slots")
     prompt_sub = prompts.add_subparsers(dest="prompts_command")
-    draft = prompt_sub.add_parser("draft")
+    draft = prompt_sub.add_parser("draft", parents=[common])
     draft.add_argument("--job", required=True)
     draft.add_argument("--describe", required=True)
     draft.add_argument("--out", required=True)
-    optimise = prompt_sub.add_parser("optimize")
+    optimise = prompt_sub.add_parser("optimize", parents=[common])
     optimise.add_argument("--job", required=True)
     optimise.add_argument("--gold", required=True)
     optimise.add_argument("--out", required=True)
@@ -91,10 +161,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     review = sub.add_parser("review", help="export or apply human review")
     review_sub = review.add_subparsers(dest="review_command")
-    export = review_sub.add_parser("export")
-    export.add_argument("--run", required=True)
-    export.add_argument("--out", required=True)
-    apply_ = review_sub.add_parser("apply")
+    rexport = review_sub.add_parser("export", parents=[common])
+    rexport.add_argument("--run", required=True)
+    rexport.add_argument("--out", required=True)
+    apply_ = review_sub.add_parser("apply", parents=[common])
     apply_.add_argument("--run", required=True)
     apply_.add_argument("--reviewed", required=True)
     apply_.add_argument("--job", required=True)
@@ -102,72 +172,67 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _cmd_index(args: argparse.Namespace) -> int:
-    from xwalk.config import load_job
-
-    job = load_job(args.job)
-    templates = job.build_templates()
-    records = list(job.build_target_records())
-    retrievers = job.build_retrievers(records, templates, args.out)
-    print(f"indexed {len(records)} target records into {len(retrievers)} retriever(s)")
-    for retriever in retrievers:
-        print(f"  {retriever.name}: {retriever.fingerprint}")
-    return EXIT_OK
+# --- handlers: parse -> one operation -> OpResult -----------------------------------
 
 
-def _cmd_match(args: argparse.Namespace) -> int:
-    from xwalk.batch import RunState, run_batch
-    from xwalk.config import load_job
+def _cmd_init(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
 
-    job = load_job(args.job)
-    index_dir = Path(args.index or Path(args.out) / "index")
-    templates = job.build_templates()
-    targets = list(job.build_target_records())
-    store = job.build_store()
-    retrievers = job.build_retrievers(targets, templates, index_dir)
-    llm = job.build_llm()
-    matcher = job.build_matcher(store=store, retrievers=retrievers, llm=llm)
+    return ops.init(args.dest)
 
-    # The whole source is read even with --limit: the run's snapshot is the full
-    # collection, and the records beyond the limit are reported as pending.
-    report = asyncio.run(
-        run_batch(
-            matcher,
-            job.build_source_records(),
-            out=args.out,
-            resume=args.resume,
-            limit=args.limit,
-            manifest_extra={"job": job.name, "model": job.llm.model},
-            fingerprint_components=job.run_fingerprint_components(
-                store=store, retrievers=retrievers, llm=llm
-            ),
-        )
+
+def _cmd_validate(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.validate(
+        args.job, check_credentials=args.check_credentials, scan_records=args.scan_records
     )
-    print(f"matched {report.total} records into {report.out_dir}")
-    print(f"  run state     : {report.run_state.value}")
-    for status, count in sorted(report.by_status().items(), key=lambda kv: kv[0].value):
-        print(f"  {status.value:<14}: {count}")
-    if report.pending:
-        print(f"  {'pending':<14}: {report.pending}")
-    print(f"  tokens        : {report.usage.describe_tokens()} in {report.usage.calls} calls")
-    for error in report.errors:
-        print(f"error: {error.source_id or '-'}: {error.code}: {error.message}", file=sys.stderr)
-    duplicates = report.duplicate_targets()
-    if duplicates:
-        print(f"  duplicate targets: {len(duplicates)} (see manifest.json)")
-    # Interim mapping until task 03's shared operations: failures are never a success.
-    if report.run_state in (RunState.ABORTED, RunState.FAILED):
-        return EXIT_RUNTIME
-    review_count = len(report.needs_review())
-    if review_count:
-        print(f"\n{review_count} rows need review: xwalk review export --run {args.out}")
-        return EXIT_ATTENTION
-    if report.run_state is RunState.PARTIAL:
-        return EXIT_ATTENTION
-    return EXIT_OK
 
 
-def _cmd_eval(args: argparse.Namespace) -> int:
+def _cmd_index(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.index(args.job, args.out, rebuild=args.rebuild_index)
+
+
+def _progress(result: Any) -> None:
+    print(f"  {result.source_id}: {result.status.value}", file=sys.stderr)
+
+
+def _cmd_match(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.run(
+        args.job,
+        args.out,
+        index_dir=args.index,
+        resume=args.resume,
+        limit=args.limit,
+        max_calls=args.max_calls,
+        rebuild_index=args.rebuild_index,
+        progress=_progress,
+    )
+
+
+def _cmd_inspect(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.inspect(args.run)
+
+
+def _cmd_explain(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.explain(args.run, args.source_id, full=args.full)
+
+
+def _cmd_export(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.export(args.run, args.view, args.out)
+
+
+def _cmd_eval(args: argparse.Namespace) -> OpResult:
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.evaluate.report import evaluate, render_report, write_report
     from xwalk.ledger import Ledger
@@ -179,13 +244,15 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         report = evaluate(ledger, _run_fingerprint_of(run_dir), gold)
     finally:
         ledger.close()
-    print(render_report(report))
+    result = OpResult(operation="eval", lines=[render_report(report)])
+    result.data = {"report": report.as_dict()}
     if args.out:
         write_report(report, args.out)
-    return EXIT_OK
+        result.artifacts = {"json": f"{args.out}.json", "text": f"{args.out}.txt"}
+    return result
 
 
-def _cmd_compare(args: argparse.Namespace) -> int:
+def _cmd_compare(args: argparse.Namespace) -> OpResult:
     from xwalk.evaluate.compare import RunSummary, compare_runs, summarise_run
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.ledger import Ledger
@@ -194,8 +261,9 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     summaries: list[RunSummary] = []
     for entry in args.run:
         if "=" not in entry:
-            print(f"--run expects LABEL=PATH, got {entry!r}", file=sys.stderr)
-            return EXIT_USAGE
+            raise OpError(
+                "compare", "usage", f"--run expects LABEL=PATH, got {entry!r}", exit_code=EXIT_USAGE
+            )
         label, _, path = entry.partition("=")
         run_dir = Path(path)
         ledger = Ledger.open(run_dir / "ledger.sqlite")
@@ -203,22 +271,23 @@ def _cmd_compare(args: argparse.Namespace) -> int:
             summaries.append(summarise_run(ledger, _run_fingerprint_of(run_dir), gold, label=label))
         finally:
             ledger.close()
-    print(compare_runs(summaries))
-    return EXIT_OK
+    table = compare_runs(summaries)
+    return OpResult(operation="compare", lines=[table], data={"table": table})
 
 
-def _cmd_ablate(args: argparse.Namespace) -> int:
+def _cmd_ablate(args: argparse.Namespace) -> OpResult:
     from dataclasses import asdict
 
-    from xwalk.config import load_job
+    from xwalk import ops
     from xwalk.evaluate.ablate import MatcherConfig, ablate
     from xwalk.evaluate.gold import load_gold_csv
+    from xwalk.stores.memory import MemoryStore
 
-    job = load_job(args.job)
+    job = ops.load_valid_job(args.job, operation="ablate")
     gold = load_gold_csv(args.gold)
     templates = job.build_templates()
     targets = list(job.build_target_records())
-    store = job.build_store()
+    store = MemoryStore.from_source(targets)
     llm = job.build_llm()
     index_dir = Path(args.out) / "index"
     all_retrievers = job.build_retrievers(targets, templates, index_dir)
@@ -243,30 +312,36 @@ def _cmd_ablate(args: argparse.Namespace) -> int:
         policy=job.build_policy(),
         selector_policy=job.build_selector_policy(),
     )
-    report = asyncio.run(
-        ablate(
-            factory,
-            base,
-            list(job.build_source_records()),
-            gold,
-            out=Path(args.out) / "ablation.json",
+    out = Path(args.out) / "ablation.json"
+    report = asyncio.run(ablate(factory, base, list(job.build_source_records()), gold, out=out))
+    result = OpResult(operation="ablate", artifacts={"ablation": str(out)})
+    result.data = {
+        "rows": [
+            {"name": row.name, "description": row.description, "delta": row.delta}
+            for row in report.rows
+        ]
+    }
+    result.lines = [
+        f"  {row.name:<16} {row.description:<34} delta {row.delta:+.3f}" for row in report.rows
+    ]
+    return result
+
+
+def _cmd_prompts(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    command = getattr(args, "prompts_command", None)
+    if command not in ("draft", "optimize"):
+        raise OpError(
+            "prompts",
+            "usage",
+            "prompts needs a subcommand: draft or optimize",
+            exit_code=EXIT_USAGE,
         )
-    )
-    for row in report.rows:
-        print(f"  {row.name:<16} {row.description:<34} delta {row.delta:+.3f}")
-    return EXIT_OK
 
+    job = ops.load_valid_job(args.job, operation=f"prompts {command}")
 
-def _cmd_prompts(args: argparse.Namespace) -> int:
-    from xwalk.config import load_job
-
-    if getattr(args, "prompts_command", None) not in ("draft", "optimize"):
-        print("prompts needs a subcommand: draft or optimize", file=sys.stderr)
-        return EXIT_USAGE
-
-    job = load_job(args.job)
-
-    if args.prompts_command == "draft":
+    if command == "draft":
         from xwalk.prompts.author import draft_slots, slots_diff, write_slots
         from xwalk.prompts.contract import load_slots
 
@@ -285,23 +360,33 @@ def _cmd_prompts(args: argparse.Namespace) -> int:
                 existing=existing,
             )
         )
-        for warning in draft.warnings:
-            print(f"warning: {warning}")
+        result = OpResult(operation="prompts draft", artifacts={"slots": str(args.out)})
+        result.warnings = [OpMessage("draft_warning", w) for w in draft.warnings]
         if existing is not None:
-            print(slots_diff(existing, draft.slots) or "(no changes)")
+            result.lines.append(slots_diff(existing, draft.slots) or "(no changes)")
         write_slots(draft.slots, args.out)
-        print(f"wrote {args.out}")
-        return EXIT_OK
+        result.lines.append(f"wrote {args.out}")
+        return result
 
     from xwalk.evaluate.failures import PromptRole
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.prompts.contract import load_slots
     from xwalk.prompts.optimize import OptimizeConfig, optimize_prompt
+    from xwalk.stores.memory import MemoryStore
 
+    try:
+        role = PromptRole(args.role)
+    except ValueError:
+        raise OpError(
+            "prompts optimize",
+            "usage",
+            f"unknown --role {args.role!r}; choose from {[r.value for r in PromptRole]}",
+            exit_code=EXIT_USAGE,
+        ) from None
     gold = load_gold_csv(args.gold)
     templates = job.build_templates()
     targets = list(job.build_target_records())
-    store = job.build_store()
+    store = MemoryStore.from_source(targets)
     llm = job.build_llm()
     retrievers = job.build_retrievers(targets, templates, Path(args.out) / "index")
 
@@ -317,55 +402,43 @@ def _cmd_prompts(args: argparse.Namespace) -> int:
             gold=gold,
             initial=load_slots(job.base_dir / job.prompts.slots),
             optimiser_llm=llm,
-            config=OptimizeConfig(
-                role=PromptRole(args.role), rounds=args.rounds, max_calls=args.max_calls
-            ),
+            config=OptimizeConfig(role=role, rounds=args.rounds, max_calls=args.max_calls),
             work_dir=args.out,
-            progress=print,
+            progress=lambda line: print(line, file=sys.stderr),
         )
     )
-    print(f"stopped: {report.stopped_because}")
+    result = OpResult(operation="prompts optimize", artifacts={"work_dir": str(args.out)})
+    result.data = {"stopped_because": str(report.stopped_because)}
+    result.lines.append(f"stopped: {report.stopped_because}")
     if report.test_report is not None:
-        print(f"test accepted precision: {report.test_report.accepted_precision}")
-    return EXIT_OK
+        precision = report.test_report.accepted_precision
+        result.data["test_accepted_precision"] = precision
+        result.lines.append(f"test accepted precision: {precision}")
+    return result
 
 
-def _cmd_review(args: argparse.Namespace) -> int:
-    from xwalk.ledger import Ledger
-    from xwalk.review import apply_review, export_review, read_review
+def _cmd_review(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
 
-    if getattr(args, "review_command", None) not in ("export", "apply"):
-        print("review needs a subcommand: export or apply", file=sys.stderr)
-        return EXIT_USAGE
-
-    run_dir = Path(args.run)
-    ledger = Ledger.open(run_dir / "ledger.sqlite")
-    try:
-        run_fp = _run_fingerprint_of(run_dir)
-        if args.review_command == "export":
-            count = export_review(ledger, run_fp, args.out)
-            print(f"exported {count} rows to {args.out}")
-            return EXIT_OK
-
-        from xwalk.config import load_job
-
-        job = load_job(args.job)
-        report = apply_review(
-            ledger,
-            read_review(args.reviewed),
-            target_store_fingerprint=job.build_store().fingerprint,
-        )
-        print(f"applied {report.applied} decisions")
-        for key, why in report.rejected:
-            print(f"  rejected {key}: {why}", file=sys.stderr)
-        return EXIT_ATTENTION if report.rejected else EXIT_OK
-    finally:
-        ledger.close()
+    command = getattr(args, "review_command", None)
+    if command == "export":
+        return ops.review_export(args.run, args.out)
+    if command == "apply":
+        return ops.review_apply(args.run, args.reviewed, args.job)
+    raise OpError(
+        "review", "usage", "review needs a subcommand: export or apply", exit_code=EXIT_USAGE
+    )
 
 
-_DISPATCH: dict[str, Any] = {
+_DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
+    "init": _cmd_init,
+    "validate": _cmd_validate,
+    "doctor": _cmd_validate,
     "index": _cmd_index,
     "match": _cmd_match,
+    "inspect": _cmd_inspect,
+    "explain": _cmd_explain,
+    "export": _cmd_export,
     "eval": _cmd_eval,
     "compare": _cmd_compare,
     "ablate": _cmd_ablate,
@@ -374,14 +447,72 @@ _DISPATCH: dict[str, Any] = {
 }
 
 
+# --- output -------------------------------------------------------------------------
+
+
+def _operation_name(args: argparse.Namespace) -> str:
+    command = str(args.command)
+    sub = getattr(args, "prompts_command", None) or getattr(args, "review_command", None)
+    return f"{command} {sub}" if sub else command
+
+
+def _emit(result: OpResult, *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(result.envelope(), ensure_ascii=False, default=str))
+        return
+    for line in result.lines:
+        print(line)
+    for warning in result.warnings:
+        print(f"warning: {warning.message}", file=sys.stderr)
+    for error in result.errors:
+        where = f"{error.source_id}: " if error.source_id else ""
+        print(f"error: {where}{error.code}: {error.message}", file=sys.stderr)
+
+
+def _failure(operation: str, exc: BaseException) -> OpResult:
+    """Map an exception that escaped an operation to an envelope. No traceback."""
+    from xwalk._extras import MissingExtra
+    from xwalk.config import CredentialMissingError, JobValidationError
+
+    if isinstance(exc, OpError):
+        result = exc.result
+        result.operation = operation
+        return result
+    if isinstance(exc, JobValidationError):
+        errors = [OpMessage(i.code, str(i)) for i in exc.issues]
+        return OpResult(operation, exit_code=EXIT_USAGE, errors=errors)
+    if isinstance(exc, CredentialMissingError):
+        code, exit_code = "credential_missing", EXIT_USAGE
+    elif isinstance(exc, MissingExtra):
+        code, exit_code = "missing_extra", EXIT_USAGE
+    elif isinstance(exc, OSError):
+        code, exit_code = "io_error", EXIT_RUNTIME
+    else:
+        code, exit_code = "exception", EXIT_RUNTIME
+    message = str(exc) if code != "exception" else f"{type(exc).__name__}: {exc}"
+    return OpResult(operation, exit_code=exit_code, errors=[OpMessage(code, message)])
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(argv) if argv is not None else sys.argv[1:]
+    as_json = "--json" in arguments
     parser = _build_parser()
     try:
-        args = parser.parse_args(list(argv) if argv is not None else None)
+        args = parser.parse_args(arguments)
     except SystemExit as exc:
         # argparse exits the process on `--help` and on an invalid choice. A library
         # entry point that raises SystemExit can only be called from a shell.
-        return int(exc.code or 0)
+        code = int(exc.code or 0)
+        if as_json and code:
+            _emit(
+                OpResult(
+                    "usage",
+                    exit_code=EXIT_USAGE,
+                    errors=[OpMessage("usage", "invalid arguments (see stderr)")],
+                ),
+                as_json=True,
+            )
+        return EXIT_USAGE if code else EXIT_OK
 
     if args.version:
         print(__version__)
@@ -395,14 +526,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return EXIT_USAGE
 
+    as_json = bool(getattr(args, "json", False))
+    operation = _operation_name(args)
     try:
-        return int(handler(args))
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_RUNTIME
+        result = handler(args)
+    except KeyboardInterrupt:
+        from xwalk import ops
+
+        run_dir = getattr(args, "out", None) if args.command == "match" else None
+        result = ops.interrupted(operation, run_dir)
     except Exception as exc:  # a CLI must not dump a traceback
-        print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return EXIT_RUNTIME
+        result = _failure(operation, exc)
+    _emit(result, as_json=as_json)
+    return result.exit_code
 
 
 if __name__ == "__main__":

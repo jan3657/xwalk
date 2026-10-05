@@ -64,6 +64,8 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML",
+    # builds the wheel in tests/test_packaging.py without network access
+    "hatchling",
 ]
 
 [project.scripts]

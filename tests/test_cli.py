@@ -83,13 +83,15 @@ def test_index_reports_the_document_count(tmp_path, capsys):
 
 
 def test_match_without_an_api_key_fails_cleanly(tmp_path, monkeypatch, capsys):
+    # A missing credential is a configuration error: exit 2 since 0.2 (was 3).
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert main(["match", "--job", JOB, "--out", str(tmp_path / "run")]) == 3
+    assert main(["match", "--job", JOB, "--out", str(tmp_path / "run")]) == 2
     assert "OPENAI_API_KEY" in capsys.readouterr().err
 
 
 def test_match_with_a_nonexistent_job_fails_cleanly(tmp_path, capsys):
-    assert main(["match", "--job", "nope.yaml", "--out", str(tmp_path)]) == 3
+    # An unreadable job file is a configuration error: exit 2 since 0.2 (was 3).
+    assert main(["match", "--job", "nope.yaml", "--out", str(tmp_path)]) == 2
     assert "nope.yaml" in capsys.readouterr().err
 
 
@@ -267,13 +269,13 @@ def test_match_returns_one_and_points_at_review_when_the_bucket_is_not_empty(
     monkeypatch.setattr(JobSpec, "build_llm", lambda self: _scripted_llm(score=0.5))
     out = tmp_path / "run"
     assert main(["match", "--job", JOB, "--out", str(out)]) == 1
-    assert "need review" in capsys.readouterr().out
+    assert "need review" in capsys.readouterr().err  # a warning: stderr since 0.2
 
 
 def test_match_reports_duplicate_targets(tmp_path, scripted_job, capsys):
     """s1 and s2 both land on glucose. Reporting a many-to-one is not resolving it."""
     main(["match", "--job", JOB, "--out", str(tmp_path / "run")])
-    assert "duplicate targets" in capsys.readouterr().out
+    assert "duplicate targets" in capsys.readouterr().err  # a warning: stderr since 0.2
 
 
 def test_match_resumes_instead_of_re_running_completed_records(tmp_path, monkeypatch):
@@ -419,7 +421,7 @@ def test_prompts_rejects_an_unknown_role(tmp_path, scripted_job, capsys):
             "telepath",
         ]
     )
-    assert code == 3
+    assert code == 2  # a bad flag value is a usage error since 0.2 (was 3)
     assert "telepath" in capsys.readouterr().err
 
 
