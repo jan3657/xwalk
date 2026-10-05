@@ -117,7 +117,9 @@ captured outgoing request body, not the fingerprint.
 - `--json` on every command prints exactly one JSON object to stdout:
   `{"schema_version": 1, "operation", "status", "exit_code", "run": {"dir",
   "run_fingerprint", "run_state"}, "counts", "usage", "artifacts", "warnings", "errors":
-  [{"code", "message", "source_id"?}]}`. Progress and logs always go to stderr.
+  [{"code", "message", "source_id"?}], "data"}`. Progress and logs always go to stderr.
+  (`data` added in task 03: inspect, explain and validate need an operation-specific
+  payload; one extra key keeps the shared keys fixed.)
 - `run_state`: `complete` | `partial` (pending sources) | `failed` (current rows
   with status `failed`) | `aborted` (fatal) | `interrupted`. Precedence: interrupted >
   aborted > failed > partial > complete. (`failed` added in task 02: the task brief
@@ -132,6 +134,10 @@ captured outgoing request body, not the fingerprint.
   - `3` runtime failure: `aborted`, IO error, incompatible index/run directory, or any
     current row with status `failed`. Precedence 3 > 1 > 0.
   - `130` interrupted by the user.
+  (Task 03 additions: a missing credential variable, a missing optional extra, duplicate
+  record ids and an unknown `--run` path or source id are `2`; `inspect` exits with the
+  code the inspected run would have produced. `--max-calls` is a per-invocation limit; a
+  reached limit aborts the run with error code `call_limit_reached`.)
 
 ## 9. Run directories and repeated invocation
 

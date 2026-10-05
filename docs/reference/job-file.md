@@ -16,6 +16,25 @@ file is a convenience, not a gate.
 Credentials never appear in the file. `api_key_env` names an environment variable, and an
 inline `api_key` is rejected at load time.
 
+## Validation is strict
+
+Every section rejects keys it does not define, so a misspelling fails instead of silently
+running with a default: `accept_att: 0.9` under `policy` is an error
+(`policy.accept_att: unknown field; did you mean 'accept_at'?`), not an `accept_at` of 0.6.
+Numbers are range-checked (thresholds within `[0, 1]`, `review_floor <= accept_at`, an
+ordered `verify_band`, positive limits, attempts and concurrency), a field that does not
+apply to the declared `kind` is rejected rather than ignored (`query_prefix` on a `bm25`
+retriever, `url` on a `csv` collection), retriever names must be unique (each owns an
+index directory), and `llm.profile` must be a known profile. `load_job` raises
+`JobValidationError`; its `issues` carry a code (`unknown_field`, `missing_field`,
+`invalid_value`, `job_not_found`, `job_yaml_invalid`), a dotted location and a message,
+and every issue is reported, not only the first.
+
+`xwalk validate --job job.yaml` (or `ops.validate`) runs this plus the checks a file alone
+cannot answer — referenced files exist, optional extras are installed, the credential
+variable is set, both collections load with unique ids — without calling a model. See
+[the CLI reference](cli.md#validate-alias-doctor).
+
 ## A complete job.yaml
 
 ```yaml
@@ -92,7 +111,7 @@ Shipped, runnable versions: `examples/chebi/job.yaml`, `examples/cafeteria_fcd/j
 | `prompts` | mapping | yes | — | `{slots: <path>}` |
 | `policy` | mapping | no | all defaults | thresholds and cost controls |
 | `selector` | mapping | no | all defaults | candidate budget |
-| `base_dir` | path | no | — | a `JobSpec` field, but `load_job` always overwrites it |
+| `base_dir` | path | — | — | a `JobSpec` field set by `load_job`; rejected in the file |
 
 ## `templates`
 
@@ -120,8 +139,8 @@ Both take the same shape. Several fields apply only to some `kind` values.
 | `id_field` | `str \| None` | no | `None` | jsonl | JSON key holding the id; falls back to `id_column` |
 | `multivalue_columns` | `list[str]` | no | `[]` | csv, tsv, sql | split into lists; blank parts dropped |
 | `multivalue_sep` | `str` | no | `"\|"` | csv, tsv, sql | separator for the above |
-| `url` | `str \| None` | no | `None` | sql | SQLAlchemy URL; required at build time |
-| `query` | `str \| None` | no | `None` | sql | the SELECT; required at build time |
+| `url` | `str \| None` | required for sql | `None` | sql | SQLAlchemy URL |
+| `query` | `str \| None` | required for sql | `None` | sql | the SELECT |
 | `id_prefix` | `str \| None` | no | `None` | obo, owl | keep only ids with this prefix |
 | `include_obsolete` | `bool` | no | `false` | obo, owl | keep deprecated terms |
 
@@ -141,6 +160,14 @@ Both take the same shape. Several fields apply only to some `kind` values.
 | `device` | `str \| None` | no | `None` | dense | torch device |
 | `query_prefix` | `str` | no | `""` | dense | prepended when encoding a query |
 | `doc_prefix` | `str` | no | `""` | dense | prepended when encoding a document |
+| `revision` | `str \| None` | no | `None` | dense | pinned model revision; unpinned is recorded as `"unknown"` in the index identity |
+| `normalize` | `bool` | no | `true` | dense | unit-normalise vectors |
+
+`limit` must be at least 1, and a field marked for one kind is rejected on the other. The
+index identity stored with each built index covers the doc template, the target records and
+these engine settings (for dense: model name, `revision`, dimension, `normalize`, both
+prefixes and the max sequence length); `xwalk match` opens a matching index and refuses a
+different one unless `--rebuild-index`.
 
 Indexes are written to `<index_dir>/<name or kind>`. An unnamed `bm25` retriever is built
 as `bm25`; an unnamed `dense` retriever names itself `dense:<model>` even though its index

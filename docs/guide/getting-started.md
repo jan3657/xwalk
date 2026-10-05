@@ -23,6 +23,41 @@ pip install 'xwalk[all]'
 If an extra is missing you get an error naming the extra and the install command, not a
 bare `ImportError` from a library you have never heard of.
 
+## The short route
+
+If a job file is all you need, the operations layer does the wiring below for you:
+
+```bash
+xwalk init demo                     # a bundled job: five targets, four mentions
+xwalk validate --job demo/job.yaml  # strict and offline: no model call
+xwalk match --job demo/job.yaml --out demo/run --max-calls 50
+```
+
+The same from Python, offline, with a scripted stand-in for the model
+(`examples/quickstart.py` runs it):
+
+```python
+import json
+
+from xwalk import ops
+from xwalk.llm.fake import FakeLLM
+
+
+def offline_model(request):  # one answer every stage understands
+    return json.dumps({"chosen_key": "C01", "confidence_score": 0.9, "decision": "support"})
+
+
+job = ops.bundled_example() / "job.yaml"      # or your own job.yaml
+assert ops.validate(job, check_credentials=False).ok
+result = ops.run(job, "runs/demo", llm=FakeLLM(handler=offline_model), max_calls=100)
+print(result.run, result.counts, result.usage["tokens"])
+print(ops.explain("runs/demo", "s2").data["decision"])
+ops.export("runs/demo", "reviewed", "runs/demo/reviewed.csv")
+```
+
+Drop `llm=` to use the model the job names. The rest of this page builds the same thing by
+hand, which is what you need once a job file cannot express what you want.
+
 ## The two files you need
 
 **Targets** — the collection you are matching *into*. One row per record, one column

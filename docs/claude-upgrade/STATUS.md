@@ -7,7 +7,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 | 00 Baseline and contracts | Done | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | BASELINE.md: 872 passed / 7 skipped (base), ontology 6, sql 10, ruff+mypy clean, build+wheel OK; dense/integration not run |
 | 01 Matching correctness | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11, fresh venv `pip install -e ".[dev]"`. New `tests/test_matching_regressions.py` (audit cases 1-6 + generation precedence): 28 of 34 failed before the fix, 34 passed after. `python -m pytest -q -m "not integration"`: 946 passed, 14 skipped, 1 deselected; `python -m pytest -q`: 946 passed, 15 skipped; `ruff check src tests examples scripts`: all passed; `ruff format --check ...`: 110 files formatted; `mypy`: no issues in 64 files. FakeLLM/MockTransport only, no paid calls; dense/ontology/sql/integration not run. `audit/diagnose_audited_source.py` no longer runs (imports removed private `_clamp`); superseded by the package tests |
 | 02 Persistence and lifecycle | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `tests/test_lifecycle.py` (21), `tests/test_ledger_compat.py` (6, on the preserved 0.1.1 fixture), plus additions to test_ledger/test_review/test_batch/test_fingerprint/test_cli. Before the fix: 18 failed in test_batch+test_ledger and 3 new modules failed at import (new API); the two credential tests failed against the old clients. After: `python -m pytest -q`: 996 passed, 15 skipped; `-m "not integration"`: 996 passed, 14 skipped, 1 deselected; ruff check/format clean (113 files); mypy clean (64 files). FakeLLM/ScriptedRetriever only, no paid calls; dense/ontology/sql/integration not run |
-| 03 Shared operations and CLI | Not started | | | | |
+| 03 Shared operations and CLI | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"` (+ hatchling, now in the dev extra). Reproduced before the fix on `ae55e4c`: a misspelled `policy.accept_att` loaded with `accept_at=0.6`. New tests: `test_job_validation.py` (19), `test_call_budget.py` (7), `test_ops.py` (30), `test_cli_json.py` (11), plus test_bm25/test_packaging (wheel contents) additions; 4 CLI tests migrated to the contract exit codes / stderr warnings. `python -m pytest -q`: 1065 passed, 15 skipped; `-m "not integration"`: 1065 passed, 14 skipped, 1 deselected; ruff check/format clean (120 files); mypy clean (67 files). FakeLLM/MockTransport/toy encoders only, no paid calls; dense extra not installed (dense paths tested with fake encoders); ontology/sql/integration not run |
 | 04 Flat clustering | Not started | | | | |
 | 05 Benchmark and performance | Not started | | | | |
 | 06 Optional MCP | Not started | | | | |
@@ -86,3 +86,44 @@ Balances come from the actual promotional credit display, not a model estimate. 
   status/reason `pending`. `results.jsonl` has no line for pending sources.
 - Not done: no CLI for history (`Ledger.iter_history`/`export_history_jsonl` exist);
   `review export` still uses the CLI's `manifest.json` lookup.
+
+## Task 03 notes (for task 04 and later)
+
+- **Ops layer**: `src/xwalk/ops.py`. Operations return `OpResult` (`envelope()` is the
+  `--json` schema 1: the CONTRACTS.md section 8 keys plus `data`) or raise `OpError`,
+  whose `.result` is the error envelope; the CLI (`cli/main.py`) only formats. Reuse for
+  clustering: `load_valid_job` (strict, exit 2), `_preflight` (files/extras),
+  `_read_targets` (read once, duplicate ids -> exit 2), `plan_indexes` +
+  `prepare_indexes` (open/build/refuse by components; a `PlannedIndex` stands in for a
+  retriever when computing a fingerprint before touching disk), `_check_out_dir`
+  (fingerprint collision with component diff), `_summarise_run`/`_run_exit_code` (exit
+  mapping from run state + review count). A `cluster` operation should follow `run_async`:
+  plan -> fingerprint -> collision check -> prepare -> execute -> summarise, and add one
+  `cluster` subparser in `_build_parser` and `_DISPATCH`.
+- **Call limits**: wrap the client in `BudgetedLLM(llm, CallBudget(max_calls))`
+  (`xwalk.llm.budget`) once per invocation and give *every* clustering stage the wrapped
+  client. Reservation is synchronous before dispatch; `OpenAICompatClient` reserves per
+  HTTP request (retries, fallback) via `attach_call_budget`; other clients per
+  `complete()`. A refusal raises `CallLimitExceeded` (an `LLMFatalError`, usage zero).
+  Report `BudgetedLLM.usage` (includes in-flight-cancelled calls as `unknown_calls`), not
+  a sum of committed results. Put a `CachingLLM` *outside* the budget wrapper or cache
+  hits would spend the allowance. Limit is per invocation.
+- **Usage/JSON**: `usage_to_dict` (batch.py) for envelopes; `tokens` is
+  `describe_tokens()`. Error codes in use: see docs/reference/cli.md "Machine-readable
+  output"; add clustering codes there.
+- **Index identity**: `bm25.index_components` / `dense.index_components` (+
+  `read_components`, `IndexMismatchError`, `component_differences`). The clustering pool
+  index (CONTRACTS section 10.8, incremental) needs its own components, including an
+  append count/digest, if it is persisted.
+- **Exit-code migrations** (documented in CHANGELOG): invalid/unreadable job, missing
+  credential, missing extra, bad `--role` now 2 (were 3); Ctrl-C 130; `inspect` exits with
+  the run's code; match warnings moved to stderr.
+- **Known limits**: `BatchReport.usage` still omits calls cancelled in flight (ops reports
+  the complete figure); LiteLLM internal retries are neither counted nor limited; `eval`,
+  `compare`, `ablate` and `prompts` are formatted as envelopes but still live in the CLI
+  (not in ops) and `ablate`/`prompts optimize` always rebuild their own indexes and take
+  no `--max-calls` (optimize keeps its own estimate-based `--max-calls`); `review apply`
+  validation errors are reported as code `exception` (exit 3); a run directory created by
+  0.1.x has no `fingerprint_components`, so a refusal there reports the component diff as
+  unknown; indexes built before 0.2 are refused until `--rebuild-index`.
+- Next recommended task: 04 (flat equivalence clustering), reusing the above.

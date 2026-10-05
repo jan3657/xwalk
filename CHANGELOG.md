@@ -46,7 +46,27 @@ All notable changes to this project are documented here. The format follows
   the next write. Every ledger write is now one explicit transaction, rolled back on
   failure.
 - `xwalk match` returned 0 for a run with failed records or a fatal provider error. It
-  now returns 3 (an interim mapping until the shared operations of task 03).
+  now returns 3.
+- Misspelled or misplaced job-file keys were ignored: `accept_att: 0.9` ran with the
+  default `accept_at`. Every job spec now forbids unknown fields (with a did-you-mean
+  hint), range-checks numbers, rejects fields that do not apply to the declared `kind`,
+  and refuses duplicate retriever names; `load_job` raises `JobValidationError` listing
+  every issue.
+- `xwalk match` rebuilt every index on every invocation and read the target collection
+  twice. Targets are read once; a compatible persisted index is opened without calling
+  the encoder, an absent one is built, and an incompatible one is refused (exit 3)
+  unless `--rebuild-index` is given. Index metadata now stores its identity components
+  (doc template, record digest, BM25 `exact_fields` and normalization version; dense
+  encoder name, revision, dimension, `normalize`, prefixes, max sequence length).
+- `xwalk match --out D` silently mixed a different configuration into an existing run
+  directory. A directory holding another run fingerprint, or unrelated files, is now
+  refused (exit 3) naming the changed fingerprint components; nothing is overwritten.
+- Ctrl-C and unexpected exceptions in the CLI: Ctrl-C now exits 130 after the run
+  directory records `interrupted`; any other exception becomes an error result
+  (exit 3) instead of escaping or printing a traceback.
+- The usage reported for an interrupted or aborted invocation omitted calls that were
+  in flight when it stopped. `xwalk match`/`ops.run` now count them as calls with
+  unknown usage. (`BatchReport.usage` still covers finished records only.)
 - Credentials passed to `LiteLLMClient` as keyword arguments (`api_key`, headers, ...)
   and userinfo or key parameters in an `OpenAICompatClient` base URL fed the LLM
   fingerprint, so rotating a key invalidated resumable runs. They are excluded now.
@@ -57,6 +77,27 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `xwalk.ops`: one operations layer (`validate`, `index`, `run`/`run_async`, `inspect`,
+  `explain`, `export`, `review_export`, `review_apply`, `init`) returning `OpResult`, the
+  versioned machine-readable result; the CLI only formats it. The high-level Python
+  route is `ops.run("job.yaml", out=..., max_calls=...)` (see `examples/quickstart.py`).
+- `--json` on every command: exactly one JSON object (schema 1) on stdout, on success
+  and on failure; warnings, errors and progress go to stderr.
+- New commands: `xwalk init [DIR]` copies the bundled quickstart job;
+  `xwalk validate --job` (alias `doctor`) is an offline preflight that never calls a
+  model and reports credentials by name and presence only; `xwalk inspect --run`;
+  `xwalk explain SOURCE_ID --run`; `xwalk export --run --view raw|reviewed|history --out`.
+  The reviewed export applies the review overlay and keeps the model's decision in the
+  same row; the history export adds every review decision with its state.
+- `xwalk match --max-calls N` and `xwalk.llm.budget` (`CallBudget`, `BudgetedLLM`,
+  `CallLimitExceeded`): a per-invocation cap on upstream requests, reserved before each
+  dispatch so concurrent records cannot exceed it, counting client retries and
+  rewrites. Reaching it aborts the run (exit 3, error `call_limit_reached`); resume
+  continues. `xwalk match --rebuild-index`, `xwalk index --rebuild-index`.
+- Retriever specs gain `revision` and `normalize` (dense); `JobSpec.build_encoder`;
+  `IndexMismatchError`, `index_components` and `read_components` for both engines;
+  `BM25Retriever.open(expected=..., default_limit=...)`,
+  `DenseRetriever.open(expected=...)`.
 - Run states: `RunState` (`complete`, `partial`, `failed`, `aborted`, `interrupted`) on
   `BatchReport.run_state` and in `manifest.json`, plus `BatchReport.pending` and
   `BatchReport.errors`.
@@ -84,6 +125,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Compatibility (exit codes):** an invalid or unreadable job file, a missing
+  credential variable, a missing optional extra, and a bad flag value (`--role`) now
+  exit 2 instead of 3. Ctrl-C exits 130. `xwalk inspect` exits with the code the run
+  would have produced (0, 1 or 3).
+- **Compatibility:** job files that set unknown keys, kind-inapplicable fields (for
+  example `query_prefix` on a bm25 retriever) or an unknown `llm.profile` no longer load.
+- **Compatibility:** `xwalk match` warnings (review bucket, duplicate targets) go to
+  stderr; stdout carries the summary (or the JSON envelope).
+- **Compatibility:** index fingerprints, and therefore run fingerprints, changed; an
+  index built by an earlier version is refused by `xwalk match` until rebuilt with
+  `--rebuild-index` (or into a fresh directory). `BM25Retriever.build` and
+  `DenseRetriever.build` materialise their input records as a list.
 - **Compatibility:** opening a 0.1.1 ledger upgrades it in place after copying it to
   `ledger.sqlite.v1-backup`; running 0.1.1 against the upgraded file is not supported,
   and the backup is the way back. The
