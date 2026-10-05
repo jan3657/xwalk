@@ -118,6 +118,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     match.add_argument("--rebuild-index", action="store_true", help="replace an incompatible index")
 
+    cluster = sub.add_parser(
+        "cluster",
+        parents=[common],
+        help="group one collection into clusters of equivalent records (experimental)",
+    )
+    cluster.add_argument("--job", required=True, help="a kind: cluster job file")
+    cluster.add_argument("--out", required=True, help="run directory")
+    cluster.add_argument(
+        "--max-calls",
+        type=int,
+        default=None,
+        help="cap upstream LLM requests in this invocation; reaching it aborts (resumable)",
+    )
+
     inspect = sub.add_parser("inspect", parents=[common], help="summarise a run directory")
     inspect.add_argument("--run", required=True)
 
@@ -212,6 +226,16 @@ def _cmd_match(args: argparse.Namespace) -> OpResult:
         rebuild_index=args.rebuild_index,
         progress=_progress,
     )
+
+
+def _cluster_progress(source_id: str, outcome: str) -> None:
+    print(f"  {source_id}: {outcome}", file=sys.stderr)
+
+
+def _cmd_cluster(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.cluster(args.job, args.out, max_calls=args.max_calls, progress=_cluster_progress)
 
 
 def _cmd_inspect(args: argparse.Namespace) -> OpResult:
@@ -436,6 +460,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
     "doctor": _cmd_validate,
     "index": _cmd_index,
     "match": _cmd_match,
+    "cluster": _cmd_cluster,
     "inspect": _cmd_inspect,
     "explain": _cmd_explain,
     "export": _cmd_export,

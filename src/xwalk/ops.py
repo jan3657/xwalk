@@ -29,7 +29,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from xwalk import __version__
 from xwalk.batch import (
@@ -61,6 +61,9 @@ from xwalk.review import adjudicated, review_history
 from xwalk.serde import result_to_dict
 from xwalk.stores.memory import MemoryStore
 from xwalk.templates import TemplateSet
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from xwalk.cluster.job import ClusterJobSpec
 
 SCHEMA_VERSION = 1
 
@@ -300,6 +303,14 @@ def validate(
     """
     from xwalk.prompts.contract import PromptSet, load_slots, validate_contract
 
+    if _is_cluster_job(job):
+        from xwalk.cluster.operation import validate_cluster
+
+        return validate_cluster(
+            job,  # type: ignore[arg-type]
+            check_credentials=check_credentials,
+            scan_records=scan_records,
+        )
     try:
         spec = load_valid_job(job, operation="validate")
     except OpError as exc:
@@ -356,6 +367,14 @@ def validate(
     for variable, state in credentials.items():
         result.lines.append(f"  {variable}: {state}")
     return result
+
+
+def _is_cluster_job(job: object) -> bool:
+    from xwalk.cluster.job import ClusterJobSpec, is_cluster_job
+
+    if isinstance(job, ClusterJobSpec):
+        return True
+    return isinstance(job, (str, Path)) and is_cluster_job(job)
 
 
 # --- index preparation (CONTRACTS.md section 7) -------------------------------------
@@ -864,6 +883,48 @@ def _run_lines(result: OpResult, total: int) -> list[str]:
     return lines
 
 
+# --- cluster (experimental; src/xwalk/cluster) ---------------------------------------
+
+
+async def cluster_async(
+    job: str | Path | ClusterJobSpec,
+    out: str | Path,
+    *,
+    max_calls: int | None = None,
+    llm: LLMClient | None = None,
+    encoder: Encoder | None = None,
+    progress: Callable[[str, str], None] | None = None,
+) -> OpResult:
+    """Cluster a `kind: cluster` job into `out`. See `cluster`."""
+    from xwalk.cluster.operation import cluster_operation
+
+    return await cluster_operation(
+        job, out, max_calls=max_calls, llm=llm, encoder=encoder, progress=progress
+    )
+
+
+def cluster(
+    job: str | Path | ClusterJobSpec,
+    out: str | Path,
+    *,
+    max_calls: int | None = None,
+    llm: LLMClient | None = None,
+    encoder: Encoder | None = None,
+    progress: Callable[[str, str], None] | None = None,
+) -> OpResult:
+    """Flat equivalence clustering of one collection (experimental).
+
+    `job` is a `kind: cluster` job file or a `ClusterJobSpec`. `out` absent or empty
+    starts a run; the same run fingerprint resumes it; another is refused (exit 3).
+    `max_calls` caps upstream LLM requests in this invocation; reaching it aborts at a
+    step boundary (exit 3, `call_limit_reached`) and a later call resumes. Exports:
+    `members.csv`, `clusters.csv`, `unresolved.csv`, `decisions.jsonl`.
+    """
+    return asyncio.run(
+        cluster_async(job, out, max_calls=max_calls, llm=llm, encoder=encoder, progress=progress)
+    )
+
+
 # --- inspect / explain --------------------------------------------------------------
 
 
@@ -1288,6 +1349,8 @@ __all__ = [
     "OpResult",
     "PlannedIndex",
     "bundled_example",
+    "cluster",
+    "cluster_async",
     "explain",
     "export",
     "index",

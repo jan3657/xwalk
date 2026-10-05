@@ -1,0 +1,18 @@
+# A tiny clustering job for the CLI tests. The LLM is replaced by a scripted judge in
+# tests; the endpoint below is never contacted.
+kind: cluster
+name: cluster-tiny
+source:
+  kind: csv
+  path: labels.csv
+templates:
+  query: "{{ label }}"
+llm:
+  kind: openai_compat
+  base_url: http://127.0.0.1:9/v1
+  model: test-model
+  api_key_env: XWALK_TEST_CLUSTER_KEY
+pool:
+  shown_limit: 8
+policy:
+  max_refine_iterations: 2

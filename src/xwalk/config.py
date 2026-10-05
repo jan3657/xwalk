@@ -501,9 +501,11 @@ class JobValidationError(ValueError):
         super().__init__(f"{where}invalid job file\n{lines}")
 
 
-def _model_at(loc: Sequence[int | str]) -> type[BaseModel] | None:
+def _model_at(
+    loc: Sequence[int | str], root: type[BaseModel] | None = None
+) -> type[BaseModel] | None:
     """The spec class a pydantic error location points into (for "did you mean")."""
-    model: type[BaseModel] = JobSpec
+    model: type[BaseModel] = root or JobSpec
     for part in loc:
         if isinstance(part, int):
             continue
@@ -519,13 +521,13 @@ def _model_at(loc: Sequence[int | str]) -> type[BaseModel] | None:
     return model
 
 
-def _issues_from(error: ValidationError) -> list[JobIssue]:
+def _issues_from(error: ValidationError, root: type[BaseModel] | None = None) -> list[JobIssue]:
     issues: list[JobIssue] = []
     for item in error.errors():
         loc = [p for p in item["loc"] if not (isinstance(p, str) and p.startswith("function-"))]
         dotted = ".".join(str(p) for p in loc)
         if item["type"] == "extra_forbidden":
-            parent = _model_at(loc[:-1])
+            parent = _model_at(loc[:-1], root)
             known = [n for n in (parent.model_fields if parent else {}) if n != "base_dir"]
             close = difflib.get_close_matches(str(loc[-1]), known, n=1)
             hint = f"; did you mean {close[0]!r}?" if close else ""
@@ -549,6 +551,17 @@ def parse_job(data: Any, *, path: str | Path | None = None) -> JobSpec:
         raise JobValidationError(
             path,
             [JobIssue("unknown_field", "base_dir", "set by load_job; not a job-file field")],
+        )
+    if data.get("kind") == "cluster":
+        raise JobValidationError(
+            path,
+            [
+                JobIssue(
+                    "wrong_job_kind",
+                    "kind",
+                    "this is a clustering job (kind: cluster); run it with `xwalk cluster`",
+                )
+            ],
         )
     try:
         return JobSpec.model_validate(data)
