@@ -317,8 +317,11 @@ async def test_reassignment_injects_the_incumbent_when_the_shown_list_is_full(tm
 
 def _flipper():
     """Moves 'red fruit salad' to the other cluster at every reassignment. Until it has
-    joined P (stream), the honest oracle answers."""
-    where: dict[str, str | None] = {"current": None}
+    joined a cluster (stream), the honest oracle answers. Which cluster it joins first
+    depends on how retrieval breaks a tie between P and Q, and that follows the
+    hash-derived cluster ids (which include the library version), so the cluster it
+    joined is recorded in `override.where["joined"]` for the assertions."""
+    where: dict[str, str | None] = {"current": None, "joined": None}
 
     def override(name, request):
         parts = sections(request.user)
@@ -328,6 +331,7 @@ def _flipper():
             if name == "verify-assignment":
                 proposed = blocks(parts["Proposed cluster"])[0][1]
                 where["current"] = "Q" if any("salad" in m for m in proposed) else "P"
+                where["joined"] = where["current"]
             return None
         if name == "select-cluster" and "Candidate clusters" in parts:
             for key, members in blocks(parts["Candidate clusters"]):
@@ -343,7 +347,16 @@ def _flipper():
             )
         return None
 
+    override.where = where  # type: ignore[attr-defined]
     return override
+
+
+def _stream_cluster_of_x(flipper, rows):
+    """The cluster 'red fruit salad' joined during the stream (revision 0), and the other."""
+    joined = flipper.where["joined"]
+    assert joined in ("P", "Q")
+    p, q = rows["p1"]["cluster_id"], rows["q1"]["cluster_id"]
+    return (p, q) if joined == "P" else (q, p)
 
 
 FRUIT = {
@@ -363,20 +376,21 @@ FRUIT_PAIRS = [
 
 
 async def test_oscillation_stops_refinement_and_is_reported(tmp_path):
-    oracle = Oracle(concepts(FRUIT), pairs=FRUIT_PAIRS, override=_flipper())
+    flipper = _flipper()
+    oracle = Oracle(concepts(FRUIT), pairs=FRUIT_PAIRS, override=flipper)
     report = await cluster(
         records(FRUIT), tmp_path / "run", oracle, settings=settings(max_refine_iterations=5)
     )
     assert report.stop_reason == "oscillation"
     assert report.last_revision == 2 and report.selected_revision == 0
-    assert (
-        member_rows(tmp_path / "run")["x"]["cluster_id"]
-        == member_rows(tmp_path / "run")["p1"]["cluster_id"]
-    )
+    rows = member_rows(tmp_path / "run")
+    stream_cluster, _ = _stream_cluster_of_x(flipper, rows)
+    assert rows["x"]["cluster_id"] == stream_cluster
 
 
 async def test_exports_use_the_selected_revision_not_the_last_transient_state(tmp_path):
-    oracle = Oracle(concepts(FRUIT), pairs=FRUIT_PAIRS, override=_flipper())
+    flipper = _flipper()
+    oracle = Oracle(concepts(FRUIT), pairs=FRUIT_PAIRS, override=flipper)
     report = await cluster(
         records(FRUIT), tmp_path / "run", oracle, settings=settings(max_refine_iterations=1)
     )
@@ -384,13 +398,14 @@ async def test_exports_use_the_selected_revision_not_the_last_transient_state(tm
     assert report.last_revision == 1 and report.selected_revision == 0
     assert report.exported_revision == 0
     rows = member_rows(tmp_path / "run")
-    assert rows["x"]["cluster_id"] == rows["p1"]["cluster_id"]  # revision 0
+    stream_cluster, other_cluster = _stream_cluster_of_x(flipper, rows)
+    assert rows["x"]["cluster_id"] == stream_cluster  # revision 0
     store = _store(tmp_path / "run")
     try:
         current = store.current_assignments()["x"]["cluster_id"]  # the transient state
     finally:
         store.close()
-    assert current == rows["q1"]["cluster_id"] != rows["x"]["cluster_id"]
+    assert current == other_cluster != rows["x"]["cluster_id"]
 
 
 async def test_refinement_converges_and_never_mints(tmp_path):
