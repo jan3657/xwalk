@@ -1,0 +1,17 @@
+{
+  "dataset": "ncbi_disease",
+  "variant": "ncbi_disease",
+  "llm": "trivial",
+  "latency_s": 0.0,
+  "repeat": 5,
+  "wall_seconds": [
+    0.431,
+    0.436,
+    0.458,
+    0.451,
+    0.427
+  ],
+  "wall_seconds_median": 0.436,
+  "calls": 88,
+  "peak_python_mib": 1.57
+}

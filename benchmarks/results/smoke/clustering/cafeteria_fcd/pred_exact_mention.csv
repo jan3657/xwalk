@@ -1,0 +1,51 @@
+item_id,cluster_id,outcome
+cafeteria_fcd-T1,cream cheese,singleton
+cafeteria_fcd-T2,onion,singleton
+cafeteria_fcd-T3,worcestershire sauce,singleton
+cafeteria_fcd-T4,cheese,singleton
+cafeteria_fcd-T5,mozzarella cheese,singleton
+cafeteria_fcd-T6,parmesan cheese,singleton
+cafeteria_fcd-T7,mayonnaise,singleton
+cafeteria_fcd-T8,tortilla,singleton
+cafeteria_fcd-T9,water,singleton
+cafeteria_fcd-T10,garlic,singleton
+cafeteria_fcd-T11,provolone cheese,singleton
+cafeteria_fcd-T12,provolone,singleton
+cafeteria_fcd-T13,oil,singleton
+cafeteria_fcd-T14,tahini,singleton
+cafeteria_fcd-T15,lemon juice,singleton
+cafeteria_fcd-T16,olive oil,singleton
+cafeteria_fcd-T17,rosemary,singleton
+cafeteria_fcd-T18,hummus,singleton
+cafeteria_fcd-T19,chicken,singleton
+cafeteria_fcd-T20,sauce,singleton
+cafeteria_fcd-T21,ground,assigned
+cafeteria_fcd-T22,vegetable oil,singleton
+cafeteria_fcd-T23,corn,singleton
+cafeteria_fcd-T24,salad dressing,singleton
+cafeteria_fcd-T25,cheddar cheese,singleton
+cafeteria_fcd-T26,rice,singleton
+cafeteria_fcd-T27,ground,assigned
+cafeteria_fcd-T28,allspice,singleton
+cafeteria_fcd-T29,pepper,singleton
+cafeteria_fcd-T30,grape,singleton
+cafeteria_fcd-T31,beet juice,singleton
+cafeteria_fcd-T32,brown sugar,singleton
+cafeteria_fcd-T33,vinegar,singleton
+cafeteria_fcd-T34,cloves,singleton
+cafeteria_fcd-T35,cinnamon stick,singleton
+cafeteria_fcd-T36,liquid,singleton
+cafeteria_fcd-T37,hard,singleton
+cafeteria_fcd-T38,vanilla,singleton
+cafeteria_fcd-T39,white sugar,singleton
+cafeteria_fcd-T40,cinnamon,singleton
+cafeteria_fcd-T41,almond,singleton
+cafeteria_fcd-T42,orange bell pepper,singleton
+cafeteria_fcd-T43,jalapeno pepper,singleton
+cafeteria_fcd-T44,red,singleton
+cafeteria_fcd-T45,lime juice,singleton
+cafeteria_fcd-T46,red pepper,singleton
+cafeteria_fcd-T47,cabbage,singleton
+cafeteria_fcd-T48,green bell pepper,singleton
+cafeteria_fcd-T49,zucchini,singleton
+cafeteria_fcd-T50,flour,singleton

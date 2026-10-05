@@ -43,6 +43,7 @@ Complete API documentation. Every signature and default here is taken from the s
 |---|---|
 | [Platforms](platforms.md) | The supported platform matrix and why there is no BM25 fallback. |
 | [Releasing](releasing.md) | Cutting a release. Maintainers only. |
+| [Benchmarks](benchmarks.md) | The pilot benchmark: data, the three tracks, how to reproduce, what is synthetic and what is pending, measured performance. |
 | [Contributing](../CONTRIBUTING.md) | The four gates, test markers, and the invariants the design will not give up. |
 
 ## Worked examples

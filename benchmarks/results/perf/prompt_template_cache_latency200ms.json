@@ -1,0 +1,22 @@
+{
+  "dataset": "ncbi_disease",
+  "variant": "ncbi_disease",
+  "llm": "synthetic",
+  "latency_s": 0.2,
+  "repeat": 3,
+  "experiment": "prompt-template-cache",
+  "baseline_wall_seconds": [
+    3.61,
+    3.622,
+    3.631
+  ],
+  "patched_wall_seconds": [
+    3.569,
+    3.551,
+    3.593
+  ],
+  "baseline_median": 3.622,
+  "patched_median": 3.569,
+  "identical_prompts": true,
+  "prompts_per_run": 130
+}
