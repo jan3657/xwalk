@@ -193,6 +193,21 @@ and its M1 plan:
 10. Code lives in `src/xwalk/cluster/`; it does not call `Matcher` with the same
     collection on both sides.
 
+Task 04 additions (details and reasons in `CLUSTERING_DECISIONS.md`):
+
+- 10.7, export: when refinement stops `converged`, the final state is exported. It is a
+  fixpoint, not a transient state, and choosing an earlier revision with fewer review
+  rows would discard verifications that later failed. The fewest-unresolved,
+  ties-earliest rule applies to `oscillation` and `max_iterations`.
+- 10.5, novelty: "the configured retrieval expansion" is a setting,
+  `pool.mint_requires` (`bounded` by default: every configured expansion page shown;
+  stricter: `retrieval_exhausted`, `pool_exhausted`). The provenance reached is recorded
+  per cluster. A first source with an empty pool is minted without a model call
+  (`empty_pool`).
+- 10.4, outcomes: a seed is exported `singleton` only while its cluster has one member;
+  once a verified member joins (or a verified merge), it is `assigned`. Sources not
+  reached by an aborted run are exported as `pending`.
+
 ## 11. File ownership and task order
 
 Order: 00 → 01 → 02 → 03 → 04 (05 fixtures/runners may start in parallel with 04) → 06
