@@ -532,6 +532,23 @@ class Ledger:
         """Current results (pending entries excluded)."""
         return len(self.current_keys(run_fingerprint))
 
+    def iter_current_summaries(self, run_fingerprint: str) -> Iterator[dict[str, Any]]:
+        """The current view as light rows, ordered by source id, without decoding any
+        stored result: `source_id`, `status` (`pending` when unprocessed), `reason`,
+        `matched_id`, `confidence`, `revision`, `result_key`."""
+        columns = "r.result_key, r.status, r.reason, r.matched_id, r.confidence, r.revision"
+        for row in self._current_rows(run_fingerprint, columns):
+            pending = row["result_key"] is None
+            yield {
+                "source_id": str(row["entry_source_id"]),
+                "status": "pending" if pending else str(row["status"]),
+                "reason": "pending" if pending else str(row["reason"]),
+                "matched_id": row["matched_id"],
+                "confidence": row["confidence"],
+                "revision": None if row["revision"] is None else int(row["revision"]),
+                "result_key": row["result_key"],
+            }
+
     def pending_count(self, run_fingerprint: str) -> int:
         return sum(
             1

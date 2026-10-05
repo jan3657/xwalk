@@ -36,6 +36,7 @@ from xwalk.ops import (
     OpError,
     OpMessage,
     OpResult,
+    failure_result,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -132,6 +133,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="cap upstream LLM requests in this invocation; reaching it aborts (resumable)",
     )
 
+    search = sub.add_parser(
+        "search", parents=[common], help="retrieve fused candidates for a query: no model calls"
+    )
+    search.add_argument("query")
+    search.add_argument("--job", required=True)
+    search.add_argument("--index", required=True, help="index directory (built if absent)")
+    search.add_argument("--limit", type=int, default=10, help="candidates to return (max 100)")
+
     inspect = sub.add_parser("inspect", parents=[common], help="summarise a run directory")
     inspect.add_argument("--run", required=True)
 
@@ -139,6 +148,14 @@ def _build_parser() -> argparse.ArgumentParser:
     explain.add_argument("source_id")
     explain.add_argument("--run", required=True)
     explain.add_argument("--full", action="store_true", help="include the stored result")
+
+    results = sub.add_parser(
+        "results", parents=[common], help="one page of a run's current results"
+    )
+    results.add_argument("--run", required=True)
+    results.add_argument("--status", default=None, help="only rows with this status")
+    results.add_argument("--offset", type=int, default=0)
+    results.add_argument("--limit", type=int, default=50, help="page size (max 200)")
 
     export = sub.add_parser("export", parents=[common], help="export a view of a run")
     export.add_argument("--run", required=True)
@@ -236,6 +253,18 @@ def _cmd_cluster(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
     return ops.cluster(args.job, args.out, max_calls=args.max_calls, progress=_cluster_progress)
+
+
+def _cmd_search(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.search(args.job, args.query, index_dir=args.index, limit=args.limit)
+
+
+def _cmd_results(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.list_results(args.run, offset=args.offset, limit=args.limit, status=args.status)
 
 
 def _cmd_inspect(args: argparse.Namespace) -> OpResult:
@@ -461,7 +490,9 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
     "index": _cmd_index,
     "match": _cmd_match,
     "cluster": _cmd_cluster,
+    "search": _cmd_search,
     "inspect": _cmd_inspect,
+    "results": _cmd_results,
     "explain": _cmd_explain,
     "export": _cmd_export,
     "eval": _cmd_eval,
@@ -496,26 +527,7 @@ def _emit(result: OpResult, *, as_json: bool) -> None:
 
 def _failure(operation: str, exc: BaseException) -> OpResult:
     """Map an exception that escaped an operation to an envelope. No traceback."""
-    from xwalk._extras import MissingExtra
-    from xwalk.config import CredentialMissingError, JobValidationError
-
-    if isinstance(exc, OpError):
-        result = exc.result
-        result.operation = operation
-        return result
-    if isinstance(exc, JobValidationError):
-        errors = [OpMessage(i.code, str(i)) for i in exc.issues]
-        return OpResult(operation, exit_code=EXIT_USAGE, errors=errors)
-    if isinstance(exc, CredentialMissingError):
-        code, exit_code = "credential_missing", EXIT_USAGE
-    elif isinstance(exc, MissingExtra):
-        code, exit_code = "missing_extra", EXIT_USAGE
-    elif isinstance(exc, OSError):
-        code, exit_code = "io_error", EXIT_RUNTIME
-    else:
-        code, exit_code = "exception", EXIT_RUNTIME
-    message = str(exc) if code != "exception" else f"{type(exc).__name__}: {exc}"
-    return OpResult(operation, exit_code=exit_code, errors=[OpMessage(code, message)])
+    return failure_result(operation, exc)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

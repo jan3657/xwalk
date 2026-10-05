@@ -57,6 +57,7 @@ from xwalk.retrieval import dense as dense_index
 from xwalk.retrieval.base import Retriever, SearchRequest, component_differences
 from xwalk.retrieval.bm25 import BM25Retriever
 from xwalk.retrieval.dense import DenseRetriever, Encoder
+from xwalk.retrieval.fusion import reciprocal_rank_fusion
 from xwalk.review import adjudicated, review_history
 from xwalk.serde import result_to_dict
 from xwalk.stores.memory import MemoryStore
@@ -82,6 +83,11 @@ _STATUS_BY_EXIT = {
 }
 
 EXPORT_VIEWS = ("raw", "reviewed", "history")
+
+# Bounds for the read operations an agent can call repeatedly (`search`, `list_results`):
+# one call can never return an unbounded slice of a collection or a ledger.
+MAX_SEARCH_LIMIT = 100
+MAX_PAGE_SIZE = 200
 
 REVIEWED_COLUMNS = (
     "source_id",
@@ -187,6 +193,33 @@ class OpError(Exception):
             data=dict(data or {}),
             run=dict(run) if run is not None else None,
         )
+
+
+def failure_result(operation: str, exc: BaseException) -> OpResult:
+    """The error envelope for an exception that escaped an operation. No traceback.
+
+    `OpError` carries its own envelope; a job validation error, a missing credential or
+    optional extra is a usage error (exit 2); an IO error or anything else is a runtime
+    failure (exit 3). The CLI and the MCP server both report failures through this.
+    """
+    from xwalk._extras import MissingExtra
+
+    if isinstance(exc, OpError):
+        result = exc.result
+        result.operation = operation
+        return result
+    if isinstance(exc, JobValidationError):
+        return OpResult(operation, exit_code=EXIT_USAGE, errors=_job_errors(exc))
+    if isinstance(exc, CredentialMissingError):
+        code, exit_code = "credential_missing", EXIT_USAGE
+    elif isinstance(exc, MissingExtra):
+        code, exit_code = "missing_extra", EXIT_USAGE
+    elif isinstance(exc, OSError):
+        code, exit_code = "io_error", EXIT_RUNTIME
+    else:
+        code, exit_code = "exception", EXIT_RUNTIME
+    message = str(exc) if code != "exception" else f"{type(exc).__name__}: {exc}"
+    return OpResult(operation, exit_code=exit_code, errors=[OpMessage(code, message)])
 
 
 # --- job loading and preflight ----------------------------------------------------
@@ -596,6 +629,92 @@ def index(
     for r in retrievers:
         result.lines.append(f"  {r.name}: {r.fingerprint} ({actions[r.name]})")
     return result
+
+
+async def search_async(
+    job: JobRef,
+    query: str,
+    *,
+    index_dir: str | Path,
+    limit: int = 10,
+    encoder_factory: EncoderFactory | None = None,
+) -> OpResult:
+    """Retrieve fused candidates for `query`. See `search`."""
+    operation = "search"
+    if not 1 <= limit <= MAX_SEARCH_LIMIT:
+        raise OpError(
+            operation,
+            "usage",
+            f"limit must be between 1 and {MAX_SEARCH_LIMIT}, got {limit}",
+            exit_code=EXIT_USAGE,
+        )
+    if not query.strip():
+        raise OpError(operation, "usage", "the query is empty", exit_code=EXIT_USAGE)
+    spec = load_valid_job(job, operation=operation)
+    _preflight(spec, operation, custom_encoder=encoder_factory is not None)
+    templates = spec.build_templates()
+    targets, store = _read_targets(spec, operation)
+    plans = plan_indexes(spec, targets, templates, index_dir, encoder_factory=encoder_factory)
+    retrievers, actions = prepare_indexes(
+        plans, targets, templates, rebuild=False, operation=operation
+    )
+
+    async def one(retriever: Retriever) -> Sequence[RetrievalHit]:
+        depth = max(limit, getattr(retriever, "default_limit", None) or limit)
+        return await retriever.search(SearchRequest(text=query, limit=depth))
+
+    outcomes = await asyncio.gather(*(one(r) for r in retrievers), return_exceptions=True)
+    groups: list[Sequence[RetrievalHit]] = []
+    warnings: list[OpMessage] = []
+    for retriever, outcome in zip(retrievers, outcomes, strict=True):
+        if isinstance(outcome, BaseException):
+            warnings.append(OpMessage("retriever_failure", f"{retriever.name}: {outcome}"))
+        else:
+            groups.append(outcome)
+    # The same fusion the matcher applies, so these are the candidates a record whose
+    # query renders to `query` would be shown (before the selector's own truncation).
+    fused = reciprocal_rank_fusion(groups, store)[:limit]
+    candidates = [
+        {
+            "rank": rank,
+            "id": candidate.id,
+            "fused_score": candidate.fused_score,
+            "retrievers": {hit.retriever: hit.rank for hit in candidate.evidence},
+            "text": templates.render_candidate(candidate.record),
+        }
+        for rank, candidate in enumerate(fused, start=1)
+    ]
+    result = OpResult(
+        operation=operation,
+        counts={"targets": len(targets), "candidates": len(candidates)},
+        artifacts={"index": str(index_dir)},
+        warnings=warnings,
+        data={"query": query, "limit": limit, "candidates": candidates, "indexes": actions},
+    )
+    result.lines.append(f"{len(candidates)} candidate(s) for {query!r}")
+    for row in candidates:
+        result.lines.append(f"  {row['rank']:>3}. {row['id']}  {row['text']}")
+    return result
+
+
+def search(
+    job: JobRef,
+    query: str,
+    *,
+    index_dir: str | Path,
+    limit: int = 10,
+    encoder_factory: EncoderFactory | None = None,
+) -> OpResult:
+    """The fused retrieval candidates for a free-text query. Never calls a model.
+
+    Every retriever in the job is searched (indexes in `index_dir` are opened, built
+    when absent, refused when incompatible) and the hit lists are fused by reciprocal
+    rank, as the matcher does. At most `limit` (1 to `MAX_SEARCH_LIMIT`) candidates are
+    returned, each with its rendered candidate text and per-retriever ranks.
+    """
+    return asyncio.run(
+        search_async(job, query, index_dir=index_dir, limit=limit, encoder_factory=encoder_factory)
+    )
 
 
 # --- run directories (CONTRACTS.md section 9) ---------------------------------------
@@ -1123,6 +1242,82 @@ def _explain_lines(data: Mapping[str, Any], fp: str) -> list[str]:
 
 
 # --- export -------------------------------------------------------------------------
+
+
+def list_results(
+    run_dir: str | Path,
+    *,
+    offset: int = 0,
+    limit: int = 50,
+    status: str | None = None,
+) -> OpResult:
+    """One page of a run's current view (the model's decisions, ordered by source id).
+
+    `limit` is 1 to `MAX_PAGE_SIZE`; `status` keeps only rows with that status
+    (`matched`, `needs_review`, `unmatched`, `failed` or `pending`). `data` carries the
+    rows, `total` (rows matching the filter) and `next_offset` (None on the last page).
+    Use `explain` for one row's attempts and review, `export` for the whole table.
+    """
+    operation = "results"
+    if not 1 <= limit <= MAX_PAGE_SIZE:
+        raise OpError(
+            operation,
+            "usage",
+            f"limit must be between 1 and {MAX_PAGE_SIZE}, got {limit}",
+            exit_code=EXIT_USAGE,
+        )
+    if offset < 0:
+        raise OpError(
+            operation, "usage", f"offset must be >= 0, got {offset}", exit_code=EXIT_USAGE
+        )
+    statuses = {s.value for s in MatchStatus} | {PENDING}
+    if status is not None and status not in statuses:
+        raise OpError(
+            operation,
+            "usage",
+            f"unknown status {status!r}; choose from {sorted(statuses)}",
+            exit_code=EXIT_USAGE,
+        )
+    view, ledger = _open_run(run_dir, operation)
+    try:
+        fp = view.run_fingerprint
+        rows: list[dict[str, Any]] = []
+        total = 0
+        for row in ledger.iter_current_summaries(fp):
+            if status is not None and row["status"] != status:
+                continue
+            if offset <= total < offset + limit:
+                rows.append(row)
+            total += 1
+        invocation = ledger.last_invocation(fp)
+    finally:
+        ledger.close()
+    end = offset + len(rows)
+    result = OpResult(
+        operation=operation,
+        run={
+            "dir": str(view.run_dir),
+            "run_fingerprint": fp,
+            "run_state": str(invocation["run_state"]) if invocation else "unknown",
+        },
+        counts={"total": total, "returned": len(rows)},
+        data={
+            "rows": rows,
+            "offset": offset,
+            "limit": limit,
+            "status": status,
+            "total": total,
+            "next_offset": end if end < total else None,
+        },
+    )
+    for row in rows:
+        result.lines.append(
+            f"{row['source_id']}\t{row['status']}\t{row['matched_id'] or ''}\t"
+            f"{'' if row['confidence'] is None else row['confidence']}"
+        )
+    if result.data["next_offset"] is not None:
+        result.lines.append(f"(rows {offset + 1}-{end} of {total}; next --offset {end})")
+    return result
 
 
 def _write_reviewed_csv(ledger: Ledger, fp: str, path: Path) -> tuple[int, int]:

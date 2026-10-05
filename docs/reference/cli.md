@@ -70,7 +70,7 @@ errors; progress and logs stay on stderr, so `xwalk match ... --json | jq .` alw
 | `usage` | calls and tokens of this invocation; `tokens` never hides unknown usage behind a zero; `null` when nothing ran |
 | `artifacts` | files written or read, by name |
 | `warnings`, `errors` | lists of `{code, message, source_id?}`; codes are stable identifiers |
-| `data` | command-specific detail: `validate` credentials and checks, `inspect` fingerprint components and invocation, `explain` decision and attempts |
+| `data` | command-specific detail: `validate` credentials and checks, `inspect` fingerprint components and invocation, `explain` decision and attempts, `search` candidates, `results` one page of rows |
 
 Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missing_field`,
 `invalid_value`, `missing_file`, `missing_extra`, `credential_missing`, `duplicate_id`,
@@ -78,7 +78,7 @@ Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missi
 `source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
 `interrupted` and `usage`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
 to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`, and the
-`experimental` warning.
+`experimental` warning. `search` adds the `retriever_failure` warning.
 
 ## `init`
 
@@ -268,6 +268,30 @@ job error, `3` aborted run, failed records or a foreign run directory, `130` int
 `validate` (and `doctor`) accept clustering jobs too: strict schema, source file,
 extras, credential presence and duplicate source ids, with no model call.
 
+## `search`
+
+Retrieves the fused target candidates for a free-text query: every retriever in the job is
+searched and the hit lists are fused by reciprocal rank, as the matcher does. Calls no
+model, so it is the cheap way to check that retrieval surfaces the right target before a
+paid run.
+
+| Argument / flag | Required | Default | Meaning |
+|---|---|---|---|
+| `QUERY` | yes | — | the text to retrieve for |
+| `--job` | yes | — | path to the job file |
+| `--index` | yes | — | index directory; built when absent, opened when compatible, refused (exit `3`) when incompatible |
+| `--limit` | no | `10` | candidates to return, `1` to `100` (`ops.MAX_SEARCH_LIMIT`) |
+
+```console
+$ xwalk search dextrose --job job.yaml --index run/index
+1 candidate(s) for 'dextrose'
+    1. CHEBI:17234  ID: CHEBI:17234 Label: glucose Synonyms: dextrose; grape sugar
+```
+
+`data.candidates` lists `rank`, `id`, `fused_score`, `retrievers` (name to 1-based rank)
+and `text` (the job's `candidate` template). A retriever that fails is a
+`retriever_failure` warning, not an error.
+
 ## `inspect`
 
 Summarises a run directory from its ledger: identity, state, current counts, usage of the
@@ -323,6 +347,23 @@ revision, usage), every attempt (query, proposal, candidate count and top candid
 chosen id, score, verifier decision, reason, error, usage), the applied review with the
 final answer, and every result the source has had (`history`). A source removed from the
 collection shows its history only. An unknown id exits `2`.
+
+## `results`
+
+One page of a run's current view, ordered by source id: the model's decisions, without
+the review overlay (use `export --view reviewed` for that).
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | run directory |
+| `--status` | no | all | `matched`, `needs_review`, `unmatched`, `failed` or `pending` |
+| `--offset` | no | `0` | rows to skip |
+| `--limit` | no | `50` | page size, `1` to `200` (`ops.MAX_PAGE_SIZE`) |
+
+Each row has `source_id`, `status`, `reason`, `matched_id`, `confidence`, `revision` and
+`result_key`. `data.total` counts the rows that match the filter and `data.next_offset` is
+the next page's offset, `null` on the last page. Calls nothing and exits `0`; a path that
+is not a run directory or an out-of-range flag is `2`.
 
 ## `export`
 
