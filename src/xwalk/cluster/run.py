@@ -26,7 +26,7 @@ from typing import Any
 
 from xwalk import __version__
 from xwalk.cluster.engine import FAILED, ClusterEngine, Progress
-from xwalk.cluster.exports import write_exports
+from xwalk.cluster.exports import selected_view, write_exports
 from xwalk.cluster.pool import PoolIndex
 from xwalk.cluster.prompts import ClusterPrompts
 from xwalk.cluster.settings import ClusterSettings, OrderRule
@@ -188,6 +188,16 @@ async def run_clustering(
     prompts = prompts or ClusterPrompts()
     if max_calls is not None and max_calls < 0:
         raise ClusterRunError("usage", "max_calls must be >= 0")
+    smallest = settings.max_calls_per_member_decision
+    if max_calls is not None and 0 < max_calls < smallest:
+        # A step commits only when it finishes, and one record's decision may need this
+        # many calls: a smaller cap could spend every invocation's budget on one step.
+        raise ClusterRunError(
+            "usage",
+            f"max_calls {max_calls} is below the {smallest} calls one record's decision may "
+            f"need (2 + pool.max_expansion_pages); use --max-calls >= {smallest}, or 0 "
+            "to make no calls",
+        )
     out_dir = Path(out)
     ordered = order_sources(sources, templates, settings.order)
     budgeted = BudgetedLLM(llm, CallBudget(max_calls))
@@ -273,16 +283,14 @@ async def run_clustering(
                 report.last_revision,
             )
             pool_updates = report.pool_updates
-            failed = [sid for sid, m in engine.members.items() if m.outcome == FAILED]
+            # Failed sources of the exported state (the selected revision).
+            exported_state = selected_view(store).assignments
+            failed = [sid for sid in engine.order if exported_state[sid][0] == FAILED]
             if failed:
                 run_state = "failed"
                 errors += [
-                    {
-                        "code": "source_failed",
-                        "message": engine.members[sid].reason,
-                        "source_id": sid,
-                    }
-                    for sid in sorted(failed, key=engine.order.index)
+                    {"code": "source_failed", "message": exported_state[sid][2], "source_id": sid}
+                    for sid in failed
                 ]
         exported = _finish(
             store,

@@ -72,11 +72,18 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
   assignment changes and completion marker commit in one SQLite transaction. A phase's
   work list is persisted when the phase starts. Resume rebuilds state from the database
   (the pool index is built once on open, not per mint) and skips completed steps; an
-  interrupted step's calls are repeated.
+  interrupted step's calls are repeated. Resuming a *finished* run with `failed` sources
+  in its exported state runs a resume round `r` (last revision + 1, review fix in
+  0.2.0rc1): `resume/<r>/restore` appends rows that make the exported state current,
+  `resume/<r>/<source>` re-decides each failed source, and `resume/<r>/end` stores state
+  revision `r` as the selected one. This mirrors CONTRACTS.md section 2 (failed records
+  are retried on resume); earlier rows stay as history.
 - **Processing** is sequential (`batch_size=1` reference mode): deterministic, slow.
   Optimistic batching is not in 0.2.
 - **Call bounds.** Every stage receives the same `BudgetedLLM`. Per decision at most
-  `2 + max_expansion_pages` calls (stream/retry), 2 (consolidate, reassign).
+  `2 + max_expansion_pages` calls (stream/retry), 2 (consolidate, reassign). A positive
+  `max_calls` below `2 + max_expansion_pages` is refused up front (`usage`, exit 2): a
+  step commits only when it finishes, so a smaller cap could never get past it.
 - **Run directory.** `cluster.sqlite`, `manifest.json`, `members.csv`, `clusters.csv`,
   `unresolved.csv`, `decisions.jsonl`. Same collision rules as `match` (CONTRACTS 9):
   another fingerprint is refused, the same fingerprint resumes, a complete run makes

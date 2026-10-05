@@ -84,7 +84,19 @@ clustered 1200 records into 431 clusters in runs/food
 different run and is refused, so pick a new `--out`. `--max-calls` caps the upstream
 requests of one invocation; when it is reached the run stops at a step boundary (exit
 `3`, error `call_limit_reached`) and the next `xwalk cluster` continues from there.
-A complete run repeated makes no calls and rewrites identical exports.
+Because a step is stored only when it finishes and one record's decision may need
+`2 + pool.max_expansion_pages` calls (4 by default), a smaller positive `--max-calls` is
+refused with exit `2`; `--max-calls 0` makes no calls. A complete run repeated makes no
+calls and rewrites identical exports.
+
+A finished run with `failed` records retries them when it is resumed, as `match` does.
+The retry round starts from the exported state, decides each failed record afresh against
+it, and stores the result as a new state revision, which becomes the exported one
+(`manifest.json`: `selected_revision`, `last_revision`). Nothing is rewritten: the
+earlier decisions, assignments and state revisions stay in the store and in
+`decisions.jsonl`. Records that fail again stay `failed` (exit `3`) and are retried on
+the next resume. Other records keep their exported outcome; to reconsider everything,
+use a new `--out`.
 
 From Python:
 
@@ -137,7 +149,7 @@ Outcomes: `assigned` (a verified member of a cluster with other members), `singl
 (a record that started a cluster no other record joined: *not* a verified equivalence),
 `needs_review` (no confident decision: a rejected or low-confidence verification, a
 failed reverification, or a search that did not reach `mint_requires`), `failed` (a
-provider error or unparseable answer, retried in every round), `pending` (not reached
+provider error or unparseable answer, retried in every round and on resume), `pending` (not reached
 before the run stopped). Accepted clusters are a partition: no record is in two.
 
 Cluster ids are `K` + a hash of the run fingerprint and the record that started the

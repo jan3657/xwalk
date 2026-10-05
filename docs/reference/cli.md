@@ -255,11 +255,11 @@ described in [Clustering one collection](../guide/clustering.md).
 |---|---|---|---|
 | `--job` | yes | — | a `kind: cluster` job file |
 | `--out` | yes | — | run directory |
-| `--max-calls` | no | none | cap the upstream LLM requests of this invocation; reaching it aborts at a step boundary (exit `3`, `call_limit_reached`) and the next invocation resumes |
+| `--max-calls` | no | none | cap the upstream LLM requests of this invocation; reaching it aborts at a step boundary (exit `3`, `call_limit_reached`) and the next invocation resumes. A positive value below `2 + pool.max_expansion_pages` (one record's decision) is refused with exit `2` |
 
 Run directories follow the `match` rules, with one difference: the ordered source
 snapshot is part of the run identity, so an edited source collection is a new run and an
-existing `--out` is refused. Writes `members.csv`, `clusters.csv`, `unresolved.csv`,
+existing `--out` is refused. Resuming a finished run retries its `failed` records. Writes `members.csv`, `clusters.csv`, `unresolved.csv`,
 `decisions.jsonl`, `manifest.json` and `cluster.sqlite`. Per-record progress goes to
 stderr. Exit codes: `0` complete, `1` complete with `needs_review` records, `2` usage or
 job error, `3` aborted run, failed records or a foreign run directory, `130` interrupted.

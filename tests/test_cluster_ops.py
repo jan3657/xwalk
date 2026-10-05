@@ -101,6 +101,38 @@ def test_failed_sources_exit_3(tmp_path, monkeypatch, capsys):
     ]
 
 
+def test_failed_sources_are_retried_when_the_run_is_resumed(tmp_path, monkeypatch, capsys):
+    from xwalk.llm.base import LLMRetryableError
+
+    def down(name, request):
+        if "quinoa" in sections(request.user).get("Record", ""):
+            raise LLMRetryableError("503")
+        return None
+
+    out = str(tmp_path / "run")
+    broken = Oracle(concepts(CHOCOLATE), override=down)
+    monkeypatch.setattr(ClusterJobSpec, "build_llm", lambda self: broken.llm)
+    assert main(["cluster", "--job", str(JOB), "--out", out, "--json"]) == 3
+    _envelope(capsys)
+    healthy = Oracle(concepts(CHOCOLATE))
+    monkeypatch.setattr(ClusterJobSpec, "build_llm", lambda self: healthy.llm)
+    code = main(["cluster", "--job", str(JOB), "--out", out, "--json"])
+    envelope = _envelope(capsys)
+    assert code == 0 and envelope["run"]["run_state"] == "complete"
+    assert envelope["usage"]["calls"] > 0 and envelope["counts"]["failed"] == 0
+    assert envelope["errors"] == []
+
+
+def test_a_max_calls_too_small_for_one_decision_exits_2(tmp_path, oracle, capsys):
+    out = tmp_path / "run"
+    code = main(["cluster", "--job", str(JOB), "--out", str(out), "--max-calls", "2", "--json"])
+    envelope = _envelope(capsys)
+    assert code == envelope["exit_code"] == 2
+    assert envelope["errors"][0]["code"] == "usage"
+    assert "--max-calls >= 4" in envelope["errors"][0]["message"]
+    assert not oracle.llm.requests and not out.exists()
+
+
 def test_call_limit_aborts_with_3_and_resume_completes(tmp_path, oracle, capsys):
     out = str(tmp_path / "run")
     code = main(["cluster", "--job", str(JOB), "--out", out, "--max-calls", "4", "--json"])

@@ -6,6 +6,7 @@ a scripted judge that answers from ground truth. No model is called.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import json
 import random
@@ -514,7 +515,7 @@ def test_label_order_is_casefolded_whitespace_normalised_then_by_id():
 # --- interruption and resume ---------------------------------------------------------
 
 
-@pytest.mark.parametrize("limit", [1, 6, 14, 21, 25])
+@pytest.mark.parametrize("limit", [4, 6, 14, 21, 25])
 async def test_resume_after_a_call_limit_reproduces_a_clean_run(tmp_path, limit):
     """The call limit stops the run mid-step at different phases (stream, refinement);
     a resumed run must end exactly where an uninterrupted one does."""
@@ -571,6 +572,144 @@ async def test_a_complete_run_repeated_makes_no_calls_and_identical_exports(tmp_
     report = await cluster(records(CHOCOLATE), tmp_path / "run", again)
     assert report.usage.calls == 0 and not again.llm.requests
     assert _exports(tmp_path / "run") == before
+
+
+def _broken_once(name, request):
+    record = sections(request.user).get("Record", "")
+    if "quinoa" in record:
+        raise LLMRetryableError("upstream 503")
+    if "milk chocolate" in record and name == "select-cluster":
+        return "I think it is C01"
+    return None
+
+
+def _record_subjects(oracle: Oracle) -> set[str]:
+    return {sections(r.user).get("Record", "").strip() for r in oracle.llm.requests}
+
+
+async def test_resuming_a_finished_run_retries_its_failed_sources(tmp_path):
+    """CONTRACTS.md section 2 (a failed record is retried on resume), for clustering: a
+    finished run with failed members retries exactly those on the next invocation and
+    keeps the earlier decisions as history."""
+    run = tmp_path / "run"
+    first = await cluster(
+        records(CHOCOLATE), run, Oracle(concepts(CHOCOLATE), override=_broken_once)
+    )
+    assert first.run_state == "failed" and first.counts["failed"] == 2
+    before = _dump(run)
+
+    healthy = Oracle(concepts(CHOCOLATE))
+    resumed = await cluster(records(CHOCOLATE), run, healthy)
+    assert resumed.usage.calls > 0
+    assert _record_subjects(healthy) == {"milk chocolate", "quinoa"}  # only the failed ones
+    assert resumed.run_state == "complete" and not resumed.errors
+    assert resumed.counts["failed"] == 0
+    assert partition(run) == EXPECTED_CHOCOLATE
+    assert resumed.exported_revision == resumed.selected_revision == first.last_revision + 1
+    after = _dump(run)
+    for table in ("decisions", "assignments", "cluster_revisions", "state_revisions", "steps"):
+        assert after[table][: len(before[table])] == before[table], table  # history kept
+
+    again = Oracle(concepts(CHOCOLATE))
+    exports = _exports(run)
+    repeat = await cluster(records(CHOCOLATE), run, again)
+    assert repeat.usage.calls == 0 and _exports(run) == exports
+
+
+async def test_a_resume_round_that_fails_again_stays_failed_and_retries_next_time(tmp_path):
+    run = tmp_path / "run"
+    await cluster(records(CHOCOLATE), run, Oracle(concepts(CHOCOLATE), override=_broken_once))
+    still = Oracle(concepts(CHOCOLATE), override=_broken_once)
+    again = await cluster(records(CHOCOLATE), run, still)
+    assert again.run_state == "failed" and again.usage.calls > 0
+    assert {e["source_id"] for e in again.errors} == {"c5", "c8"}
+    final = await cluster(records(CHOCOLATE), run, Oracle(concepts(CHOCOLATE)))
+    assert final.run_state == "complete" and partition(run) == EXPECTED_CHOCOLATE
+
+
+async def test_an_interrupted_resume_round_reproduces_an_uninterrupted_one(tmp_path):
+    for name in ("clean", "cut"):
+        await cluster(
+            records(CHOCOLATE), tmp_path / name, Oracle(concepts(CHOCOLATE), override=_broken_once)
+        )
+    await cluster(records(CHOCOLATE), tmp_path / "clean", Oracle(concepts(CHOCOLATE)))
+    count = {"n": 0}
+
+    def interrupt(name, request):
+        count["n"] += 1
+        if count["n"] == 3:
+            raise KeyboardInterrupt
+        return None
+
+    with pytest.raises(KeyboardInterrupt):
+        await cluster(
+            records(CHOCOLATE), tmp_path / "cut", Oracle(concepts(CHOCOLATE), override=interrupt)
+        )
+    await cluster(records(CHOCOLATE), tmp_path / "cut", Oracle(concepts(CHOCOLATE)))
+    assert _dump(tmp_path / "clean") == _dump(tmp_path / "cut")
+    assert _exports(tmp_path / "clean") == _exports(tmp_path / "cut")
+
+
+async def test_a_resume_round_starts_from_the_exported_revision(tmp_path):
+    """When the exported revision is not the last state (max_iterations), the retried
+    sources are decided against the exported state, and the result is consistent."""
+    flipper = _flipper()
+
+    def also_broken(name, request):
+        if "quinoa" in sections(request.user).get("Record", ""):
+            raise LLMRetryableError("upstream 503")
+        return flipper(name, request)
+
+    table = {**FRUIT, "q": ("quinoa", "quinoa")}
+    oracle = Oracle(concepts(table), pairs=FRUIT_PAIRS, override=also_broken)
+    config = settings(max_refine_iterations=1)
+    first = await cluster(records(table), tmp_path / "run", oracle, settings=config)
+    assert first.selected_revision == 0 and first.last_revision == 1
+    rows = member_rows(tmp_path / "run")
+    assert rows["q"]["outcome"] == "failed"
+    second = await cluster(
+        records(table),
+        tmp_path / "run",
+        Oracle(concepts(table), pairs=FRUIT_PAIRS, override=_flipper()),
+        settings=config,
+    )
+    after = member_rows(tmp_path / "run")
+    assert after["q"]["outcome"] in ("singleton", "assigned", "needs_review")
+    # every other source keeps its exported (revision 0) outcome and cluster
+    for sid, row in rows.items():
+        if sid != "q":
+            assert (after[sid]["outcome"], after[sid]["cluster_id"]) == (
+                row["outcome"],
+                row["cluster_id"],
+            ), sid
+    assert second.exported_revision == 2
+    store = _store(tmp_path / "run")
+    try:
+        notes = {row[1]: row[5] for row in store.dump("steps")}
+    finally:
+        store.close()
+    assert notes["resume/2/restore"] == "restored:0" and notes["resume/2/end"] == "resumed"
+    members = [m for group in partition(tmp_path / "run") for m in group]
+    assert len(members) == len(set(members))
+
+
+def test_a_call_limit_below_one_step_is_refused(tmp_path):
+    from xwalk.cluster.run import ClusterRunError
+
+    config = settings()
+    smallest = config.max_calls_per_member_decision
+    for limit in (1, smallest - 1):
+        with pytest.raises(ClusterRunError, match="max_calls") as info:
+            asyncio.run(
+                cluster(
+                    records(CHOCOLATE),
+                    tmp_path / "run",
+                    Oracle(concepts(CHOCOLATE)),
+                    max_calls=limit,
+                )
+            )
+        assert info.value.code == "usage"
+    assert not (tmp_path / "run").exists()
 
 
 # --- bounds -------------------------------------------------------------------------

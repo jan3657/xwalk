@@ -373,6 +373,10 @@ class ClusterEngine:
     async def run(self) -> EngineReport:
         self.load()
         policy = self.settings.policy
+        if self.store.get_meta("stop_reason") is not None:
+            # Finished before this invocation began: retry the exported failed sources.
+            await self._resume_failed()
+            return self._report()
         for sid in self._plan("stream", 0, lambda: list(self.order)):
             await self._step(f"stream/{sid}", "stream", 0, sid, self._decide, sid)
         await self._step("end/0", "end", 0, None, self._end, 0)
@@ -398,11 +402,87 @@ class ClusterEngine:
                     )
             await self._step(f"end/{it}", "end", it, None, self._end, it)
 
+        return self._report()
+
+    def _report(self) -> EngineReport:
         stop = self.store.get_meta("stop_reason")
         selected = self.store.get_meta("selected_revision")
         last = self.store.get_meta("last_revision")
         assert stop in STOP_REASONS and selected is not None and last is not None
         return EngineReport(str(stop), int(selected), int(last), self.pool.updates)
+
+    # --- resume of a finished run: retry failed sources --------------------------------
+
+    def _selected_state(self) -> dict[str, Any]:
+        selected = self.store.get_meta("selected_revision")
+        for row in self.store.state_revisions():
+            if row["revision"] == selected:
+                return row
+        raise RuntimeError(f"selected state revision {selected} is missing")  # pragma: no cover
+
+    async def _resume_failed(self) -> None:
+        """A resume round, as matching retries failed records on resume (CONTRACTS.md
+        section 2). It starts from the exported state: `resume/<r>/restore` makes that
+        state current again (appending rows, never rewriting them), each failed source is
+        decided afresh against it, and `resume/<r>/end` stores the result as state
+        revision `r`, which becomes the exported one. `r` is the last revision plus one,
+        so an interrupted round resumes under the same keys."""
+        state = self._selected_state()
+        failed = [s for s in self.order if state["assignments"][s][0] == FAILED]
+        if not failed:
+            return
+        rnd = int(self.store.get_meta("last_revision")) + 1
+        plan = self._plan("resume", rnd, lambda: failed)
+        await self._step(f"resume/{rnd}/restore", "resume", rnd, None, self._restore, state)
+        for sid in plan:
+            await self._step(f"resume/{rnd}/{sid}", "resume", rnd, sid, self._decide, sid)
+        await self._step(f"resume/{rnd}/end", "resume", rnd, None, self._resume_end, rnd)
+
+    async def _restore(self, w: StepWrites, state: Mapping[str, Any]) -> None:
+        """Make the given state revision the current state."""
+        revisions: Mapping[str, int] = state["clusters"]
+        changed = 0
+        for cluster in sorted(self.clusters.values(), key=lambda c: c.created_seq):
+            if cluster.cluster_id in revisions:
+                row = self.store.revision(cluster.cluster_id, revisions[cluster.cluster_id])
+                target = (bool(row["live"]), list(row["members"]), row["merged_into"])
+            else:  # created after that state
+                target = (False, [], None)
+            if (cluster.live, cluster.members, cluster.merged_into) != target:
+                cluster.live, cluster.members, cluster.merged_into = target
+                self._revise(w, cluster, None)
+                changed += 1
+        for sid in self.order:
+            outcome, cid, reason, proposal, conf, did = state["assignments"][sid]
+            member = Member(outcome, cid, reason, proposal, conf, did)
+            if self.members.get(sid) != member:
+                self.members[sid] = member
+                w.assignments.append(
+                    {
+                        "source_id": sid,
+                        "outcome": outcome,
+                        "cluster_id": cid,
+                        "reason": reason,
+                        "proposal_cluster_id": proposal,
+                        "confidence": conf,
+                        "decision_id": did,
+                    }
+                )
+                changed += 1
+        w.note = f"restored:{state['revision']}" if changed else "unchanged"
+
+    async def _resume_end(self, w: StepWrites, revision: int) -> None:
+        assignments, clusters = self.snapshot()
+        w.state_revision = {
+            "revision": revision,
+            "iteration": revision,
+            "state_hash": state_hash(self.members, self.clusters),
+            "unresolved": sum(1 for m in self.members.values() if m.outcome in UNRESOLVED),
+            "assignments": assignments,
+            "clusters": clusters,
+        }
+        w.meta = {"selected_revision": revision, "last_revision": revision}
+        w.note = "resumed"
 
     def _retry_plan(self) -> list[str]:
         return [s for s in self.order if self.members[s].outcome in UNRESOLVED]
