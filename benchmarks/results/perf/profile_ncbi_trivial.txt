@@ -1,0 +1,51 @@
+         1445850 function calls (1357124 primitive calls) in 0.969 seconds
+
+   Ordered by: cumulative time
+   List reduced from 988 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.980    0.980 <repo>/benchmarks/profile_workload.py:82(one_run)
+        1    0.000    0.000    0.980    0.980 <repo>/src/xwalk/ops.py:817(run)
+        1    0.000    0.000    0.980    0.980 <stdlib>/asyncio/runners.py:160(run)
+        3    0.000    0.000    0.979    0.326 <stdlib>/asyncio/base_events.py:618(run_until_complete)
+        3    0.000    0.000    0.979    0.326 <stdlib>/asyncio/base_events.py:594(run_forever)
+       91    0.002    0.000    0.979    0.011 <stdlib>/asyncio/base_events.py:1859(_run_once)
+        1    0.000    0.000    0.978    0.978 <stdlib>/asyncio/runners.py:86(run)
+      587    0.001    0.000    0.974    0.002 <stdlib>/asyncio/events.py:82(_run)
+      587    0.002    0.000    0.974    0.002 {method 'run' of '_contextvars.Context' objects}
+      100    0.000    0.000    0.791    0.008 <repo>/src/xwalk/batch.py:348(one)
+      100    0.002    0.000    0.761    0.008 <repo>/src/xwalk/matcher.py:423(match)
+       88    0.000    0.000    0.739    0.008 <repo>/src/xwalk/matcher.py:77(_call_stage)
+      104    0.000    0.000    0.706    0.007 <site-packages>/jinja2/environment.py:1092(from_string)
+      104    0.001    0.000    0.703    0.007 <site-packages>/jinja2/environment.py:731(compile)
+       88    0.001    0.000    0.698    0.008 <repo>/src/xwalk/prompts/contract.py:131(_render)
+      100    0.002    0.000    0.675    0.007 <repo>/src/xwalk/matcher.py:189(_attempt)
+       38    0.001    0.000    0.381    0.010 <repo>/src/xwalk/stages/gate.py:88(score)
+       38    0.000    0.000    0.375    0.010 <repo>/src/xwalk/prompts/contract.py:156(render_score)
+      104    0.000    0.000    0.346    0.003 <site-packages>/jinja2/environment.py:682(_generate)
+      104    0.001    0.000    0.345    0.003 <site-packages>/jinja2/compiler.py:101(generate)
+26346/104    0.027    0.000    0.344    0.003 <site-packages>/jinja2/visitor.py:35(visit)
+      104    0.003    0.000    0.343    0.003 <site-packages>/jinja2/compiler.py:829(visit_Template)
+      104    0.000    0.000    0.305    0.003 <site-packages>/jinja2/environment.py:618(_parse)
+      104    0.000    0.000    0.296    0.003 <site-packages>/jinja2/parser.py:1045(parse)
+       38    0.001    0.000    0.285    0.008 <repo>/src/xwalk/stages/select.py:94(select)
+
+
+
+{
+  "dataset": "ncbi_disease",
+  "variant": "ncbi_disease",
+  "llm": "trivial",
+  "latency_s": 0.0,
+  "repeat": 5,
+  "wall_seconds": [
+    0.431,
+    0.436,
+    0.458,
+    0.451,
+    0.427
+  ],
+  "wall_seconds_median": 0.436,
+  "calls": 88,
+  "peak_python_mib": 1.57
+}

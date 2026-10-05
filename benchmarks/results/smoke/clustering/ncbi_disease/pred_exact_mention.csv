@@ -1,0 +1,51 @@
+item_id,cluster_id,outcome
+9949209.1,copper toxicosis,assigned
+9949209.2,hepatic copper accumulation,assigned
+9949209.3,inherited disorder,singleton
+9949209.4,hepatic copper accumulation,assigned
+9949209.5,wilson disease,singleton
+9949209.6,wd,assigned
+9949209.7,copper overload,singleton
+9949209.8,non indian childhood cirrhosis,singleton
+9949209.9,copper toxicosis,assigned
+9949209.10,ct,assigned
+9949209.11,liver disease,singleton
+9949209.12,wd,assigned
+9949209.13,ct,assigned
+9949209.14,ct,assigned
+9949209.15,wd,assigned
+9949209.16,ct,assigned
+9949209.17,ct,assigned
+9950360.1,apc,assigned
+9950360.2,fap,assigned
+9950360.3,apc,assigned
+9950360.4,colorectal cancer,assigned
+9950360.5,colorectal cancer,assigned
+9950360.6,familial adenomatous polyposis,singleton
+9950360.7,fap,assigned
+9950360.8,adenomatous polyposis coli,singleton
+9950360.9,apc,assigned
+9950360.10,apc,assigned
+9950360.11,apc,assigned
+9950360.12,colorectal cancer,assigned
+9950360.13,apc,assigned
+9950360.14,fap,assigned
+9950360.15,colorectal cancer,assigned
+9950360.16,fap,assigned
+9950360.17,colorectal cancer,assigned
+9950360.18,fap,assigned
+9950360.19,fap,assigned
+9950360.20,colorectal cancer,assigned
+9634518.1,phenylalanine hydroxylase deficiency,singleton
+9634518.2,phenylketonuria,singleton
+9634518.3,pku,singleton
+9634518.4,mild hyperphenylalaninemia,singleton
+9634518.5,mhp,singleton
+9634518.6,allelic disorders,singleton
+9634518.7,pah deficiency,assigned
+9634518.8,pah deficiency,assigned
+9634518.9,hyperphenylalaninemia,singleton
+9563950.1,myotonic dystrophy,assigned
+9563950.2,myotonic dystrophy,assigned
+9563950.3,dm,assigned
+9563950.4,dm,assigned

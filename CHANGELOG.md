@@ -133,6 +133,11 @@ All notable changes to this project are documented here. The format follows
   overrides.
 - `xwalk.llm.parsing.parse_confidence`, `xwalk.llm.base.failure_usage`, and a `usage`
   attribute on `LLMError`.
+- A pilot benchmark harness in `benchmarks/` (repository only, not packaged): pinned
+  data manifests with constructed no-match variants, separate matching, pairwise and
+  clustering tracks, a clustering scorer for any `item_id,cluster_id[,outcome]` file
+  (`python -m benchmarks.cluster_eval`), and `python -m benchmarks.run --smoke` for
+  offline SYNTHETIC checks. Real-model results are pending. See `docs/benchmarks.md`.
 
 ### Changed
 

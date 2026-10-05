@@ -9,7 +9,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 | 02 Persistence and lifecycle | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `tests/test_lifecycle.py` (21), `tests/test_ledger_compat.py` (6, on the preserved 0.1.1 fixture), plus additions to test_ledger/test_review/test_batch/test_fingerprint/test_cli. Before the fix: 18 failed in test_batch+test_ledger and 3 new modules failed at import (new API); the two credential tests failed against the old clients. After: `python -m pytest -q`: 996 passed, 15 skipped; `-m "not integration"`: 996 passed, 14 skipped, 1 deselected; ruff check/format clean (113 files); mypy clean (64 files). FakeLLM/ScriptedRetriever only, no paid calls; dense/ontology/sql/integration not run |
 | 03 Shared operations and CLI | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"` (+ hatchling, now in the dev extra). Reproduced before the fix on `ae55e4c`: a misspelled `policy.accept_att` loaded with `accept_at=0.6`. New tests: `test_job_validation.py` (19), `test_call_budget.py` (7), `test_ops.py` (30), `test_cli_json.py` (11), plus test_bm25/test_packaging (wheel contents) additions; 4 CLI tests migrated to the contract exit codes / stderr warnings. `python -m pytest -q`: 1065 passed, 15 skipped; `-m "not integration"`: 1065 passed, 14 skipped, 1 deselected; ruff check/format clean (120 files); mypy clean (67 files). FakeLLM/MockTransport/toy encoders only, no paid calls; dense extra not installed (dense paths tested with fake encoders); ontology/sql/integration not run |
 | 04 Flat clustering | Done, **experimental** (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `src/xwalk/cluster/` (engine, incremental pool index, SQLite store, prompts, job, ops operation), `xwalk cluster`, `ops.cluster`. New tests: `test_cluster_engine.py` (30), `test_cluster_ops.py` (16), `test_cluster_pool.py` (7), fixture `tests/fixtures/cluster_tiny/`; all with a scripted judge (FakeLLM handler), no paid calls. `python -m pytest -q`: 1124 passed, 15 skipped; `-m "not integration"`: 1124 passed, 14 skipped, 1 deselected; ruff check/format and mypy clean. Gates: all implementation gates met; real labelled sample **not** evaluated (no endpoint) -> experimental. Decision record: `CLUSTERING_DECISIONS.md` (incl. scaling table) |
-| 05 Benchmark and performance | Not started | | | | |
+| 05 Benchmark and performance | Done (awaiting review; real eval pending) | unreported | unreported | worktree branch `worktree-agent-ad4549e848904883e` (off `d8fa82f`) | Python 3.11 venv `pip install -e ".[dev,ontology]"`. `python -m benchmarks.run --smoke` (SYNTHETIC judge, offline) on 4 pilot variants, raw output `benchmarks/results/smoke/` at `cd88923`; new `tests/test_benchmarks.py` (17). Profile + experiment in `benchmarks/results/perf/`: per-call Jinja recompilation in `PromptSet._render` is ~70% of xwalk's own CPU (0.440 s -> 0.188 s median with a cached template, prompts identical; ~1.5% at 200 ms/call). No library change made (fix is in `prompts/`, outside this task's file set). `python -m pytest -q`: 1097 passed, 3 skipped; `-m "not integration"`: 1097 passed, 2 skipped, 1 deselected; ruff check/format clean on src tests examples scripts benchmarks (133 files); mypy clean (67 files; benchmarks/ also strict-clean, 12 files). Without rdflib the cafeteria test skips. No paid calls; dense/LinkTransformer/real-model not run |
 | 06 Optional MCP | Not started | | | | |
 | 07 Documentation and release | Not started | | | | |
 | 08 Independent review | Not started | | | | |
@@ -157,3 +157,30 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - Next recommended task: 05 (benchmarks), with a small labelled clustering sample
   evaluated on a real endpoint before clustering loses its experimental label.
 
+## Task 05 notes (for task 04, 07 and later)
+
+- Harness: `benchmarks/` (repo only; the wheel packages `src/xwalk` only). Command:
+  `python -m benchmarks.run --smoke` (about a minute; `--datasets ncbi_disease --limit 5`
+  for seconds). Method, data and reading: `docs/benchmarks.md`.
+- Everything that involves a model answer is SYNTHETIC (`benchmarks/synthetic_llm.py`, a
+  string-similarity judge that never sees gold). Real results are PENDING:
+  `python -m benchmarks.run --real --max-calls N` with `XWALK_BENCH_BASE_URL`,
+  `XWALK_BENCH_MODEL`, `XWALK_BENCH_API_KEY_ENV` (or the example jobs' `llm` sections).
+- Clustering (task 04): export assignments as `item_id,cluster_id,outcome` (CSV or
+  JSONL; outcomes per CONTRACTS section 10) and score with
+  `python -m benchmarks.cluster_eval --gold <gold_clusters.csv> --pred <file> [--pred
+  <other order>] [--meta usage.json]`. Pilot gold clusters are written by the smoke run
+  under `benchmarks/results/smoke/clustering/<dataset>/`. The food pilot is nearly all
+  singletons (48 clusters / 50 mentions); use the disease pilot. Wiring xwalk clustering
+  into `benchmarks/run.py` is a small follow-up once its API is final.
+- Data findings: 11 of 50 `ncbi_disease` mentions have gold ids absent from the sample
+  catalog (OMIM:215600, OMIM:261600) even after alias expansion; 12 of 50 are bare
+  abbreviations (CT, FAP, MHP) with zero BM25 hits.
+- Performance follow-up (measured here; applied afterwards in commit `d75463b`): cache compiled prompt
+  templates in `xwalk/prompts/contract.py` `PromptSet._render` (it builds a Jinja
+  Environment and compiles per call). Patch and numbers: `docs/benchmarks.md`
+  "Performance"; reproduce with `python -m benchmarks.profile_workload --experiment
+  prompt-template-cache --llm trivial`. CachingLLM miss coalescing was not justified (2/111
+  and 8/130 duplicate requests; `xwalk match` does not use `CachingLLM`).
+- Not done: dense retrieval (extra not installed), LinkTransformer (unexecuted adapter in
+  `benchmarks/adapters/`), WDC/Splink/dedupe, real-model evaluation.

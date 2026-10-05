@@ -10,11 +10,12 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, Template
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from xwalk.fingerprint import hash_value
@@ -66,6 +67,22 @@ REWRITE_SCHEMA: Mapping[str, Any] = {
     "required": ["queries"],
     "additionalProperties": False,
 }
+
+
+_ENV = Environment(
+    loader=FileSystemLoader(str(BASE_DIR)),
+    undefined=StrictUndefined,
+    trim_blocks=True,
+    lstrip_blocks=True,
+    keep_trailing_newline=False,
+)
+
+
+@lru_cache(maxsize=64)
+def _compile(skeleton: str) -> Template:
+    # Compiling a skeleton dominated per-call CPU in profiling (benchmarks/results),
+    # so each distinct skeleton text is compiled once per process.
+    return _ENV.from_string(skeleton)
 
 
 class ContractError(Exception):
@@ -129,15 +146,7 @@ class PromptSet:
         return cls(slots=slots, skeletons=skeletons)
 
     def _render(self, name: str, **variables: Any) -> str:
-        env = Environment(
-            loader=FileSystemLoader(str(BASE_DIR)),
-            undefined=StrictUndefined,
-            trim_blocks=True,
-            lstrip_blocks=True,
-            keep_trailing_newline=False,
-        )
-        template = env.from_string(self.skeletons[name])
-        return template.render(slots=self.slots, **variables).strip()
+        return _compile(self.skeletons[name]).render(slots=self.slots, **variables).strip()
 
     def render_select(
         self,
