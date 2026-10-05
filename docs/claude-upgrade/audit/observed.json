@@ -1,0 +1,70 @@
+{
+  "non_finite_confidence": {
+    "clamped_nan": 1.0,
+    "result_status": "matched",
+    "confidence": 1.0
+  },
+  "rewrite_cost_omitted": {
+    "expected_calls": 5,
+    "reported_calls": 4,
+    "expected_tokens": 600,
+    "reported_tokens": 480,
+    "attempts": 2
+  },
+  "verifier_failure_escapes": {
+    "exception_type": "LLMRetryableError",
+    "exception": "429 exhausted"
+  },
+  "rewriter_failure_escapes": {
+    "exception_type": "LLMFatalError",
+    "exception": "invalid api key"
+  },
+  "multiline_candidate_corrupted": {
+    "chosen": "[C01] label A",
+    "others": "critical detail A\n\n[C02] label B",
+    "critical_detail_in_chosen": false
+  },
+  "trace_flag_changes_matching": {
+    "True": {
+      "status": "matched",
+      "matched_id": "T2",
+      "scorer_calls": 2,
+      "attempt_reasons": [
+        null,
+        null
+      ]
+    },
+    "False": {
+      "status": "unmatched",
+      "matched_id": null,
+      "scorer_calls": 1,
+      "attempt_reasons": [
+        null,
+        "no_candidates"
+      ]
+    }
+  },
+  "changed_source_resume_duplicates": {
+    "expected_current_rows": 1,
+    "reported_total": 2,
+    "exported_source_ids": [
+      "s1",
+      "s1"
+    ],
+    "duplicate_targets": {
+      "T1": [
+        "s1",
+        "s1"
+      ]
+    }
+  },
+  "batch_write_after_close": [
+    {
+      "event": "close"
+    },
+    {
+      "event": "write",
+      "after_close": true
+    }
+  ]
+}
