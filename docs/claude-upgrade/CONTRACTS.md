@@ -32,6 +32,12 @@ contract only in a reviewed commit that edits this file and says why.
   history; the new one becomes current.
 - Reviews stay keyed by `result_key`. A review whose result is no longer current is
   shown as stale in history and is not applied to the current reviewed export.
+  Task 02 also binds each review to the result *revision* it was made against, so a
+  result recomputed under the same key (`--no-resume`, a retried failure) makes the
+  earlier review stale too.
+- The snapshot is recorded only when the source was read to the end. An invocation
+  that aborts or is interrupted earlier records none; its exports keep the previous
+  snapshot (or, with none, the latest row per source). Recorded in task 02.
 - The ledger schema change is additive with an explicit `schema_version`; a v0.1.1
   ledger opens read-compatible (all its rows become history, its last snapshot is
   inferred as "all source ids with their latest row"). Unknown future versions are
@@ -112,8 +118,11 @@ captured outgoing request body, not the fingerprint.
   `{"schema_version": 1, "operation", "status", "exit_code", "run": {"dir",
   "run_fingerprint", "run_state"}, "counts", "usage", "artifacts", "warnings", "errors":
   [{"code", "message", "source_id"?}]}`. Progress and logs always go to stderr.
-- `run_state`: `complete` | `partial` (pending sources) | `aborted` (fatal) |
-  `interrupted`.
+- `run_state`: `complete` | `partial` (pending sources) | `failed` (current rows
+  with status `failed`) | `aborted` (fatal) | `interrupted`. Precedence: interrupted >
+  aborted > failed > partial > complete. (`failed` added in task 02: the task brief
+  requires failed runs to be distinguishable from complete ones, and a `complete` flag
+  next to failed rows would hide them.)
 - Exit codes (existing 0-3 kept, meaning tightened):
   - `0` complete, no review rows, no failed rows.
   - `1` attention: complete with `needs_review` rows, a `partial` run from `--limit`,

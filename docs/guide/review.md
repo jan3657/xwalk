@@ -107,6 +107,9 @@ if:
 - the `result_key` is not in this ledger;
 - the row's `source_hash` no longer matches the stored result — the source record
   changed since the run, so the decision was made about different data;
+- the result is no longer current — the source record was edited or removed and the
+  run resumed since the export, or the result was recomputed (`--no-resume`) and now
+  proposes a different target;
 - the target collection fingerprint no longer matches the one recorded in the manifest.
 
 Validation is all-or-nothing: one stale row refuses the whole file. This is deliberate.
@@ -129,6 +132,13 @@ alongside `final_target_id` and `final_status` — that is the "never collapsed"
 
 The overlay is append-only. If the same record is reviewed twice, the latest decision
 wins in this view and both remain in the ledger via `Ledger.iter_reviews`.
+
+A decision is bound to the exact result it was made against. Resuming an unchanged run
+keeps it. When the source record is edited or removed, or the result is recomputed, the
+decision no longer applies to the adjudicated view: the record needs a new review.
+Nothing is deleted; `xwalk.review.review_history(ledger, run_fingerprint)` lists every
+decision with its state, `applied`, `superseded` (a later decision replaced it) or
+`stale` (its result is no longer current).
 
 ## Export the adjudicated mapping
 

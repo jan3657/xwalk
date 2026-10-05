@@ -28,9 +28,49 @@ All notable changes to this project are documented here. The format follows
 - Job `llm.temperature`/`llm.max_tokens` changed only the run fingerprint: stages
   hard-coded `temperature=0.0` and 512/256 output tokens. The job's values now reach
   every matching request.
+- Editing a source record and resuming exported two rows for it (`mapping.csv`,
+  `results.jsonl`, manifest counts, `duplicate_targets`, `BatchReport.total`). Each
+  `run_batch` invocation now records the source collection as a snapshot, and every
+  export and report uses the current view: exactly one row per current source. Earlier
+  results are kept as history (`Ledger.iter_history`, `export_history_jsonl`).
+- A failed record, or a fatal provider error, could keep a run from finishing cleanly:
+  `run_batch` committed `fatal_provider_failure` results, gathered tasks without
+  cancelling them, and closed the ledger while sibling tasks could still write to it.
+  A fatal result is now never committed and aborts the run; on an abort, an exception
+  or a cancellation, in-flight records are cancelled and awaited, the exports and the
+  manifest are written with the run state, and only then is the ledger closed. A write
+  after `close()` raises `LedgerClosedError`.
+- A `failed` result was never retried on resume. It now is; the failure stays in
+  history.
+- A ledger write that failed at `COMMIT` left its transaction open, to be committed by
+  the next write. Every ledger write is now one explicit transaction, rolled back on
+  failure.
+- `xwalk match` returned 0 for a run with failed records or a fatal provider error. It
+  now returns 3 (an interim mapping until the shared operations of task 03).
+- Credentials passed to `LiteLLMClient` as keyword arguments (`api_key`, headers, ...)
+  and userinfo or key parameters in an `OpenAICompatClient` base URL fed the LLM
+  fingerprint, so rotating a key invalidated resumable runs. They are excluded now.
+- The run fingerprint ignored dense encoder settings: reopening an index with another
+  query prefix, document prefix or normalisation reused old results. The live encoder's
+  identity (`DenseRetriever.encoder_identity`) is now part of it. `JobSpec.run_fingerprint`
+  also used the default fallback retrieval depth instead of the one handed to `Matcher`.
 
 ### Added
 
+- Run states: `RunState` (`complete`, `partial`, `failed`, `aborted`, `interrupted`) on
+  `BatchReport.run_state` and in `manifest.json`, plus `BatchReport.pending` and
+  `BatchReport.errors`.
+- `run_batch(limit=...)`: the snapshot is the whole source, only the first N unfinished
+  records are processed, the rest are `pending` in `mapping.csv` and the run is
+  `partial`. A repeated source id raises `DuplicateSourceIdError`.
+- Ledger schema versioning (`LEDGER_SCHEMA_VERSION = 2`, `UnsupportedLedgerError`),
+  result revisions and history, source snapshots, an invocation log,
+  `removed_sources`, and `xwalk.review.review_history`.
+- `run_fingerprint_components` (and `JobSpec.run_fingerprint_components`); `run_batch`
+  stores them in the manifest when given (`fingerprint_components=`).
+- `unknown_calls` and `cache_hits` columns in `mapping.csv`; the manifest's `usage` with
+  `Usage.describe_tokens()`.
+- `SentenceTransformerEncoder(revision=...)` and its `settings`.
 - `Usage.unknown_calls` (calls whose tokens were not reported, including failed calls
   and responses without a usage block) and `Usage.cache_hits`; `Usage.describe_tokens()`.
   `calls` now includes `OpenAICompatClient`'s internal retries. Retries inside LiteLLM
@@ -44,6 +84,27 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Compatibility:** opening a 0.1.1 ledger upgrades it in place after copying it to
+  `ledger.sqlite.v1-backup`; running 0.1.1 against the upgraded file is not supported,
+  and the backup is the way back. The
+  upgrade only adds tables and defaulted columns. A ledger from a newer xwalk is refused
+  unmodified.
+- **Compatibility:** `Ledger.iter_results`, `count`, `count_by_status`,
+  `duplicate_targets`, `export_review`, `adjudicated` and every export now read the
+  current view, not every row ever committed. `BatchReport.total` is the number of
+  current sources.
+- **Compatibility:** `xwalk match --limit N` reads the whole source; records beyond the
+  limit appear in `mapping.csv` with status `pending`, and the exit code is 1
+  (`partial`) instead of 0. Repeating the command continues with the next N.
+- **Compatibility:** `mapping.csv` gained two trailing columns, `unknown_calls` and
+  `cache_hits`.
+- **Compatibility:** a review is bound to the result revision it was made against. It
+  stops applying (state `stale`) when the source is edited or removed or the result is
+  recomputed; `apply_review` refuses rows whose result is no longer current or now
+  proposes another target.
+- **Compatibility:** the run fingerprint changed for jobs with dense retrievers or a
+  retriever `limit` other than 20, and for LiteLLM clients given credential keyword
+  arguments; such runs recompute once.
 - **Compatibility:** `LLMRequest.temperature`/`max_tokens` default to `None` (use the
   client's value). Stage `max_tokens` defaults changed from 512 (256 for the rewriter)
   to `None`, so default requests now send the client's `max_tokens` (1024 unless

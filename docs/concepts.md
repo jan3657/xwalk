@@ -149,12 +149,15 @@ constant, the model and provider identity and generation parameters, the policy
 thresholds, the selector budget, and the library version.
 
 Each individual record's identity is `result_key(run_fingerprint, source_id,
-hash_record(source))`. Resume skips a record when that key is already in the ledger. So:
+hash_record(source))`. Resume skips a record when that key is already in the ledger with
+a status other than `failed`; failed records are retried. So:
 
 - Edit a template, change a threshold, or switch models → new fingerprint → everything
   re-runs.
 - Fix a typo in one source row → that row's hash changes → that row re-runs, the rest
-  do not.
+  do not. The exports keep one row for it: each invocation records the source
+  collection as a snapshot, and exports show the result for each source's *current*
+  content. The old result stays in the ledger's history.
 - Rotate your API key → nothing changes. Credentials are deliberately excluded, along
   with output paths and concurrency, because none of them change what a result *means*.
 
@@ -166,8 +169,10 @@ Build it with `build_run_fingerprint` and pass the same objects you pass to `Mat
 ## The ledger is the source of truth
 
 `mapping.csv` is the deliverable, but `ledger.sqlite` is the run. Each result is
-committed to SQLite the moment it finishes, inside the concurrency slot, before the next
-record starts. A crash at record 9,000 of 10,000 costs you one record.
+committed to SQLite in its own transaction the moment it finishes. A crash at record
+9,000 of 10,000 costs you the records that were in flight. On a fatal provider error or
+Ctrl-C, in-flight records are cancelled and awaited before the ledger is closed, and the
+manifest records the run as `aborted` or `interrupted`.
 
 The three files in a run directory — `mapping.csv`, `results.jsonl`, `manifest.json` —
 are exports written at the end and regenerable from the ledger at any time. If you

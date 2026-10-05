@@ -6,7 +6,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 |---|---|---|---|---|---|
 | 00 Baseline and contracts | Done | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | BASELINE.md: 872 passed / 7 skipped (base), ontology 6, sql 10, ruff+mypy clean, build+wheel OK; dense/integration not run |
 | 01 Matching correctness | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11, fresh venv `pip install -e ".[dev]"`. New `tests/test_matching_regressions.py` (audit cases 1-6 + generation precedence): 28 of 34 failed before the fix, 34 passed after. `python -m pytest -q -m "not integration"`: 946 passed, 14 skipped, 1 deselected; `python -m pytest -q`: 946 passed, 15 skipped; `ruff check src tests examples scripts`: all passed; `ruff format --check ...`: 110 files formatted; `mypy`: no issues in 64 files. FakeLLM/MockTransport only, no paid calls; dense/ontology/sql/integration not run. `audit/diagnose_audited_source.py` no longer runs (imports removed private `_clamp`); superseded by the package tests |
-| 02 Persistence and lifecycle | Not started | | | | |
+| 02 Persistence and lifecycle | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `tests/test_lifecycle.py` (21), `tests/test_ledger_compat.py` (6, on the preserved 0.1.1 fixture), plus additions to test_ledger/test_review/test_batch/test_fingerprint/test_cli. Before the fix: 18 failed in test_batch+test_ledger and 3 new modules failed at import (new API); the two credential tests failed against the old clients. After: `python -m pytest -q`: 996 passed, 15 skipped; `-m "not integration"`: 996 passed, 14 skipped, 1 deselected; ruff check/format clean (113 files); mypy clean (64 files). FakeLLM/ScriptedRetriever only, no paid calls; dense/ontology/sql/integration not run |
 | 03 Shared operations and CLI | Not started | | | | |
 | 04 Flat clustering | Not started | | | | |
 | 05 Benchmark and performance | Not started | | | | |
@@ -50,3 +50,39 @@ Balances come from the actual promotional credit display, not a model estimate. 
   `provider_failure` (retried on resume); otherwise at best `needs_review`/
   `provider_failure`.
 - Retries inside LiteLLM (`num_retries`) are not observable; documented in `llm.md`.
+
+## Task 02 notes (for task 03 and later)
+
+- Snapshot/current view/history implemented as CONTRACTS.md section 2, with two
+  recorded additions: reviews bind to the result *revision*, and a snapshot is recorded
+  only when the source was read to the end (an aborted or interrupted invocation keeps
+  the previous snapshot; with none, the latest row per source id). Ledger schema v2;
+  0.1.1 ledgers are upgraded on open after a file copy to `ledger.sqlite.v1-backup`
+  (any command that opens a ledger, including `eval`/`review`, triggers it). Fixture and
+  its generator: `tests/fixtures/ledger_v0_1_1/` (made with the f737099 code).
+- `RunState` adds `failed` to the contract's states (CONTRACTS.md section 8 updated):
+  interrupted > aborted > failed > partial > complete. `run_batch` *returns* a report
+  for a fatal abort (`run_state=ABORTED`, `errors=[BatchError("fatal_provider_failure",
+  message, source_id)]`) and *re-raises* other exceptions and cancellation after writing
+  exports and a manifest with `aborted`/`interrupted`. Task 03 must map these to the
+  JSON envelope (`errors` already has `code`/`message`/`source_id`) and exit codes; the
+  CLI has only an interim mapping (aborted/failed -> 3, partial -> 1) and does not yet
+  catch the re-raised exception or return 130 on Ctrl-C.
+- `manifest.json` now has `run_state`, `usage` (with `tokens` = `describe_tokens()`),
+  `errors`, `limit`, `counts` (incl. `pending`), `removed_sources`, `history.results`,
+  `snapshot`, `ledger_schema_version`, and `fingerprint_components` when the caller passes
+  them (`xwalk match` does). Use `fingerprint_components` for the run-dir collision diff
+  (CONTRACTS.md section 9); `run_batch` itself still lets several fingerprints share one
+  ledger and does not refuse a mismatched `--out`.
+- `xwalk match` now streams `job.build_source_records()` into `run_batch(limit=...)`;
+  targets are still read twice (store and index build), and indexes are still rebuilt
+  on every `match` (finding 13). `DenseRetriever.encoder_identity` feeds the run
+  fingerprint from the live encoder, but the index meta/`open` validation of section 7
+  (prefixes, normalize, revision) is untouched and belongs to task 03.
+- An invocation left `running` by a killed process is marked `interrupted` when the next
+  invocation begins. `BatchReport.usage` excludes calls made by records cancelled
+  mid-flight (their usage is lost with the cancelled task).
+- `mapping.csv` gained trailing `unknown_calls`, `cache_hits`; pending rows have
+  status/reason `pending`. `results.jsonl` has no line for pending sources.
+- Not done: no CLI for history (`Ledger.iter_history`/`export_history_jsonl` exist);
+  `review export` still uses the CLI's `manifest.json` lookup.

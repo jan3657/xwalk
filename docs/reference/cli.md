@@ -65,21 +65,26 @@ source record into a resumable run directory.
 | `--job` | yes | — | path to the job file |
 | `--out` | yes | — | run directory |
 | `--index` | no | `<out>/index` | index directory |
-| `--resume` | no | on | skip records already completed under this run fingerprint |
-| `--no-resume` | no | — | re-run everything |
-| `--limit` | no | all | process only the first N source records, in file order |
+| `--resume` | no | on | skip records already completed under this run fingerprint; `failed` records are retried |
+| `--no-resume` | no | — | re-run everything; earlier results stay in the ledger's history |
+| `--limit` | no | all | process only the first N unfinished source records, in file order; the rest are reported as `pending` |
 
-Prints the total, a count per status sorted by status name, a duplicate-target line when any
-target was chosen by more than one source record, and — when the review bucket is non-empty
-— the command that exports it.
+Prints the number of current source records, the run state (`complete`, `partial`,
+`failed`, `aborted`, `interrupted`), a count per status sorted by status name, the
+pending count, tokens (with calls of unknown usage shown, never as zero), a
+duplicate-target line when any target was chosen by more than one source record, and —
+when the review bucket is non-empty — the command that exports it. Errors that stopped
+the run go to stderr.
 
 ```console
 $ export OPENAI_API_KEY=sk-…
 $ xwalk match --job examples/chebi/job.yaml --out runs/chebi
 matched 50 records into runs/chebi
+  run state     : complete
   matched       : 41
   needs_review  : 6
   unmatched     : 3
+  tokens        : 61234 in 112 calls
   duplicate targets: 2 (see manifest.json)
 
 6 rows need review: xwalk review export --run runs/chebi
@@ -89,13 +94,22 @@ Writes into the run directory:
 
 | File | What it is |
 |---|---|
-| `mapping.csv` | the deliverable: `source_id, matched_id, confidence, status, reason, explanation, attempts, prompt_tokens, completion_tokens, llm_calls, elapsed_seconds` |
-| `results.jsonl` | one full result per line, attempts and candidates included |
-| `manifest.json` | run fingerprint, library version, target fingerprint, job name, model, status counts, duplicate targets |
+| `mapping.csv` | the deliverable, one row per current source record: `source_id, matched_id, confidence, status, reason, explanation, attempts, prompt_tokens, completion_tokens, llm_calls, elapsed_seconds, unknown_calls, cache_hits`; records not yet processed have status `pending` |
+| `results.jsonl` | one full current result per line, attempts and candidates included |
+| `manifest.json` | run fingerprint and its components, library version, target fingerprint, job name, model, run state, usage, errors, status counts (with `pending`), duplicate targets, removed sources, ledger schema version |
 | `ledger.sqlite` | the source of truth; makes the run resumable and evaluation free |
 
-Returns `1` — not `0` — whenever the review bucket is non-empty. That is a healthy outcome,
-not an error; see [Gotchas](#gotchas).
+Returns `1` — not `0` — whenever the review bucket is non-empty or the run is `partial`
+(`--limit`). That is a healthy outcome, not an error; see [Gotchas](#gotchas). Returns
+`3` when the run is `aborted` (for example an invalid API key: the fatal record is not
+recorded and is retried on the next run) or `failed` (some records failed, for example
+the provider was unavailable; rerun to retry them).
+
+The run directory always shows the current state of each source record. Edit a source
+record and rerun: the record is matched again and `mapping.csv` keeps one row for it.
+Remove a source record and rerun: it disappears from the exports (the manifest counts it
+under `removed_sources`). Earlier results are never deleted; they stay in the ledger's
+history (`Ledger.iter_history`, `xwalk.batch.export_history_jsonl`).
 
 ## `eval`
 
@@ -409,11 +423,12 @@ thresholds, model or generation parameters produces a different fingerprint, so 
 re-runs every record rather than mixing results produced under different rules. That is
 intended; it is also why a "small" job-file tweak can cost a full re-run.
 
-**`--limit` takes the first N records in file order.** It is a smoke test, not a sample; the
-metrics it produces are not representative of the collection.
+**`--limit` takes the first N unfinished records in file order.** It is a smoke test, not a
+sample; the metrics it produces are not representative of the collection. Repeating it
+continues with the next N.
 
 **`eval`, `compare` and `review` read `<run>/manifest.json` for the run fingerprint.** A run
-directory without one — an interrupted run, or a hand-assembled ledger — fails with
+directory without one — a run killed before it wrote one, or a hand-assembled ledger — fails with
 `FileNotFoundError` and exit `3`. One ledger can hold several runs; the fingerprint is what
 distinguishes them.
 

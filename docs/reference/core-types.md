@@ -412,58 +412,90 @@ manifest *files* are exports regenerated from the ledger, never the source of tr
 — delete them freely; the ledger can rebuild them.
 
 Storage is SQLite in WAL mode. Reads go straight through — WAL allows concurrent
-readers — while writes to the results and cache tables take an asyncio lock, so a
-batch run at concurrency 32 never interleaves two transactions. Four tables:
-`results` (one upserted JSON blob plus denormalised columns per result), `llm_cache`
-(keyed provider responses), `manifests` (one JSON blob per run fingerprint), and
-`reviews` (append-only human adjudications).
+readers. Every write is one explicit transaction with no `await` inside it, so a
+cancelled task cannot leave half a transaction behind; a transaction that fails is
+rolled back. Tables: `ledger_meta` (`schema_version`), `results` (the latest revision
+of each result key), `result_history` (earlier revisions, append-only), `snapshots` and
+`snapshot_entries` (each invocation's ordered source list), `invocations` (how each
+`run_batch` call ended), `llm_cache` (keyed provider responses), `manifests` (one JSON
+blob per run fingerprint), and `reviews` (append-only human adjudications, each bound to
+the result revision it was made against).
 
 ```python
-class Ledger:
-    def __init__(self, connection: sqlite3.Connection) -> None: ...
+LEDGER_SCHEMA_VERSION = 2
 
+class UnsupportedLedgerError(Exception): ...
+class LedgerClosedError(RuntimeError): ...
+
+class Ledger:
     @classmethod
     def open(cls, path: str | Path) -> Ledger: ...
-
-    @property
-    def journal_mode(self) -> str: ...
+    schema_version: int          # property
+    migrated_from: int | None    # 1 when this open upgraded a 0.1.1 ledger
+    backup_path: Path | None     # the copy taken before that upgrade
+    closed: bool                 # property
 
     # results
     async def put_result(self, result: MatchResult) -> None: ...
     def get_result(self, result_key: str) -> MatchResult | None: ...
     def has_result(self, result_key: str) -> bool: ...
+    def is_settled(self, result_key: str) -> bool: ...   # committed and not failed
+    def result_revision(self, result_key: str) -> int | None: ...
+
+    # current view (one entry per source in the latest snapshot)
+    def put_snapshot(self, run_fingerprint: str, entries: Sequence[tuple[str, str]]) -> int: ...
+    def iter_current(self, run_fingerprint: str) -> Iterator[CurrentEntry]: ...
     def iter_results(self, run_fingerprint: str) -> Iterator[MatchResult]: ...
+    def current_keys(self, run_fingerprint: str) -> dict[str, int]: ...
     def count(self, run_fingerprint: str) -> int: ...
+    def pending_count(self, run_fingerprint: str) -> int: ...
     def count_by_status(self, run_fingerprint: str) -> dict[MatchStatus, int]: ...
     def duplicate_targets(self, run_fingerprint: str) -> dict[str, list[str]]: ...
+    def removed_sources(self, run_fingerprint: str) -> list[str]: ...
 
-    # llm cache
+    # history (every result ever committed)
+    def iter_history(self, run_fingerprint: str) -> Iterator[HistoryEntry]: ...
+    def history_count(self, run_fingerprint: str) -> int: ...
+
+    # invocations
+    def begin_invocation(self, run_fingerprint: str, *, library_version: str,
+                         resume: bool, limit: int | None) -> int: ...
+    def finish_invocation(self, invocation_id: int, *, run_state: str,
+                          snapshot_id: int | None, usage: Mapping[str, Any],
+                          errors: Sequence[Mapping[str, Any]]) -> None: ...
+    def last_invocation(self, run_fingerprint: str) -> dict[str, Any] | None: ...
+
+    # llm cache, manifest, reviews
     def get_cached(self, cache_key: str) -> str | None: ...
     async def put_cached(self, cache_key: str, response: str) -> None: ...
-
-    # manifest
     def put_manifest(self, run_fingerprint: str, manifest: Mapping[str, Any]) -> None: ...
     def get_manifest(self, run_fingerprint: str) -> dict[str, Any] | None: ...
-
-    # reviews
     def put_review(self, row: Mapping[str, Any]) -> None: ...
     def iter_reviews(self, run_fingerprint: str) -> Iterator[dict[str, Any]]: ...
 
     def close(self) -> None: ...
 ```
 
-Only `put_result` and `put_cached` are async — they are the two write paths a
-concurrent batch run hammers, and each serialises behind the write lock.
+`CurrentEntry(source_id, source_hash, result, revision)` has `result=None` for a pending
+source. `HistoryEntry(result, revision, current)`.
 
-- `open(path)` creates parent directories, connects with
-  `check_same_thread=False` and autocommit (`isolation_level=None`), sets
-  `journal_mode=WAL` and `synchronous=NORMAL`, and creates the schema idempotently.
-- `put_result` is an **upsert** on `result_key`: re-matching the same record under
-  the same configuration overwrites the previous row rather than duplicating it.
-- `iter_results` yields in `source_id` order, so exports are stable across runs.
-- `duplicate_targets` reports targets that several source records selected, as
-  `{matched_id: sorted source ids}`. Reported, never resolved — deduplication is a
+- `open(path)` creates parent directories, connects with `check_same_thread=False` and
+  autocommit (`isolation_level=None`), sets `journal_mode=WAL` and `synchronous=NORMAL`.
+  A new file gets the current schema. A 0.1.1 ledger is copied to
+  `<name>.v1-backup` and then upgraded additively in one transaction. A newer schema
+  version, an SQLite file that is not a ledger, or a non-SQLite file raises
+  `UnsupportedLedgerError` without modifying the file.
+- `put_result` on an existing `result_key` moves the previous row to history and
+  stores the new one as the next revision; nothing is overwritten in place.
+- The current view is the latest snapshot's entries joined to their results. Without a
+  snapshot (a 0.1.1 ledger, or results written directly), it is the latest committed
+  result per source id.
+- `iter_results`, `iter_current` and `iter_history` yield in `source_id` order, so
+  exports are stable across runs.
+- `duplicate_targets` reports targets that several *current* source records selected,
+  as `{matched_id: sorted source ids}`. Reported, never resolved — deduplication is a
   domain decision, not a storage one.
+- Every write method raises `LedgerClosedError` after `close()`.
 - `journal_mode` reads the live PRAGMA, so a test (or a suspicious operator) can
   assert WAL actually took effect on the filesystem in use.
 

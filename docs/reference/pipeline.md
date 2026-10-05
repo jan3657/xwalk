@@ -523,52 +523,119 @@ async def run_batch(
     *,
     out: str | Path,
     resume: bool = True,
+    limit: int | None = None,
     manifest_extra: Mapping[str, Any] | None = None,
+    fingerprint_components: Mapping[str, Any] | None = None,
     progress: Callable[[MatchResult], None] | None = None,
 ) -> BatchReport
 
-def run_batch_sync(
-    matcher: Matcher,
-    source: Iterable[Record],
-    *,
-    out: str | Path,
-    resume: bool = True,
-    manifest_extra: Mapping[str, Any] | None = None,
-    progress: Callable[[MatchResult], None] | None = None,
-) -> BatchReport
+def run_batch_sync(...same arguments...) -> BatchReport
 ```
 
 `run_batch_sync` is `asyncio.run(run_batch(...))`. The run directory is created if
-missing. Records are matched under `policy.concurrency` (a semaphore), and task
-creation is chunked at `concurrency * 4` so an unbounded source never materialises
-every task at once. Each result is committed to the ledger *inside* the concurrency
-slot: if the write happened after release, a crash in the next record could interleave
-ahead of this one's commit, and the resume guarantee would be probabilistic. `progress`
-is called once per freshly computed result — never for records skipped by resume.
+missing. One invocation:
+
+1. **Reads the source once, as a stream.** Every record joins the invocation's
+   *snapshot*, its ordered `(source_id, source_hash)` list, whether or not it is
+   processed. A repeated source id raises `DuplicateSourceIdError` (a `ValueError`).
+2. **Schedules unfinished records** on a bounded pool of at most `policy.concurrency`
+   record tasks, fed from the source as slots free up. A record is *finished* when the
+   ledger already holds a non-`failed` result for its key (see Resume). `limit` caps
+   how many unfinished records this invocation processes; the source is still read to
+   the end and the rest stay *pending*.
+3. **Commits each result in its own transaction** as soon as it is ready, and the
+   snapshot in one transaction once the source has been read to the end. `progress` is
+   called once per freshly committed result, never for records skipped by resume.
+4. **Exports the current view** (below) and the manifest, then closes the ledger.
+
+A result with reason `fatal_provider_failure` is **never committed**: it aborts the run
+and resume retries the record. On an abort (fatal result, or an exception in a record
+task or the ledger) and on an interruption (task cancellation, Ctrl-C), `run_batch`
+stops scheduling, cancels every in-flight record task and waits for each to finish,
+discards their uncommitted results, writes the exports and the manifest with the run
+state, and only then closes the ledger. Nothing writes to the ledger after it is closed
+(`Ledger` raises `LedgerClosedError` if anything tries). A fatal provider failure
+returns a report with `run_state=ABORTED` and the error in `errors`; any other exception,
+and the cancellation itself, is re-raised after cleanup. When the source was not read to
+the end, no snapshot is recorded for that invocation and the exports keep the previous
+snapshot (or, for a first run, show what was committed).
+
+### Run states
+
+`BatchReport.run_state` and `manifest.json` `run_state` (a `RunState` string enum),
+highest precedence first:
+
+| State | Meaning |
+|---|---|
+| `interrupted` | cancelled or Ctrl-C; committed results are kept |
+| `aborted` | a fatal provider failure or an exception stopped the run |
+| `failed` | finished, but some current results are `failed`; resume retries them |
+| `partial` | finished, but some current sources are pending (`limit`) |
+| `complete` | every current source has a result and none is `failed` |
+
+The CLI maps `aborted`/`failed` to exit code 3 and `partial` to 1.
+
+### Current view and history
+
+The **current view** has exactly one entry per source in the latest recorded snapshot:
+the result whose key matches the source's current content, or a pending entry. Every
+export, `BatchReport` method, the duplicate-target report, review export and the
+adjudicated view read it. **History** is every result ever committed for the run
+fingerprint and is never deleted: `Ledger.iter_history(run_fp)` and
+`export_history_jsonl(ledger, run_fp, path)` expose it, each entry marked `current` or
+not, with its revision.
+
+| Case | Current view | History |
+|---|---|---|
+| source edited, same id | one row, for the new content | old version kept |
+| source removed | absent (counted in manifest `removed_sources`) | kept |
+| `limit=N` | processed rows plus `pending` rows for the rest | — |
+| `failed` result, resumed | the retried result replaces it | the failure kept as an earlier revision |
+| `resume=False` | recomputed results | earlier revisions kept |
+
+A ledger without a snapshot for the run (a 0.1.1 ledger, or results written with
+`Ledger.put_result` directly) uses the latest committed result per source id as its
+current view.
 
 Files written to the run directory:
 
 | File | Contents |
 |---|---|
-| `ledger.sqlite` | the source of truth: every `MatchResult` keyed by its `result_key`, plus the run manifest. Written incrementally as results commit. |
-| `results.jsonl` | one JSON object per result (`result_to_dict`), full trace included. Rewritten from the ledger when the run finishes. |
-| `mapping.csv` | the deliverable: one row per record, columns `MAPPING_COLUMNS`. Rewritten when the run finishes. |
-| `manifest.json` | the stored manifest (run fingerprint, library version, target fingerprint, `manifest_extra`) plus status counts and duplicate targets. |
+| `ledger.sqlite` | the source of truth: every committed `MatchResult` and its earlier revisions, source snapshots, invocations, reviews and the run manifest. Written incrementally. |
+| `results.jsonl` | one JSON object per current result (`result_to_dict`), full trace included. Pending sources have no line. |
+| `mapping.csv` | the deliverable: one row per current source, columns `MAPPING_COLUMNS`; pending sources have status and reason `pending` and blank values. |
+| `manifest.json` | the stored manifest (run fingerprint, library version, target fingerprint, `manifest_extra`, `fingerprint_components` when given) plus the latest invocation's `run_state`, `usage`, `errors` and `limit`, current `counts` (with `pending`), `duplicate_targets`, `removed_sources`, `history.results`, `snapshot` and `ledger_schema_version`. |
+
+`usage` in the manifest carries `calls`, `prompt_tokens`, `completion_tokens`,
+`unknown_calls`, `cache_hits` and `tokens`, the display form from
+`Usage.describe_tokens()` that never shows unknown usage as zero.
 
 ### Resume
 
 Each record's identity under this configuration is
 `result_key(run_fingerprint, record.id, hash_record(record))` — the parts are hashed
 as a list, never concatenated, so keys cannot collide by string arithmetic. With
-`resume=True` (the default), a record whose key already has a ledger row is skipped
-without any retrieval or LLM call. Resume is invalidated — the record re-runs — when
-any of the three parts changes:
+`resume=True` (the default), a record whose key already has a ledger row with a status
+other than `failed` is skipped without any retrieval or LLM call; a `failed` record is
+retried. Resume is invalidated — the record re-runs — when any of the three parts
+changes:
 
 - the **run fingerprint** (anything fed to `build_run_fingerprint`);
 - the **source id**;
 - the **source content** — `hash_record` digests the record's id *and* fields.
 
-`resume=False` recomputes every record.
+`resume=False` recomputes every record. Repeating an unchanged complete run makes no
+LLM calls and rewrites identical exports.
+
+### Ledger schema
+
+The ledger records `schema_version` (currently 2) in a `ledger_meta` table. A 0.1.1
+ledger (version 1, no such table) is upgraded on open: the file is first copied to
+`ledger.sqlite.v1-backup`, then the upgrade adds tables and defaulted columns in one
+transaction. Nothing existing is rewritten or dropped. All 0.1.1 rows become history,
+and the current view is inferred as the latest row per source id. A ledger with a newer
+schema version, an SQLite file that is not a ledger, or a file that is not SQLite raises
+`UnsupportedLedgerError` and is not modified.
 
 ### BatchReport
 
@@ -580,19 +647,24 @@ class BatchReport:
     total: int
     usage: Usage
     _ledger_path: Path
+    run_state: RunState = RunState.COMPLETE
+    pending: int = 0
+    errors: tuple[BatchError, ...] = ()
 ```
 
-`total` is the ledger's count for this run fingerprint — completed work across all
-invocations, not just this one. `usage` is the opposite: only tokens and calls spent in
-this invocation; resumed records contribute nothing. The private `_ledger_path` lets
-the methods reopen the ledger on demand, so the report stays usable after `run_batch`
-returns:
+`total` is the number of sources in the current view, `pending` how many of them have
+no result yet. `usage` is only what this invocation spent on records it finished
+(including a fatal one); resumed records contribute nothing, and calls made by records
+cancelled mid-flight are not included. `errors` holds `BatchError(code, message,
+source_id)` entries (`fatal_provider_failure`, or `exception`). The private
+`_ledger_path` lets the methods reopen the ledger on demand, so the report stays usable
+after `run_batch` returns:
 
 | Method | Returns |
 |---|---|
-| `by_status()` | `dict[MatchStatus, int]` — result counts per status |
-| `needs_review()` | `list[MatchResult]` — every result with status `NEEDS_REVIEW` |
-| `duplicate_targets()` | `dict[str, list[str]]` — target id -> sorted source ids, for every target chosen by more than one source |
+| `by_status()` | `dict[MatchStatus, int]` — current result counts per status |
+| `needs_review()` | `list[MatchResult]` — every current result with status `NEEDS_REVIEW` |
+| `duplicate_targets()` | `dict[str, list[str]]` — target id -> sorted source ids, for every target chosen by more than one current source |
 
 ### MAPPING_COLUMNS
 
@@ -600,26 +672,29 @@ returns:
 MAPPING_COLUMNS = (
     "source_id", "matched_id", "confidence", "status", "reason", "explanation",
     "attempts", "prompt_tokens", "completion_tokens", "llm_calls", "elapsed_seconds",
+    "unknown_calls", "cache_hits",
 )
 ```
+
+`unknown_calls` and `cache_hits` were appended in 0.2, after the 0.1 columns.
 
 ### Export functions
 
 ```python
 def export_results_jsonl(ledger: Ledger, run_fingerprint: str, path: str | Path) -> int
+def export_history_jsonl(ledger: Ledger, run_fingerprint: str, path: str | Path) -> int
 def export_mapping_csv(
     ledger: Ledger, run_fingerprint: str, path: str | Path, *, use_review: bool = False
 ) -> int
 def export_manifest(ledger: Ledger, run_fingerprint: str, path: str | Path) -> None
 ```
 
-The two row-writers return the number of rows written. `export_mapping_csv` with
+The row-writers return the number of rows written. `export_mapping_csv` with
 `use_review=True` writes the adjudicated view instead of raw model output: same
 columns, `matched_id` and `status` reflect review decisions, `reason` is `"reviewed"`
 for human-adjudicated rows (the model status otherwise), `explanation` carries the
-review note, and the cost columns are blank. `export_manifest` merges the stored
-manifest with per-status counts and the duplicate-targets map, and writes sorted,
-indented JSON.
+review note, and the cost columns are blank. `export_manifest` regenerates the manifest
+from the ledger alone and writes sorted, indented JSON.
 
 ## build_run_fingerprint
 
@@ -638,7 +713,9 @@ def build_run_fingerprint(
 ) -> str
 ```
 
-Everything whose change should invalidate prior results, hashed into one digest:
+Everything whose change should invalidate prior results, hashed into one digest.
+`run_fingerprint_components(...)` (same arguments) returns the unhashed dict, which
+`run_batch(fingerprint_components=...)` stores in the manifest:
 
 - the library version;
 - `templates.fingerprint` and `prompts.fingerprint`;
@@ -651,11 +728,17 @@ Everything whose change should invalidate prior results, hashed into one digest:
 - `llm.fingerprint`;
 - policy classification and loop shape: `max_attempts`, `accept_at`, `review_floor`,
   `verify_band`, `audit_rate`, `legacy_id_resolution`;
-- selector budget: `max_candidates`, `max_candidate_tokens`.
+- selector budget: `max_candidates`, `max_candidate_tokens`;
+- `encoders` (only when a retriever exposes `encoder_identity`, as `DenseRetriever`
+  does): the live encoder's name, dimension and `settings` — for
+  `SentenceTransformerEncoder` the revision (`"unknown"` unless pinned), `normalize`,
+  `query_prefix`, `doc_prefix` and `max_seq_length`.
 
-Deliberately excluded: credentials, output paths, and `policy.concurrency` — none of
-them change what a result means. `Matcher.keep_candidates_in_trace` is likewise not an
-input: it changes trace verbosity, not the decision. `retriever_limit` and `rrf_k`
+Deliberately excluded: credentials (API keys, credential-like LiteLLM keyword
+arguments and headers, userinfo or key parameters in a base URL), output paths, and
+`policy.concurrency` — none of them change what a result means.
+`Matcher.keep_candidates_in_trace` is likewise not an input: it changes trace
+verbosity, not the decision. `retriever_limit` and `rrf_k`
 must match the values handed to `Matcher`, or a resumed run will reuse results
 produced at another retrieval depth.
 
@@ -689,4 +772,4 @@ produced at another retrieval depth.
 - **`matched_record` can be `None` while `matched_id` is set.** The store lookup
   tolerates a missing id rather than failing the result.
 - **`BatchReport.total` and `BatchReport.usage` measure different things** — the
-  ledger's lifetime count for the fingerprint versus this invocation's spend.
+  current view's size versus this invocation's spend.
