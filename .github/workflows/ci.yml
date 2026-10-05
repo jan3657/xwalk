@@ -122,6 +122,8 @@ jobs:
                       {'score': 0.4, 'name': 'z', 'when': 'w'}])))
           print('fresh install OK')
           "
+      - name: Run the README quickstart against the installed wheel
+        run: python scripts/check_readme_quickstart.py --bin /tmp/fresh/bin
       - uses: actions/upload-artifact@v4
         with:
           name: dist

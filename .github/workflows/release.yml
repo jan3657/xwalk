@@ -12,8 +12,29 @@ permissions:
   contents: read
 
 jobs:
+  # The gates run on the exact commit being released (the tag's commit), not on whatever
+  # CI last saw on a branch: a tag can point at a commit CI never ran.
+  gates:
+    name: Gates on the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Record the commit under test
+        run: |
+          echo "commit $(git rev-parse HEAD) for ref ${GITHUB_REF_NAME}"
+          echo "Release commit: \`$(git rev-parse HEAD)\` (${GITHUB_REF_NAME})" >> "$GITHUB_STEP_SUMMARY"
+      - run: pip install -e ".[dev,mcp]"
+      - run: ruff check src tests examples scripts benchmarks
+      - run: ruff format --check src tests examples scripts benchmarks
+      - run: mypy
+      - run: python -m pytest -q -m "not integration"
+
   build:
     name: Build and verify
+    needs: gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,18 +64,27 @@ jobs:
           print(f"tag {ref} matches {packaged}")
           PY
 
-      - name: The wheel must ship the prompt skeletons, py.typed, and the licence
+      - name: The wheel must ship the prompt skeletons, the quickstart, py.typed, the licence
         run: |
           python - <<'PY'
           import glob, zipfile
           names = set(zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist())
-          missing = {f"xwalk/prompts/base/{n}.j2" for n in
-                     ("select", "score", "verify", "rewrite")} - names
-          assert not missing, f"wheel is missing {missing}"
-          assert "xwalk/py.typed" in names, "wheel is missing py.typed"
+          expected = {f"xwalk/prompts/base/{n}.j2" for n in
+                      ("select", "score", "verify", "rewrite")}
+          expected |= {f"xwalk/resources/quickstart/{n}" for n in
+                       ("job.yaml", "slots.yaml", "targets.csv", "sources.csv", "README.md")}
+          expected |= {"xwalk/py.typed", "xwalk/ops.py", "xwalk/mcp_server.py"}
+          missing = expected - names
+          assert not missing, f"wheel is missing {sorted(missing)}"
           assert any("LICENSE" in n for n in names), "wheel is missing the licence"
+          assert not any(n.startswith(("tests/", "benchmarks/")) for n in names)
           print("wheel contents OK")
           PY
+
+      - name: Record the artefact digests
+        run: |
+          sha256sum dist/* | tee -a "$GITHUB_STEP_SUMMARY"
+          git rev-parse HEAD
 
       # The tests that matter here run against the *built artefact*, not the source
       # tree: a package that passes in-place and fails once installed is the failure
@@ -73,11 +103,17 @@ jobs:
               entity_noun='a', target_noun='b', domain_brief='c',
               rubric=[{'score': 1.0, 'name': 'x', 'when': 'y'},
                       {'score': 0.4, 'name': 'z', 'when': 'w'}])))
-          heavy = [m for m in ('torch','numpy','rdflib','sqlalchemy','faiss','litellm')
+          heavy = [m for m in ('torch','numpy','rdflib','sqlalchemy','faiss','litellm','mcp')
                    if importlib.util.find_spec(m)]
           assert not heavy, f'base install pulled {heavy}'
           print('installed wheel OK:', __version__)
           "
+          /tmp/fresh/bin/pip check
+
+      # The README's quickstart, command for command, against the installed wheel and
+      # outside the source tree: the first thing a new user runs must work.
+      - name: Run the README quickstart against the installed wheel
+        run: python scripts/check_readme_quickstart.py --bin /tmp/fresh/bin
 
       - uses: actions/upload-artifact@v4
         with:

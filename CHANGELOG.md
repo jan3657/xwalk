@@ -7,6 +7,46 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0rc1] — 2026-10-05
+
+Release candidate for 0.2.0. Not published: tagging and uploading are the maintainer's
+decision (see `docs/releasing.md`). Install it from the repository or a built wheel; once
+on PyPI, `pip install --pre xwalk`.
+
+### Release notes
+
+**Why upgrade.** 0.2 makes runs trustworthy to repeat and to automate. Matching bugs that
+could accept a non-finite confidence, drop candidates from prompts, or let provider
+errors escape are fixed. A resumed run now exports exactly one current row per source,
+keeps everything else as history, aborts cleanly on a fatal provider error, and never
+mixes configurations in one run directory or reuses an incompatible index. Every command
+goes through one operations layer with strict job validation, `--json` output and a hard
+per-invocation `--max-calls` limit.
+
+**New.** `xwalk init` (an offline quickstart bundled in the wheel), `validate`,
+`inspect`, `explain`, `export --view raw|reviewed|history`, `search`, `results`;
+`xwalk.ops` for Python; `--max-calls`; an optional MCP server (`xwalk[mcp]`).
+
+**Experimental.** `xwalk cluster` (flat equivalence clustering) is tested with a scripted
+model only and has not been evaluated on a real model. Its thresholds are provisional.
+
+**Not measured yet.** The benchmark harness (repository only) has run offline smoke
+checks and non-LLM baselines. No real-model accuracy, cost or speed claim is made for
+this release; real-model results are pending (`docs/benchmarks.md`).
+
+**Before upgrading, read "Changed".** Breaking changes are marked **Compatibility**. The
+ones most likely to affect you: exit codes (invalid job, missing credential or extra
+now `2`; failed rows `3`; Ctrl-C `130`); job files with unknown keys no longer load;
+indexes built by 0.1 are refused until rebuilt with `--rebuild-index`; opening a 0.1.1
+ledger upgrades it in place after saving `ledger.sqlite.v1-backup`; run fingerprints
+changed for some jobs, so those runs recompute once.
+
+**Known limitations.** Matching is many-to-one only. `eval`, `compare`, `ablate` and
+`prompts` are not yet in `xwalk.ops`, and `ablate`/`prompts optimize` build their own
+indexes and take no `--max-calls`. Retries inside LiteLLM are not counted. Cluster runs
+have no `inspect`, `explain` or review-apply. The MCP host configurations are documented
+but untested.
+
 ### Fixed
 
 - A `NaN` or `Infinity` confidence from the scorer was clamped to `1.0` and accepted as
@@ -209,8 +249,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.1.1] — 2026-08-04
 
-The first release published to PyPI. 0.1.0 was tagged but never uploaded, and its tree
-carries the three bugs below; install 0.1.1 or later.
+Tagged and released on GitHub. The PyPI upload failed (`invalid-publisher`: no Trusted
+Publisher was registered), so xwalk 0.1.x is not on PyPI; this entry previously called it
+published. 0.1.0 was tagged but never uploaded, and its tree carries the three bugs below.
 
 ### Fixed
 
@@ -318,6 +359,7 @@ First public release. The API is expected to move before 1.0.0.
   yet executed.
 - Pre-1.0: expect the API to change.
 
-[Unreleased]: https://github.com/jan3657/xwalk/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/jan3657/xwalk/compare/v0.2.0rc1...HEAD
+[0.2.0rc1]: https://github.com/jan3657/xwalk/compare/v0.1.1...v0.2.0rc1
 [0.1.1]: https://github.com/jan3657/xwalk/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jan3657/xwalk/releases/tag/v0.1.0
