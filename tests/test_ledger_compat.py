@@ -148,3 +148,14 @@ async def test_resuming_an_old_run_retries_only_the_failed_record_and_keeps_the_
         assert [h.state for h in review_history(ledger, "v011fp")] == ["applied"]
     finally:
         ledger.close()
+
+
+def test_inspecting_an_old_run_with_a_failed_row_exits_3(run_dir):
+    """A 0.1.1 run has no recorded invocation, so its run state is unknown; its failed
+    row must still make `inspect` report a failed run (CONTRACTS.md section 8)."""
+    from xwalk import ops
+
+    result = ops.inspect(run_dir)
+    assert result.run is not None and result.run["run_state"] == "unknown"
+    assert result.counts["failed"] == 1
+    assert result.exit_code == ops.EXIT_RUNTIME

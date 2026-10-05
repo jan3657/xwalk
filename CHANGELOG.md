@@ -202,6 +202,10 @@ but untested.
   would have produced (0, 1 or 3).
 - **Compatibility:** job files that set unknown keys, kind-inapplicable fields (for
   example `query_prefix` on a bm25 retriever) or an unknown `llm.profile` no longer load.
+- **Compatibility:** a job file (match or cluster) that gives the same key twice in one
+  mapping no longer loads (`job_yaml_invalid`, "duplicate key ..."); YAML would otherwise
+  keep the last value silently. YAML syntax errors report a position instead of quoting
+  the offending line.
 - **Compatibility:** `xwalk match` warnings (review bucket, duplicate targets) go to
   stderr; stdout carries the summary (or the JSON envelope).
 - **Compatibility:** index fingerprints, and therefore run fingerprints, changed; an

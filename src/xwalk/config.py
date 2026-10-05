@@ -569,6 +569,66 @@ def parse_job(data: Any, *, path: str | Path | None = None) -> JobSpec:
         raise JobValidationError(path, _issues_from(exc)) from None
 
 
+class _StrictLoader(yaml.SafeLoader):
+    """`yaml.SafeLoader` that refuses a mapping with the same key twice.
+
+    Plain YAML loading keeps the last value, so `accept_at` written twice would load
+    silently with whichever came last -- the same failure `extra="forbid"` prevents for
+    a misspelled key. Keys brought in by a `<<` merge may still be overridden.
+    """
+
+
+def _construct_unique_mapping(loader: _StrictLoader, node: yaml.MappingNode) -> dict[Any, Any]:
+    first_line: dict[Any, int] = {}
+    for key_node, _ in node.value:
+        if key_node.tag == "tag:yaml.org,2002:merge":
+            continue
+        key = loader.construct_object(key_node, deep=True)
+        try:
+            earlier = first_line.get(key)
+        except TypeError:  # an unhashable key; construct_mapping reports it
+            continue
+        if earlier is not None:
+            raise yaml.constructor.ConstructorError(
+                None,
+                None,
+                f"duplicate key {key!r} (first given on line {earlier})",
+                key_node.start_mark,
+            )
+        first_line[key] = key_node.start_mark.line + 1
+    return loader.construct_mapping(node, deep=True)
+
+
+_StrictLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
+def _yaml_error_message(exc: yaml.YAMLError) -> str:
+    """The problem and its position, without echoing the file's content back.
+
+    PyYAML's own message quotes the offending line; for a path that is not a job file
+    (an MCP client can name any path) that would disclose part of an unrelated file.
+    """
+    if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
+        mark = exc.problem_mark
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        context = f" ({exc.context})" if exc.context else ""
+        return f"{exc.problem}{where}{context}"
+    return type(exc).__name__
+
+
+def load_job_yaml(path: Path, text: str) -> Any:
+    """Parse a job file's text strictly (no duplicate keys). Raises `JobValidationError`."""
+    try:
+        return yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - a SafeLoader subclass
+    except yaml.YAMLError as exc:
+        raise JobValidationError(
+            path, [JobIssue("job_yaml_invalid", "", _yaml_error_message(exc))]
+        ) from None
+
+
 def load_job(path: str | Path) -> JobSpec:
     """Read and strictly validate a job file. Raises `JobValidationError`."""
     path = Path(path)
@@ -579,9 +639,6 @@ def load_job(path: str | Path) -> JobSpec:
         raise JobValidationError(
             path, [JobIssue("job_not_found", "", f"cannot read {path}: {reason}")]
         ) from None
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise JobValidationError(path, [JobIssue("job_yaml_invalid", "", str(exc))]) from None
+    data = load_job_yaml(path, text)
     spec = parse_job(data, path=path)
     return spec.model_copy(update={"base_dir": path.parent.resolve()})

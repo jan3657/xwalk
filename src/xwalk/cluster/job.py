@@ -38,6 +38,7 @@ from xwalk.config import (
     RetrieverSpec,
     _issues_from,
     _Spec,
+    load_job_yaml,
 )
 from xwalk.llm.base import LLMClient
 from xwalk.records import Record
@@ -182,10 +183,7 @@ def load_cluster_job(path: str | Path) -> ClusterJobSpec:
         raise JobValidationError(
             path, [JobIssue("job_not_found", "", f"cannot read {path}: {reason}")]
         ) from None
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise JobValidationError(path, [JobIssue("job_yaml_invalid", "", str(exc))]) from None
+    data = load_job_yaml(path, text)
     spec = parse_cluster_job(data, path=path)
     return spec.model_copy(update={"base_dir": path.parent.resolve()})
 

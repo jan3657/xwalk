@@ -120,6 +120,48 @@ def test_load_job_reports_malformed_yaml(tmp_path):
     assert info.value.issues[0].code == "job_yaml_invalid"
 
 
+def test_a_key_given_twice_is_rejected_not_silently_overridden(tmp_path):
+    """PyYAML keeps the last of two equal keys; a strict job must refuse the file."""
+    text = (FIXTURES / "job_tiny.yaml").read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    assert "policy" in data
+    path = tmp_path / "job.yaml"
+    path.write_text(text + "\npolicy:\n  accept_at: 0.1\n", encoding="utf-8")
+    with pytest.raises(JobValidationError) as info:
+        load_job(path)
+    issue = info.value.issues[0]
+    assert issue.code == "job_yaml_invalid"
+    assert "duplicate key 'policy'" in issue.message
+
+
+def test_a_nested_key_given_twice_is_rejected(tmp_path):
+    path = tmp_path / "job.yaml"
+    path.write_text("name: x\npolicy:\n  accept_at: 0.9\n  accept_at: 0.1\n", encoding="utf-8")
+    with pytest.raises(JobValidationError) as info:
+        load_job(path)
+    assert "duplicate key 'accept_at' (first given on line 3)" in info.value.issues[0].message
+
+
+def test_a_merge_key_may_still_be_overridden(tmp_path):
+    from xwalk.config import load_job_yaml
+
+    text = "base: &b {accept_at: 0.9, review_floor: 0.4}\npolicy:\n  <<: *b\n  accept_at: 0.7\n"
+    data = load_job_yaml(tmp_path / "job.yaml", text)
+    assert data["policy"] == {"accept_at": 0.7, "review_floor": 0.4}
+
+
+def test_a_yaml_error_does_not_echo_the_file_content(tmp_path):
+    """Any path can be named (an MCP client can pass one); the error gives a position,
+    not a quotation of the file."""
+    path = tmp_path / "creds.ini"
+    path.write_text("[default]\nsecret_key = AKIASECRETVALUE\n", encoding="utf-8")
+    with pytest.raises(JobValidationError) as info:
+        load_job(path)
+    message = info.value.issues[0].message
+    assert "AKIASECRETVALUE" not in str(info.value)
+    assert "line 2" in message
+
+
 def test_every_issue_is_reported_not_only_the_first():
     def edit(d):
         d["policy"]["accept_att"] = 0.9

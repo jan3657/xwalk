@@ -781,10 +781,12 @@ def _check_out_dir(
     )
 
 
-def _run_exit_code(run_state: str, needs_review: int) -> int:
+def _run_exit_code(run_state: str, needs_review: int, failed: int = 0) -> int:
     if run_state == RunState.INTERRUPTED.value:
         return EXIT_INTERRUPTED
-    if run_state in (RunState.ABORTED.value, RunState.FAILED.value):
+    # `failed` rows decide on their own: a run with no recorded invocation (a 0.1.1
+    # ledger) has run state "unknown" but its failed rows still make it a failed run.
+    if run_state in (RunState.ABORTED.value, RunState.FAILED.value) or failed:
         return EXIT_RUNTIME
     if needs_review or run_state == RunState.PARTIAL.value:
         return EXIT_ATTENTION
@@ -827,7 +829,7 @@ def _summarise_run(view: _RunView, ledger: Ledger, operation: str) -> OpResult:
     needs_review = counts.get(MatchStatus.NEEDS_REVIEW.value, 0)
     result = OpResult(
         operation=operation,
-        exit_code=_run_exit_code(run_state, needs_review),
+        exit_code=_run_exit_code(run_state, needs_review, counts.get(MatchStatus.FAILED.value, 0)),
         run={"dir": str(view.run_dir), "run_fingerprint": fp, "run_state": run_state},
         counts=counts,
         usage=dict(invocation["usage"]) if invocation and invocation["usage"] else None,

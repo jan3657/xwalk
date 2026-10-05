@@ -13,6 +13,7 @@ from tests.conftest import FIXTURES
 from xwalk import ops
 from xwalk.cli.main import main
 from xwalk.cluster.job import ClusterJobSpec, load_cluster_job
+from xwalk.config import JobValidationError
 
 JOB = FIXTURES / "cluster_tiny" / "job.yaml"
 KEYS = {
@@ -234,3 +235,12 @@ def test_python_route_takes_a_client_and_a_spec(tmp_path):
     assert result.ok and result.exit_code == 0
     assert result.envelope()["counts"]["assigned"] == 5
     assert result.run is not None and result.run["run_state"] == "complete"
+
+
+def test_a_cluster_job_with_a_key_given_twice_is_rejected(tmp_path):
+    text = JOB.read_text(encoding="utf-8")
+    path = tmp_path / "cluster.yaml"
+    path.write_text(text + "\nname: other\n", encoding="utf-8")
+    with pytest.raises(JobValidationError) as info:
+        load_cluster_job(path)
+    assert "duplicate key 'name'" in info.value.issues[0].message

@@ -24,7 +24,8 @@ running with a default: `accept_att: 0.9` under `policy` is an error
 Numbers are range-checked (thresholds within `[0, 1]`, `review_floor <= accept_at`, an
 ordered `verify_band`, positive limits, attempts and concurrency), a field that does not
 apply to the declared `kind` is rejected rather than ignored (`query_prefix` on a `bm25`
-retriever, `url` on a `csv` collection), retriever names must be unique (each owns an
+retriever, `url` on a `csv` collection), a key may not appear twice in one mapping (YAML
+would keep the last value silently), retriever names must be unique (each owns an
 index directory), and `llm.profile` must be a known profile. `load_job` raises
 `JobValidationError`; its `issues` carry a code (`unknown_field`, `missing_field`,
 `invalid_value`, `job_not_found`, `job_yaml_invalid`), a dotted location and a message,
