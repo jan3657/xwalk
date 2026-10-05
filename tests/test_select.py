@@ -149,10 +149,12 @@ async def test_output_with_a_wrong_confidence_type_is_unresolved():
     assert outcome.choice.resolution is Resolution.UNRESOLVED
 
 
-async def test_a_confidence_outside_zero_to_one_is_clamped():
+async def test_a_confidence_outside_zero_to_one_is_unresolved_not_clamped():
+    """0.2.0 contract: off-scale output is invalid, like a missing confidence."""
     llm = FakeLLM([reply(chosen_key="C01", confidence_score=1.7, explanation="x")])
     outcome = await Selector(llm, PROMPTS, TEMPLATES).select(SOURCE, "", CANDIDATES)
-    assert outcome.confidence == 1.0
+    assert outcome.confidence is None
+    assert outcome.choice.resolution is Resolution.UNRESOLVED
 
 
 async def test_provider_errors_propagate_for_the_matcher_to_classify():

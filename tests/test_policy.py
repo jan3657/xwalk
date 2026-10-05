@@ -246,3 +246,33 @@ def test_an_inverted_verify_band_is_rejected():
 def test_max_attempts_below_one_is_rejected():
     with pytest.raises(ValueError, match="max_attempts"):
         MatchPolicy(max_attempts=0)
+
+
+# --- failures and unverified scores (CONTRACTS.md section 3) ----------------------
+
+
+def test_any_fatal_attempt_fails_the_record():
+    status, reason, best = derive_status(
+        [matched(0.95), attempt(index=1, reason=DecisionReason.FATAL_PROVIDER_FAILURE)], POLICY
+    )
+    assert (status, reason, best) == (
+        MatchStatus.FAILED,
+        DecisionReason.FATAL_PROVIDER_FAILURE,
+        None,
+    )
+
+
+def test_a_score_whose_verifier_call_failed_is_never_matched():
+    unverified = matched(0.7, verifier_decision="error", reason=DecisionReason.PROVIDER_FAILURE)
+    low = matched(0.3, index=1)
+    status, reason, best = derive_status([unverified, low], POLICY)
+    assert status is MatchStatus.NEEDS_REVIEW
+    assert reason is DecisionReason.PROVIDER_FAILURE
+    assert best is unverified
+
+
+def test_a_verified_retry_beats_an_unverified_tie():
+    unverified = matched(0.7, verifier_decision="error", reason=DecisionReason.PROVIDER_FAILURE)
+    verified = matched(0.7, index=1, verifier_decision="support")
+    status, _, best = derive_status([unverified, verified], POLICY)
+    assert status is MatchStatus.MATCHED and best is verified

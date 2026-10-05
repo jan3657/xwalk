@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from xwalk.llm.base import LLMClient, LLMRequest, ParseError
-from xwalk.llm.parsing import parse_json_object
+from xwalk.llm.parsing import parse_confidence, parse_json_object
 from xwalk.prompts.contract import SELECT_SCHEMA, PromptSet
 from xwalk.records import Candidate, Record, Usage
 from xwalk.stages.keying import (
@@ -67,12 +67,6 @@ def apply_budget(
     return trimmed, len(candidates) - len(trimmed)
 
 
-def _coerce_confidence(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return max(0.0, min(1.0, float(value)))
-
-
 class Selector:
     def __init__(
         self,
@@ -83,14 +77,18 @@ class Selector:
         policy: SelectorPolicy | None = None,
         legacy_id_resolution: bool = False,
         system: str = "You return JSON only. No prose, no code fences.",
-        max_tokens: int = 512,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None:
+        """`temperature`/`max_tokens` override the client's values for this stage only;
+        `None` (the default) sends the client's configured values."""
         self._llm = llm
         self._prompts = prompts
         self._templates = templates
         self._policy = policy or SelectorPolicy()
         self._legacy = legacy_id_resolution
         self._system = system
+        self._temperature = temperature
         self._max_tokens = max_tokens
 
     async def select(
@@ -124,6 +122,7 @@ class Selector:
                 user=prompt,
                 schema=SELECT_SCHEMA,
                 schema_name="selection",
+                temperature=self._temperature,
                 max_tokens=self._max_tokens,
             )
         )
@@ -146,7 +145,7 @@ class Selector:
         raw_key = payload.get("chosen_key")
         if raw_key is not None and not isinstance(raw_key, str):
             raw_key = str(raw_key)
-        confidence = _coerce_confidence(payload.get("confidence_score"))
+        confidence, invalid = parse_confidence(payload.get("confidence_score"))
         explanation = str(payload.get("explanation", ""))
 
         choice = resolve_key(raw_key, keyed, legacy=self._legacy)
@@ -155,7 +154,7 @@ class Selector:
         error: str | None = None
         if choice.resolution is Resolution.EXACT_KEY and confidence is None:
             choice = ResolvedChoice(None, Resolution.UNRESOLVED, raw_key)
-            error = "confidence_score was missing or not a number"
+            error = invalid
         elif choice.resolution is Resolution.UNRESOLVED:
             error = f"model returned {raw_key!r}, which is not a key issued this attempt"
 

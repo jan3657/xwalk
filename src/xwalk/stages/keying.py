@@ -45,36 +45,53 @@ class ResolvedChoice:
 
 @dataclass(frozen=True)
 class KeyedCandidates:
+    """The candidates of one attempt under their issued keys.
+
+    `blocks` holds each candidate's rendered entry separately. A stage that needs "the
+    chosen candidate" and "the others" picks them by key; it never re-splits the joined
+    text, because a rendered record may itself contain blank lines.
+    """
+
     order: tuple[str, ...]
     by_key: Mapping[str, Candidate]
     issued: Mapping[str, str]
-    rendered: str
+    blocks: Mapping[str, str]
 
     def __len__(self) -> int:
         return len(self.order)
 
+    @property
+    def rendered(self) -> str:
+        """Every block, in key order, for prompts that show the whole list."""
+        return BLOCK_SEPARATOR.join(self.blocks[key] for key in self.order)
+
+    def render_except(self, excluded_key: str) -> str:
+        """Every block but one, in key order."""
+        return BLOCK_SEPARATOR.join(self.blocks[key] for key in self.order if key != excluded_key)
+
+
+BLOCK_SEPARATOR = "\n\n"
+
 
 def assign_keys(candidates: Sequence[Candidate], templates: TemplateSet) -> KeyedCandidates:
-    """Assign C01, C02, ... in the order given, and render the candidate block."""
+    """Assign C01, C02, ... in the order given, and render each candidate's block."""
     if not candidates:
-        return KeyedCandidates(order=(), by_key={}, issued={}, rendered="")
+        return KeyedCandidates(order=(), by_key={}, issued={}, blocks={})
 
     width = max(2, len(str(len(candidates))))
     order: list[str] = []
     by_key: dict[str, Candidate] = {}
     issued: dict[str, str] = {}
-    blocks: list[str] = []
+    blocks: dict[str, str] = {}
 
     for index, candidate in enumerate(candidates, start=1):
         key = f"C{index:0{width}d}"
         order.append(key)
         by_key[key] = candidate
         issued[key] = candidate.id
-        blocks.append(f"[{key}] {templates.render_candidate(candidate.record)}")
+        blocks[key] = f"[{key}] {templates.render_candidate(candidate.record)}"
 
-    return KeyedCandidates(
-        order=tuple(order), by_key=by_key, issued=issued, rendered="\n\n".join(blocks)
-    )
+    return KeyedCandidates(order=tuple(order), by_key=by_key, issued=issued, blocks=blocks)
 
 
 def _normalise(raw: str) -> str:

@@ -179,3 +179,17 @@ def test_every_non_exact_resolution_is_distinguishable_from_exact(keyed):
     """Task 14 relies on this: anything other than EXACT_KEY or ABSTAIN forces review."""
     fuzzy = {Resolution.LEGACY_EXACT_ID, Resolution.LEGACY_FUZZY, Resolution.LEGACY_RANK}
     assert Resolution.EXACT_KEY not in fuzzy and Resolution.ABSTAIN not in fuzzy
+
+
+def test_each_candidate_keeps_its_own_block_even_with_blank_lines():
+    class Paragraphs(TemplateSet):
+        def render_candidate(self, record):
+            return f"{record.fields['label']}\n\nmore about {record.fields['label']}"
+
+    keyed = assign_keys(
+        [candidate("T1", "first"), candidate("T2", "second")],
+        Paragraphs(query="", context="", doc="", candidate=""),
+    )
+    assert keyed.blocks["C01"] == "[C01] first\n\nmore about first"
+    assert keyed.render_except("C01") == "[C02] second\n\nmore about second"
+    assert keyed.rendered == keyed.blocks["C01"] + "\n\n" + keyed.blocks["C02"]

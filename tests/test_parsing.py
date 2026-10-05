@@ -1,7 +1,13 @@
 import pytest
 
 from xwalk.llm.base import ParseError
-from xwalk.llm.parsing import extract_json_object, parse_json_object, repair_json, strip_thinking
+from xwalk.llm.parsing import (
+    extract_json_object,
+    parse_confidence,
+    parse_json_object,
+    repair_json,
+    strip_thinking,
+)
 
 
 def test_strips_a_complete_think_block():
@@ -92,3 +98,37 @@ def test_parse_error_carries_the_raw_text_for_the_trace():
     with pytest.raises(ParseError) as exc:
         parse_json_object("garbage")
     assert exc.value.raw == "garbage"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(0.0, 0.0), (1, 1.0), (0.42, 0.42)],
+)
+def test_a_finite_number_in_range_is_a_confidence(value, expected):
+    assert parse_confidence(value) == (expected, None)
+
+
+@pytest.mark.parametrize(
+    ("value", "why"),
+    [
+        (None, "missing"),
+        ("0.9", "must be a number"),
+        (True, "must be a number"),
+        ([0.9], "must be a number"),
+        (float("nan"), "finite"),
+        (float("inf"), "finite"),
+        (float("-inf"), "finite"),
+        (10**400, "finite"),
+        (1.0000001, "outside"),
+        (-0.5, "outside"),
+    ],
+)
+def test_anything_else_is_rejected_with_a_reason(value, why):
+    score, error = parse_confidence(value)
+    assert score is None
+    assert why in (error or "")
+
+
+def test_nan_survives_json_parsing_so_the_validator_must_catch_it():
+    payload = parse_json_object('{"confidence_score": NaN}')
+    assert parse_confidence(payload["confidence_score"])[0] is None

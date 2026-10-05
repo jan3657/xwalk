@@ -9,6 +9,7 @@ and routes to human review — a malformed answer is a signal, not a non-match.
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -91,3 +92,30 @@ def parse_json_object(raw: str) -> dict[str, Any]:
         if isinstance(repaired, dict):
             return repaired
     raise ParseError("could not extract a JSON object from the response", raw=raw)
+
+
+def parse_confidence(value: object) -> tuple[float | None, str | None]:
+    """Validate a model-reported `confidence_score`. Returns `(score, None)` or `(None, why)`.
+
+    Only a finite JSON number in [0, 1] is a confidence. Everything else is invalid
+    output, and invalid output is a signal for review, never a certainty:
+
+    - missing or null -> invalid
+    - a string (even "0.9"), a boolean, a list -> invalid; nothing is coerced
+    - NaN, Infinity, -Infinity (which Python's json module accepts) -> invalid
+    - a finite number outside [0, 1] -> invalid, not clamped: 1.7 says the model did
+      not follow the scale, and clamping it would turn that into a perfect score
+    """
+    if value is None:
+        return None, "confidence_score was missing"
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None, f"confidence_score must be a number, got {type(value).__name__}"
+    try:
+        number = float(value)
+    except OverflowError:
+        return None, "confidence_score is not a finite number"
+    if not math.isfinite(number):
+        return None, f"confidence_score is not a finite number ({number!r})"
+    if not 0.0 <= number <= 1.0:
+        return None, f"confidence_score {number!r} is outside [0, 1]"
+    return number, None

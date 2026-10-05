@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from xwalk.llm.base import LLMClient, LLMRequest, ParseError
-from xwalk.llm.parsing import parse_json_object
+from xwalk.llm.parsing import parse_confidence, parse_json_object
 from xwalk.prompts.contract import SCORE_SCHEMA, VERIFY_SCHEMA, PromptSet
 from xwalk.records import Record, RetryProposal, Usage
 from xwalk.stages.keying import KeyedCandidates
@@ -40,20 +40,11 @@ class VerifierVerdict:
     finish_reason: str | None = None
 
 
-def _clamp(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return max(0.0, min(1.0, float(value)))
-
-
 def _blocks(keyed: KeyedCandidates, chosen_key: str) -> tuple[str, str]:
-    """Split the rendered candidate list into (chosen, others)."""
-    if chosen_key not in keyed.by_key:
+    """(chosen block, every other block), selected by key from the structured list."""
+    if chosen_key not in keyed.blocks:
         raise KeyError(f"{chosen_key!r} was not issued for this attempt")
-    entries = keyed.rendered.split("\n\n")
-    chosen = next(e for e in entries if e.startswith(f"[{chosen_key}]"))
-    others = [e for e in entries if not e.startswith(f"[{chosen_key}]")]
-    return chosen, "\n\n".join(others)
+    return keyed.blocks[chosen_key], keyed.render_except(chosen_key)
 
 
 def _clean(values: object, kind: Literal["candidate", "query"], issued: Sequence[str]) -> list[str]:
@@ -82,12 +73,16 @@ class Scorer:
         templates: TemplateSet,
         *,
         review_floor: float = 0.4,
-        max_tokens: int = 512,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None:
+        """`temperature`/`max_tokens` override the client's values for this stage only;
+        `None` (the default) sends the client's configured values."""
         self._llm = llm
         self._prompts = prompts
         self._templates = templates
         self._review_floor = review_floor
+        self._temperature = temperature
         self._max_tokens = max_tokens
 
     async def score(
@@ -111,6 +106,7 @@ class Scorer:
                 user=prompt,
                 schema=SCORE_SCHEMA,
                 schema_name="score",
+                temperature=self._temperature,
                 max_tokens=self._max_tokens,
             )
         )
@@ -128,7 +124,7 @@ class Scorer:
                 finish_reason=response.finish_reason,
             )
 
-        score = _clamp(payload.get("confidence_score"))
+        score, invalid = parse_confidence(payload.get("confidence_score"))
         issued = list(keyed.order)
         proposals = tuple(
             RetryProposal(kind="candidate", value=key, source="scorer")
@@ -144,7 +140,7 @@ class Scorer:
             proposals=proposals,
             raw=response.text,
             usage=response.usage,
-            error=None if score is not None else "confidence_score was missing or not a number",
+            error=invalid,
             finish_reason=response.finish_reason,
         )
 
@@ -158,11 +154,13 @@ class Verifier:
         prompts: PromptSet,
         templates: TemplateSet,
         *,
-        max_tokens: int = 512,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         self._llm = llm
         self._prompts = prompts
         self._templates = templates
+        self._temperature = temperature
         self._max_tokens = max_tokens
 
     async def verify(
@@ -185,6 +183,7 @@ class Verifier:
                 user=prompt,
                 schema=VERIFY_SCHEMA,
                 schema_name="verification",
+                temperature=self._temperature,
                 max_tokens=self._max_tokens,
             )
         )
@@ -208,7 +207,13 @@ class Verifier:
         decision: Decision = (
             raw_decision if raw_decision in ("support", "disagree", "no_match") else "disagree"  # type: ignore[assignment]
         )
-        error = None if raw_decision == decision else f"unrecognised decision {raw_decision!r}"
+        problems: list[str] = []
+        if raw_decision != decision:
+            problems.append(f"unrecognised decision {raw_decision!r}")
+        # The verdict's own confidence is advisory; an invalid one is dropped, not stored.
+        confidence, invalid = parse_confidence(payload.get("confidence_score"))
+        if invalid is not None and "confidence_score" in payload:
+            problems.append(invalid)
 
         raw_preferred = payload.get("preferred_key")
         preferred: str | None = None
@@ -218,10 +223,10 @@ class Verifier:
         return VerifierVerdict(
             decision=decision,
             preferred_key=preferred,
-            confidence=_clamp(payload.get("confidence_score")),
+            confidence=confidence,
             explanation=str(payload.get("explanation", "")),
             raw=response.text,
             usage=response.usage,
-            error=error,
+            error="; ".join(problems) or None,
             finish_reason=response.finish_reason,
         )

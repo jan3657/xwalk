@@ -110,10 +110,19 @@ async def test_scorer_malformed_output_yields_a_zero_score_and_an_error():
     assert outcome.score is None and outcome.error is not None
 
 
-async def test_scorer_clamps_an_out_of_range_score():
+async def test_scorer_rejects_an_out_of_range_score_instead_of_clamping_it():
+    """0.2.0 contract: a number off the [0, 1] scale is invalid output, not an extreme."""
     llm = FakeLLM([score_reply(confidence_score=-2)])
     outcome = await Scorer(llm, PROMPTS, TEMPLATES).score(SOURCE, "", KEYED, "C01")
-    assert outcome.score == 0.0
+    assert outcome.score is None
+    assert "outside [0, 1]" in (outcome.error or "")
+
+
+async def test_scorer_rejects_a_non_finite_score():
+    llm = FakeLLM(['{"confidence_score": NaN, "explanation": ""}'])
+    outcome = await Scorer(llm, PROMPTS, TEMPLATES).score(SOURCE, "", KEYED, "C01")
+    assert outcome.score is None
+    assert "finite" in (outcome.error or "")
 
 
 async def test_scorer_rejects_an_unissued_chosen_key():

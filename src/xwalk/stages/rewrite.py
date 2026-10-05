@@ -33,12 +33,16 @@ class QueryRewriter:
         templates: TemplateSet,
         *,
         max_queries: int = 2,
-        max_tokens: int = 256,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> None:
+        """`temperature`/`max_tokens` override the client's values for this stage only;
+        `None` (the default) sends the client's configured values."""
         self._llm = llm
         self._prompts = prompts
         self._templates = templates
         self._max_queries = max_queries
+        self._temperature = temperature
         self._max_tokens = max_tokens
 
     async def rewrite(
@@ -61,6 +65,7 @@ class QueryRewriter:
                 user=prompt,
                 schema=REWRITE_SCHEMA,
                 schema_name="rewrite",
+                temperature=self._temperature,
                 max_tokens=self._max_tokens,
             )
         )
