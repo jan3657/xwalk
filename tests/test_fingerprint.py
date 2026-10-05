@@ -79,3 +79,34 @@ def test_result_key_changes_with_run_fingerprint():
 
 def test_result_key_changes_with_source_hash():
     assert result_key("fp1", "s1", "h1") != result_key("fp1", "s1", "h2")
+
+
+# --- credentials are not identity ------------------------------------------------
+
+
+def test_litellm_credentials_are_not_part_of_the_run_identity():
+    from xwalk.llm.litellm import LiteLLMClient
+
+    a = LiteLLMClient("gpt-4o", api_key="sk-one", api_base="https://x")
+    b = LiteLLMClient("gpt-4o", api_key="sk-two", api_base="https://x")
+    c = LiteLLMClient("gpt-4o", api_key="sk-two", api_base="https://y")
+    assert a.fingerprint == b.fingerprint
+    assert a.fingerprint != c.fingerprint
+
+
+def test_credentials_in_a_base_url_are_not_part_of_the_run_identity():
+    from xwalk.llm.openai_compat import OpenAICompatClient
+
+    a = OpenAICompatClient("https://user:secret1@host/v1", "m")
+    b = OpenAICompatClient("https://user:secret2@host/v1", "m")
+    c = OpenAICompatClient("https://other/v1", "m")
+    assert a.fingerprint == b.fingerprint != c.fingerprint
+
+
+def test_secret_parameter_names_are_recognised_without_catching_generation_settings():
+    from xwalk.fingerprint import is_secret_name
+
+    for name in ("api_key", "api-key", "key", "access_token", "extra_headers", "Authorization"):
+        assert is_secret_name(name), name
+    for name in ("max_tokens", "api_base", "seed", "temperature", "model"):
+        assert not is_secret_name(name), name

@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from xwalk.fingerprint import hash_value
+from xwalk.fingerprint import hash_value, redact_url
 from xwalk.llm.base import (
     LLMCapabilities,
     LLMFatalError,
@@ -139,7 +139,8 @@ class OpenAICompatClient:
             {
                 "adapter": "openai_compat",
                 "adapter_version": ADAPTER_VERSION,
-                "base_url": self._base_url,
+                # Userinfo or a key in the query string is a credential, not identity.
+                "base_url": redact_url(self._base_url),
                 "model": self._model,
                 "profile": self._profile,
                 "temperature": self._temperature,

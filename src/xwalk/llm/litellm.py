@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from xwalk._extras import require
-from xwalk.fingerprint import hash_value
+from xwalk.fingerprint import hash_value, without_secrets
 from xwalk.llm.base import (
     LLMCapabilities,
     LLMFatalError,
@@ -89,7 +89,8 @@ class LiteLLMClient:
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
                 **({"seed": self._seed} if self._seed is not None else {}),
-                "kwargs": {k: str(v) for k, v in sorted(self._kwargs.items())},
+                # Credentials passed as kwargs (api_key, extra_headers...) are not identity.
+                "kwargs": {k: str(v) for k, v in sorted(without_secrets(self._kwargs).items())},
             }
         )
 

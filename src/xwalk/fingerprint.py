@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 if TYPE_CHECKING:
     from xwalk.records import Record
@@ -80,3 +82,34 @@ def result_key(run_fp: str, source_id: str, source_hash: str) -> str:
     produce the same string, and a resume key that can collide is worse than none.
     """
     return hash_value([run_fp, source_id, source_hash])
+
+
+# Names whose values are credentials. They never enter a fingerprint or a manifest:
+# rotating a key must not invalidate a resumable run, and a secret must not reach disk.
+# `token` only as a whole word: `max_tokens` is a generation setting, not a secret.
+_SECRET_NAME = re.compile(
+    r"api[-_]?key|(^|[-_])key$|secret|passw|credential|authori[sz]ation|bearer|header|cookie"
+    r"|(^|[-_])token$",
+    re.I,
+)
+
+
+def is_secret_name(name: str) -> bool:
+    """True for a parameter name that may carry a credential (``api_key``, headers...)."""
+    return bool(_SECRET_NAME.search(name))
+
+
+def without_secrets(params: Mapping[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in params.items() if not is_secret_name(str(k))}
+
+
+def redact_url(url: str) -> str:
+    """The URL without userinfo or credential-like query parameters."""
+    parts = urlsplit(url)
+    if not parts.scheme and not parts.netloc:
+        return url
+    host = parts.hostname or ""
+    if parts.port is not None:
+        host = f"{host}:{parts.port}"
+    query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if not is_secret_name(k)])
+    return urlunsplit((parts.scheme, host, parts.path, query, parts.fragment))
