@@ -115,6 +115,66 @@ may be framed; its session cookie then becomes `SameSite=None; Secure`.
 
 ## Running public mode without Docker
 
+Docker is optional for local testing. From the repository root, install xwalk into a
+Python virtual environment, build the same nine full ontologies as the Dockerfile,
+then start the server on loopback:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[chatgpt]'
+.venv/bin/python scripts/build_ontology_library.py \
+  --out .local-explorer/library --cache .local-explorer/cache \
+  --only hp mondo doid go-basic uberon cl pato uo envo
+mkdir -p .local-explorer/site
+.venv/bin/xwalk ui --public --host 127.0.0.1 --port 8080 \
+  --root .local-explorer/site --library .local-explorer/library \
+  --lookup-cache .local-explorer/cache --chatgpt-login --no-browser
+```
+
+Open `http://127.0.0.1:8080`. The library builder keeps existing entries; subsequent
+starts reuse parsed terms and indexes. These commands enable BM25 over labels and
+synonyms. To add general and biomedical dense retrieval, install `.[chatgpt,dense]`
+and add `--dense` to both the library builder and `xwalk ui`. On Apple Silicon, add
+`--dense-device mps` to both commands. The builder downloads the two embedding models
+and precomputes their indexes; mapping runs reuse the shared library indexes. On
+macOS, dense search uses exact NumPy scoring to avoid native OpenMP conflicts between
+PyTorch and FAISS.
+
+### Sign in with ChatGPT locally
+
+With `xwalk[chatgpt]` installed, `--chatgpt-login` adds **Continue with ChatGPT** in
+Start, Quick map, and Settings. Eligible Plus and Pro users can authorize ChatGPT plan
+usage. After connecting, Quick map and new projects select the ChatGPT provider
+automatically and show its available models, without API-key or endpoint fields.
+Choose **With ChatGPT** / **job endpoint** to run it. Offline runs and retrieval-only
+search do not use the subscription. Requests count toward the account's existing plan
+limits; **Manage usage** opens ChatGPT's usage settings.
+
+The implementation follows OpenAI's OAuth authorization-code flow with PKCE and verified
+ID tokens, then sends streamed, non-stored requests to the public Responses API. It
+refreshes credentials and checks the granted plan permission. Credentials never appear
+in job files, run manifests, browser storage, or the process environment. In `--public`
+mode they are held only in the visitor's server session memory. Without `--public`,
+local account credentials persist in owner-only files below
+`${XDG_CONFIG_HOME:-~/.config}/xwalk/`, outside the workspace. Sign out attempts remote
+session revocation and clears local credentials, retaining the account registration
+for a later sign-in.
+
+This option requires **`--host 127.0.0.1`**, and the browser must use that address rather
+than `localhost`. The open-source authorization flow returns to an HTTP loopback
+callback on the user's computer. It cannot be added to the shared Cloud Run deployment
+unchanged: OpenAI currently directs remotely hosted apps to request access separately.
+The Dockerfile therefore continues to offer visitor API keys. ChatGPT-backed project
+jobs use `llm.kind: chatgpt` and currently require this local explorer for model runs;
+they can still run with the offline stand-in.
+
+Sources (checked October 7, 2026): [eligibility and hosted access](https://developers.openai.com/siwc/token-sharing-open-source),
+[registration and loopback callbacks](https://developers.openai.com/siwc/token-sharing-open-source/sign-in),
+[models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference),
+[preview request restrictions](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+
+For a hosted deployment with API keys:
+
 ```bash
 python scripts/build_ontology_library.py --out library --cache cache --only hp mondo
 xwalk ui --public --host 0.0.0.0 --port 8080 --root site \

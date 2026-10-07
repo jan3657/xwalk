@@ -20,7 +20,9 @@ open in the same browser, not at other users of the machine:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import secrets
 import sys
 import threading
@@ -127,6 +129,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         if not self.server.quiet:
+            if urlsplit(self.path).path == "/auth/callback":
+                sys.stderr.write("xwalk ui: ChatGPT callback (query redacted)\n")
+                return
             sys.stderr.write(f"xwalk ui: {format % args}\n")
 
     def _send(
@@ -184,6 +189,19 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if path.startswith("/api/"):
                 self._api(method, path, query)
+            elif method == "GET" and path == "/auth/callback":
+                from xwalk.ui.chatgpt import ChatGPTError
+
+                auth = self._visitor().chatgpt_auth
+                if auth is None:
+                    raise ApiError(
+                        403, "chatgpt_unavailable", "ChatGPT sign-in is not enabled here"
+                    )
+                try:
+                    return_to = auth.finish(query)
+                except ChatGPTError as exc:
+                    raise ApiError(400, "chatgpt_sign_in_failed", str(exc)) from None
+                self._send(303, b"", "text/plain", extra={"Location": return_to})
             elif method == "GET":
                 self._page(path)
             else:
@@ -314,7 +332,34 @@ def make_server(
     session_ttl: float = DEFAULT_SESSION_TTL,
     max_tasks: int = DEFAULT_MAX_TASKS,
     frame_ancestors: str | None = None,
+    chatgpt_login: bool = False,
+    dense: bool = False,
+    dense_device: str | None = None,
 ) -> UIServer:
+    from xwalk.ui.retrieval import heads
+
+    retrieval_heads = heads(dense=dense, device=dense_device)
+    if dense:
+        from xwalk._extras import require
+
+        try:
+            require("dense", "sentence_transformers", purpose="Dense ontology search")
+        except ImportError as exc:
+            raise ValueError(str(exc)) from None
+    if chatgpt_login:
+        if host != "127.0.0.1":
+            raise ValueError(
+                "--chatgpt-login requires --host 127.0.0.1; "
+                "remotely hosted sign-in needs OpenAI approval"
+            )
+        if offline_only:
+            raise ValueError("--chatgpt-login cannot be combined with --offline-only")
+        from xwalk._extras import MissingExtra, require
+
+        try:
+            require("chatgpt", "jwt", purpose="Sign in with ChatGPT")
+        except MissingExtra as exc:
+            raise ValueError(str(exc)) from None
     shared = library_dirs(library)
     workspace = Workspace(
         root,
@@ -322,9 +367,13 @@ def make_server(
         allow_endpoint=not offline_only,
         max_upload_mb=max_upload_mb,
         shared_library=shared,
+        retrieval_heads=retrieval_heads,
     )
     if not public:
-        return UIServer((host, port), workspace, token=token, quiet=quiet)
+        server = UIServer((host, port), workspace, token=token, quiet=quiet)
+        if chatgpt_login:
+            _enable_chatgpt(server, workspace, persistent=True)
+        return server
 
     cache = Path(lookup_cache) if lookup_cache else workspace.root / "cache"
     cache.mkdir(parents=True, exist_ok=True)
@@ -335,7 +384,7 @@ def make_server(
             raise ApiError(429, "busy", "the site is running other people's jobs; try again soon")
 
     def visitor(directory: Path) -> Workspace:
-        return Workspace(
+        visitor_workspace = Workspace(
             directory,
             max_calls_cap=max_calls_cap,
             allow_endpoint=not offline_only,
@@ -344,7 +393,11 @@ def make_server(
             shared_library=shared,
             lookup_cache=cache,
             task_gate=gate,
+            retrieval_heads=retrieval_heads,
         )
+        if chatgpt_login:
+            _enable_chatgpt(server, visitor_workspace, persistent=False)
+        return visitor_workspace
 
     sessions = Sessions(
         workspace.root / "sessions",
@@ -353,13 +406,31 @@ def make_server(
         max_tasks=max_tasks,
     )
     sessions.sweep(force=True)
-    return UIServer(
+    server = UIServer(
         (host, port),
         workspace,
         token=token,
         quiet=quiet,
         sessions=sessions,
         frame_ancestors=frame_ancestors,
+    )
+    if chatgpt_login:
+        _enable_chatgpt(server, workspace, persistent=False)
+    return server
+
+
+def _enable_chatgpt(server: UIServer, workspace: Workspace, *, persistent: bool) -> None:
+    from xwalk.ui.chatgpt import ChatGPTAuth, host_id
+
+    # Outside the workspace: uploaded files, exports, and project scans cannot expose it.
+    root_id = hashlib.sha256(str(server.workspace.root).encode()).hexdigest()[:24]
+    directory = (
+        Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "xwalk" / root_id
+    )
+    workspace.chatgpt_auth = ChatGPTAuth(
+        server.url + "auth/callback",
+        host_id(directory),
+        storage=directory / "accounts.json" if persistent else None,
     )
 
 
@@ -379,6 +450,9 @@ def serve(
     session_ttl: float = DEFAULT_SESSION_TTL,
     max_tasks: int = DEFAULT_MAX_TASKS,
     frame_ancestors: str | None = None,
+    chatgpt_login: bool = False,
+    dense: bool = False,
+    dense_device: str | None = None,
 ) -> None:
     """Serve until interrupted (`xwalk ui`). Status lines go to stderr."""
     server = make_server(
@@ -395,6 +469,9 @@ def serve(
         session_ttl=session_ttl,
         max_tasks=max_tasks,
         frame_ancestors=frame_ancestors,
+        chatgpt_login=chatgpt_login,
+        dense=dense,
+        dense_device=dense_device,
     )
     print(f"xwalk ui: serving {server.workspace.root}", file=sys.stderr)
     print(f"xwalk ui: open {server.url}  (Ctrl-C to stop)", file=sys.stderr)

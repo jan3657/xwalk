@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import json
 import struct
+import sys
+import threading
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -65,6 +67,7 @@ class SentenceTransformerEncoder:
         self._query_prefix = query_prefix
         self._doc_prefix = doc_prefix
         self._batch_size = batch_size
+        self._encode_lock = threading.Lock()
 
     @property
     def name(self) -> str:
@@ -97,13 +100,14 @@ class SentenceTransformerEncoder:
     def encode(self, texts: Sequence[str], *, is_query: bool = False) -> list[list[float]]:
         prefix = self._query_prefix if is_query else self._doc_prefix
         prepared = [f"{prefix}{t}" for t in texts] if prefix else list(texts)
-        vectors = self._model.encode(
-            prepared,
-            batch_size=self._batch_size,
-            normalize_embeddings=self._normalize,
-            show_progress_bar=False,
-            convert_to_numpy=True,
-        )
+        with self._encode_lock:
+            vectors = self._model.encode(
+                prepared,
+                batch_size=self._batch_size,
+                normalize_embeddings=self._normalize,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            )
         return [[float(v) for v in row] for row in vectors]
 
 
@@ -172,6 +176,14 @@ class DenseRetriever:
         self._name = name
         self._default_limit = default_limit
         self._faiss_index = self._try_build_faiss()
+        self._numpy_vectors = None
+        if self._faiss_index is None and self._vectors:
+            try:
+                import numpy as np
+
+                self._numpy_vectors = np.asarray(self._vectors, dtype="float32")
+            except ImportError:
+                pass
 
     # --- protocol ---------------------------------------------------------------
 
@@ -322,6 +334,10 @@ class DenseRetriever:
         """
         if not self._vectors:
             return None
+        if sys.platform == "darwin":
+            # Torch and FAISS macOS wheels can bundle conflicting OpenMP runtimes
+            # that abort the process. NumPy below also provides exact dot-product search.
+            return None
         try:
             import faiss
             import numpy as np
@@ -337,14 +353,23 @@ class DenseRetriever:
         query = self._encoder.encode([text], is_query=True)[0]
 
         if self._faiss_index is not None:
+            import faiss
             import numpy as np
 
+            # Each request searches one vector. Avoid nested OpenMP teams in workers.
+            faiss.omp_set_num_threads(1)
             scores, indices = self._faiss_index.search(
                 np.asarray([query], dtype="float32"), min(limit, len(self._vectors))
             )
             pairs = [
                 (float(s), int(i)) for s, i in zip(scores[0], indices[0], strict=True) if i >= 0
             ]
+        elif self._numpy_vectors is not None:
+            import numpy as np
+
+            scores = self._numpy_vectors @ np.asarray(query, dtype="float32")
+            indices = np.argsort(-scores, kind="stable")[:limit]
+            pairs = [(float(scores[i]), int(i)) for i in indices]
         else:
             pairs = sorted(
                 (

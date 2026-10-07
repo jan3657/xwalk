@@ -331,6 +331,7 @@ class Workspace:
         shared_library: Sequence[Path] = (),
         lookup_cache: Path | None = None,
         task_gate: Callable[[], None] | None = None,
+        retrieval_heads: Sequence[Mapping[str, Any]] = (),
     ) -> None:
         self.root = Path(root).resolve()
         if not self.root.is_dir():
@@ -349,8 +350,12 @@ class Workspace:
         self.shared_library = tuple(shared_library)
         self.lookup_cache = lookup_cache
         self.task_gate = task_gate
+        self.retrieval_heads = tuple(dict(r) for r in retrieval_heads)
         # A visitor's model keys, by variable name: memory only, never os.environ.
         self.session_keys: dict[str, str] = {}
+        from xwalk.ui.chatgpt import ChatGPTAuth
+
+        self.chatgpt_auth: ChatGPTAuth | None = None
         self.tasks = TaskManager()
         self._state_lock = threading.Lock()
 
@@ -417,6 +422,8 @@ class Workspace:
             "search_limit": ops.MAX_SEARCH_LIMIT,
             "max_upload_mb": self.max_upload_bytes // (1024 * 1024),
             "public": self.public,
+            "chatgpt_login": self.chatgpt_auth is not None,
+            "retrieval_heads": [r.get("name", r["kind"]) for r in self.retrieval_heads] or ["bm25"],
         }
 
     def workspace(self, params: Params) -> Response:
@@ -635,6 +642,8 @@ class Workspace:
                 self.task_gate()
             if model == "endpoint":
                 endpoint_llm = self._public_llm(job, kind)
+        if model == "endpoint" and not self.public:
+            endpoint_llm = self._chatgpt_llm(job, kind)
         if kind == "cluster" and limit is not None:
             raise ApiError(400, "invalid_parameter", "limit is not supported for clustering")
 
@@ -683,6 +692,7 @@ class Workspace:
 
                 llm = offline.match_llm()
                 decider = FakeDecider(model=offline.OFFLINE_MODEL_NAME)
+            shared_index = await asyncio.to_thread(self._prepare_shared_index, job)
             result = await ops.run_async(
                 job,
                 out,
@@ -692,6 +702,7 @@ class Workspace:
                 llm=llm,
                 decider=decider,
                 progress=match_progress,
+                index_dir=shared_index,
             )
             if result.run is not None:
                 self._remember_model(out, model)
@@ -699,9 +710,47 @@ class Workspace:
 
         return self.tasks.start(task, "match", match_work).view()
 
+    def _prepare_shared_index(self, job: Path) -> Path | None:
+        """Reuse a library lookup index when this generated project's targets match it."""
+        if self.lookup_cache is None:
+            return None
+        from xwalk.ui import projects
+        from xwalk.ui.workbench import library
+
+        metadata = _read_json(job.parent / "project.json") or {}
+        slugs = metadata.get("libraries")
+        if not isinstance(slugs, list) or not slugs:
+            return None
+        spec = ops.load_valid_job(job)
+        if spec.target.kind != "jsonl" or spec.target.path != "targets.jsonl":
+            return None
+        cached = projects.lookup_job(
+            library(self),
+            projects.TargetChoice(libraries=slugs),
+            projects.library_lookup_key(slugs),
+            self.lookup_cache,
+            retrievers=[r.model_dump(exclude_unset=True) for r in spec.retrievers],
+        )
+        cached_spec = ops.load_valid_job(cached)
+        if spec.templates.doc != cached_spec.templates.doc:
+            return None
+        if (
+            hashlib.sha256((job.parent / "targets.jsonl").read_bytes()).digest()
+            != hashlib.sha256((cached.parent / "targets.jsonl").read_bytes()).digest()
+        ):
+            return None
+        index_dir = cached.parent / "index"
+        with projects.lookup_lock(cached):
+            ops.index(job, index_dir)
+        return index_dir
+
     def _public_llm(self, job: Path, kind: str) -> Any:
         """The visitor's model client for a public endpoint run (keys from the session)."""
         from xwalk.ui.hosting import PublicRefusal, endpoint_client
+
+        chatgpt_client = self._chatgpt_llm(job, kind)
+        if chatgpt_client is not None:
+            return chatgpt_client
 
         try:
             if kind == "cluster":
@@ -717,6 +766,45 @@ class Workspace:
             raise ApiError(403, "not_allowed_here", str(exc)) from None
         except ops.OpError as exc:
             raise ApiError(400, "job_invalid", str(exc)) from None
+
+    def _chatgpt_llm(self, job: Path, kind: str) -> Any:
+        from xwalk.llm.chatgpt import ChatGPTClient
+        from xwalk.ui.chatgpt import ChatGPTError
+
+        try:
+            if kind == "cluster":
+                from xwalk.cluster.operation import load_job as load_cluster
+
+                spec: Any = load_cluster(job, "match")
+            else:
+                spec = ops.load_valid_job(job, operation="match")
+        except (ops.OpError, ValueError) as exc:
+            raise ApiError(400, "job_invalid", str(exc)) from None
+        if spec.llm.kind != "chatgpt":
+            return None
+        if self.chatgpt_auth is None:
+            raise ApiError(
+                403,
+                "chatgpt_unavailable",
+                "Start the local explorer with --chatgpt-login to use this project",
+            )
+        if kind != "cluster" and spec.decider is not None:
+            raise ApiError(
+                403, "chatgpt_unsupported", "ChatGPT plan usage is not supported for decider jobs"
+            )
+        # Pin the account for the whole run; switching accounts must not redirect its usage.
+        account = self.chatgpt_auth.status()["active"]
+        try:
+            self.chatgpt_auth.access_token(account)
+            models = self.chatgpt_auth.models(account)
+        except ChatGPTError as exc:
+            raise ApiError(403, "chatgpt_not_connected", str(exc)) from None
+        if spec.llm.model not in {m["slug"] for m in models}:
+            raise ApiError(
+                400, "chatgpt_model", "Choose a model available to your connected ChatGPT account"
+            )
+        auth = self.chatgpt_auth
+        return ChatGPTClient(spec.llm.model, lambda: auth.access_token(account))
 
     def list_tasks(self, params: Params) -> Response:
         return {"tasks": [{**t.view(), "events": []} for t in self.tasks.all()]}
