@@ -31,6 +31,8 @@ def test_dense_settings_reach_generated_projects_and_do_not_reuse_bm25_only_jobs
 
 def test_warmed_dense_indexes_are_shared_by_lookup_and_mapping_runs(tmp_path, monkeypatch):
     monkeypatch.setattr(ops, "_default_encoder_factory", lambda spec: ToyEncoder())
+    # The injected encoder needs no optional packages; bypass only the extras preflight.
+    monkeypatch.setattr(ops, "_extra_errors", lambda job, **kwargs: [])
     out = tmp_path / "library"
     Library(out).add(
         "Toy",
