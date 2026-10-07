@@ -31,7 +31,14 @@ from importlib import resources
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlsplit
 
-from xwalk.ui.api import DEFAULT_MAX_CALLS_CAP, ApiError, Download, Workspace, dispatch
+from xwalk.ui.api import (
+    DEFAULT_MAX_CALLS_CAP,
+    DEFAULT_MAX_UPLOAD_MB,
+    ApiError,
+    Download,
+    Workspace,
+    dispatch,
+)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -41,6 +48,7 @@ TOKEN_PLACEHOLDER = "__XWALK_TOKEN__"
 
 _STATIC_TYPES = {
     "app.js": "text/javascript; charset=utf-8",
+    "workbench.js": "text/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
     "favicon.svg": "image/svg+xml",
 }
@@ -152,6 +160,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         parts = urlsplit(self.path)
         path = parts.path
+        if path == "/api/upload":
+            # A refused upload leaves its body unread; never reuse the connection.
+            self.close_connection = True
         query = dict(parse_qsl(parts.query, keep_blank_values=True))
         try:
             if path.startswith("/api/"):
@@ -183,14 +194,20 @@ class _Handler(BaseHTTPRequestHandler):
         raise ApiError(404, "not_found", f"no page {path}")
 
     def _api(self, method: str, path: str, query: dict[str, str]) -> None:
+        from xwalk.ui.workbench import DOWNLOAD_ROUTES
+
         token = self.headers.get(TOKEN_HEADER)
-        if token is None and method == "GET" and path == "/api/export":
+        if token is None and method == "GET" and path in DOWNLOAD_ROUTES:
             # A download is a plain link, which cannot carry a header.
             token = query.pop("token", None)
         if token is None or not secrets.compare_digest(token, self.server.token):
             raise ApiError(403, "bad_token", "missing or wrong API token; reload the page")
         params: dict[str, Any] = dict(query)
-        if method == "POST":
+        if method == "POST" and path == "/api/upload":
+            # The file is the body, streamed to disk by the handler, never held whole.
+            params["_body"] = self.rfile
+            params["_length"] = self._length()
+        elif method == "POST":
             params.update(self._body())
         result = dispatch(self.server.workspace, method, path, params)
         if isinstance(result, Download):
@@ -201,11 +218,17 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._json(HTTPStatus.OK, result)
 
-    def _body(self) -> dict[str, Any]:
+    def _length(self) -> int:
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             raise ApiError(400, "bad_request", "invalid Content-Length") from None
+        if length < 0:
+            raise ApiError(400, "bad_request", "invalid Content-Length")
+        return length
+
+    def _body(self) -> dict[str, Any]:
+        length = self._length()
         if length > MAX_BODY:
             raise ApiError(413, "too_large", "request body too large")
         if not length:
@@ -228,10 +251,16 @@ def make_server(
     port: int = DEFAULT_PORT,
     max_calls_cap: int = DEFAULT_MAX_CALLS_CAP,
     offline_only: bool = False,
+    max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB,
     token: str | None = None,
     quiet: bool = True,
 ) -> UIServer:
-    workspace = Workspace(root, max_calls_cap=max_calls_cap, allow_endpoint=not offline_only)
+    workspace = Workspace(
+        root,
+        max_calls_cap=max_calls_cap,
+        allow_endpoint=not offline_only,
+        max_upload_mb=max_upload_mb,
+    )
     return UIServer((host, port), workspace, token=token, quiet=quiet)
 
 
@@ -242,6 +271,7 @@ def serve(
     port: int = DEFAULT_PORT,
     max_calls_cap: int = DEFAULT_MAX_CALLS_CAP,
     offline_only: bool = False,
+    max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB,
     open_browser: bool = True,
     verbose: bool = False,
 ) -> None:
@@ -252,6 +282,7 @@ def serve(
         port=port,
         max_calls_cap=max_calls_cap,
         offline_only=offline_only,
+        max_upload_mb=max_upload_mb,
         quiet=not verbose,
     )
     print(f"xwalk ui: serving {server.workspace.root}", file=sys.stderr)

@@ -1,0 +1,200 @@
+{"definition": "alpha-1-B glycoprotein", "id": "NCBIGene:1", "label": "A1BG", "organism": "Homo sapiens", "synonyms": ["A1B", "ABG", "GAB", "HYST2477"], "tax_id": "9606"}
+{"definition": "N-acetyltransferase 2", "id": "NCBIGene:10", "label": "NAT2", "organism": "Homo sapiens", "synonyms": ["AAC2", "NAT-2", "PNAT"], "tax_id": "9606"}
+{"definition": "adenosine deaminase", "id": "NCBIGene:100", "label": "ADA", "organism": "Homo sapiens", "synonyms": ["ADA1"], "tax_id": "9606"}
+{"definition": "cadherin 2", "id": "NCBIGene:1000", "label": "CDH2", "organism": "Homo sapiens", "synonyms": ["ACOGS", "ADHD8", "ARVD14", "CD325", "CDHN", "CDw325", "NCAD"], "tax_id": "9606"}
+{"definition": "AKT serine/threonine kinase 3", "id": "NCBIGene:10000", "label": "AKT3", "organism": "Homo sapiens", "synonyms": ["MPPH", "MPPH2", "PKB-GAMMA", "PKBG", "PRKBG", "RAC-PK-gamma", "RAC-gamma", "STK-2"], "tax_id": "9606"}
+{"definition": "WD repeat domain 76 pseudogene", "id": "NCBIGene:100008564", "label": "Gm14018", "organism": "Mus musculus", "synonyms": ["Wdr76p"], "tax_id": "10090"}
+{"definition": "predicted gene 14964", "id": "NCBIGene:100008567", "label": "Gm14964", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "G antigen 12F", "id": "NCBIGene:100008586", "label": "GAGE12F", "organism": "Homo sapiens", "synonyms": ["AL4", "CT4.7", "GAGE-7", "GAGE-7B", "GAGE-8", "GAGE7", "GAGE7B"], "tax_id": "9606"}
+{"definition": "RNA, 5.8S ribosomal N5", "id": "NCBIGene:100008587", "label": "RNA5-8SN5", "organism": "Homo sapiens", "synonyms": ["RN5-8S1", "RNA5-8S5"], "tax_id": "9606"}
+{"definition": "RNA, 18S ribosomal N5", "id": "NCBIGene:100008588", "label": "RNA18SN5", "organism": "Homo sapiens", "synonyms": ["RN18S1", "RNA18S5"], "tax_id": "9606"}
+{"definition": "RNA, 28S ribosomal N5", "id": "NCBIGene:100008589", "label": "RNA28SN5", "organism": "Homo sapiens", "synonyms": ["RN28S1", "RNA28S5"], "tax_id": "9606"}
+{"definition": "zinc finger, GATA-like protein 1", "id": "NCBIGene:100009600", "label": "Zglp1", "organism": "Mus musculus", "synonyms": ["Glp1"], "tax_id": "10090"}
+{"definition": "tRNA-Tyr (anticodon GTA) 7-1", "id": "NCBIGene:100009601", "label": "TRY-GTA7-1", "organism": "Homo sapiens", "synonyms": ["TRNAY1", "Tyr-tRNA"], "tax_id": "9606"}
+{"definition": "tRNA-Tyr (anticodon GTA) 5-4", "id": "NCBIGene:100009602", "label": "TRY-GTA5-4", "organism": "Homo sapiens", "synonyms": ["TRNAY2", "TRY-GTA5-2", "Tyr-tRNA"], "tax_id": "9606"}
+{"definition": "tRNA-Ala (anticodon AGC) 11-1", "id": "NCBIGene:100009603", "label": "TRA-AGC11-1", "organism": "Homo sapiens", "synonyms": ["TRNAA2"], "tax_id": "9606"}
+{"definition": "tRNA-Ala (anticodon AGC) 8-1", "id": "NCBIGene:100009604", "label": "TRA-AGC8-1", "organism": "Homo sapiens", "synonyms": ["TRNAA3"], "tax_id": "9606"}
+{"definition": "tRNA-Phe (anticodon GAA) 2-1", "id": "NCBIGene:100009605", "label": "TRF-GAA2-1", "organism": "Homo sapiens", "synonyms": ["TRNAF1"], "tax_id": "9606"}
+{"definition": "tRNA-Phe (anticodon GAA) 1-4", "id": "NCBIGene:100009606", "label": "TRF-GAA1-4", "organism": "Homo sapiens", "synonyms": ["TRF-GAA1-2", "TRNAF2"], "tax_id": "9606"}
+{"definition": "tRNA-His (anticodon GTG) 1-6", "id": "NCBIGene:100009607", "label": "TRH-GTG1-6", "organism": "Homo sapiens", "synonyms": ["TRH-GTG1-9", "TRNAH5"], "tax_id": "9606"}
+{"definition": "vomeronasal 2, receptor 65", "id": "NCBIGene:100009609", "label": "Vmn2r65", "organism": "Mus musculus", "synonyms": ["V2ro"], "tax_id": "10090"}
+{"definition": "long intergenic non-protein coding RNA 2584", "id": "NCBIGene:100009613", "label": "LINC02584", "organism": "Homo sapiens", "synonyms": ["ANO1-AS2", "C11orf78", "NCRNA00224"], "tax_id": "9606"}
+{"definition": "keratin associated protein 12-22", "id": "NCBIGene:100009614", "label": "Krtap12-22", "organism": "Mus musculus", "synonyms": ["Gm10024"], "tax_id": "10090"}
+{"definition": "RIKEN cDNA F630206G17 gene", "id": "NCBIGene:100009664", "label": "F630206G17Rik", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "POU class 5 homeobox 1 pseudogene 5", "id": "NCBIGene:100009667", "label": "POU5F1P5", "organism": "Homo sapiens", "synonyms": ["Oct4-pg5"], "tax_id": "9606"}
+{"definition": "POU class 5 homeobox 1 pseudogene 6", "id": "NCBIGene:100009668", "label": "POU5F1P6", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "POU class 5 homeobox 1 pseudogene 7", "id": "NCBIGene:100009669", "label": "POU5F1P7", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "iroquois homeobox 4 pseudogene 1", "id": "NCBIGene:100009671", "label": "IRX4P1", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "mental retardation, non-syndromic, autosomal recessive, 4", "id": "NCBIGene:100009675", "label": "MRT4", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "ZBTB11 antisense RNA 1", "id": "NCBIGene:100009676", "label": "ZBTB11-AS1", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "pyruvate kinase, muscle pseudogene", "id": "NCBIGene:100009698", "label": "Gm14504", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "mediator complex subunit 6", "id": "NCBIGene:10001", "label": "MED6", "organism": "Homo sapiens", "synonyms": ["ARC33", "NY-REN-28"], "tax_id": "9606"}
+{"definition": "expressed sequence AA589556", "id": "NCBIGene:100010", "label": "AA589556", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "oogenesin 3", "id": "NCBIGene:100012", "label": "Oog3", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "expressed sequence AA673240", "id": "NCBIGene:100014", "label": "AA673240", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "notum palmitoleoyl-protein carboxylesterase, opposite strand", "id": "NCBIGene:100015211", "label": "Notumos", "organism": "Mus musculus", "synonyms": ["4732444A12Rik"], "tax_id": "10090"}
+{"definition": "low density lipoprotein receptor adaptor protein 1", "id": "NCBIGene:100017", "label": "Ldlrap1", "organism": "Mus musculus", "synonyms": ["ARH2", "Arh", "Arh1", "FHCB1", "FHCB2"], "tax_id": "10090"}
+{"definition": "midasin AAA ATPase 1", "id": "NCBIGene:100019", "label": "Mdn1", "organism": "Mus musculus", "synonyms": ["4833432B22Rik", "A130070M06", "D4Abb1e", "Gm135"], "tax_id": "10090"}
+{"definition": "nuclear receptor subfamily 2 group E member 3", "id": "NCBIGene:10002", "label": "NR2E3", "organism": "Homo sapiens", "synonyms": ["ESCS", "ESCS1", "PNR", "RNR", "RP37", "rd7"], "tax_id": "9606"}
+{"definition": "N-acetylated alpha-linked acidic dipeptidase 2", "id": "NCBIGene:10003", "label": "NAALAD2", "organism": "Homo sapiens", "synonyms": ["GCP3", "GCPIII", "GPCIII"], "tax_id": "9606"}
+{"definition": "expressed sequence AI115522", "id": "NCBIGene:100032", "label": "AI115522", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "vomeronasal 2 receptor 2 pseudogene", "id": "NCBIGene:100033391", "label": "VN2R2P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 3, pseudogene", "id": "NCBIGene:100033392", "label": "VN2R3P", "organism": "Homo sapiens", "synonyms": ["VN2R4P", "VN2R5P", "VN2R8P"], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 6 pseudogene", "id": "NCBIGene:100033395", "label": "VN2R6P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 7 pseudogene", "id": "NCBIGene:100033396", "label": "VN2R7P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 10, pseudogene", "id": "NCBIGene:100033398", "label": "VN2R10P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 11 pseudogene", "id": "NCBIGene:100033399", "label": "VN2R11P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 12 pseudogene", "id": "NCBIGene:100033400", "label": "VN2R12P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 13 pseudogene", "id": "NCBIGene:100033401", "label": "VN2R13P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 14 pseudogene", "id": "NCBIGene:100033402", "label": "VN2R14P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 15 pseudogene", "id": "NCBIGene:100033403", "label": "VN2R15P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 16 pseudogene", "id": "NCBIGene:100033404", "label": "VN2R16P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 18 pseudogene", "id": "NCBIGene:100033406", "label": "VN2R18P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 19, pseudogene", "id": "NCBIGene:100033407", "label": "VN2R19P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "vomeronasal 2 receptor 20 pseudogene", "id": "NCBIGene:100033408", "label": "VN2R20P", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "OTX2 pseudogene 1", "id": "NCBIGene:100033409", "label": "OTX2P1", "organism": "Homo sapiens", "synonyms": ["OTX2P"], "tax_id": "9606"}
+{"definition": "double homeobox B", "id": "NCBIGene:100033411", "label": "DUXB", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-1", "id": "NCBIGene:100033413", "label": "SNORD116-1", "organism": "Homo sapiens", "synonyms": ["HBII-85-1", "PWCR1"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-2", "id": "NCBIGene:100033414", "label": "SNORD116-2", "organism": "Homo sapiens", "synonyms": ["HBII-85-2"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-3", "id": "NCBIGene:100033415", "label": "SNORD116-3", "organism": "Homo sapiens", "synonyms": ["HBII-85-3"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-4", "id": "NCBIGene:100033416", "label": "SNORD116-4", "organism": "Homo sapiens", "synonyms": ["HBII-85-4"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-5", "id": "NCBIGene:100033417", "label": "SNORD116-5", "organism": "Homo sapiens", "synonyms": ["HBII-85-5"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-6", "id": "NCBIGene:100033418", "label": "SNORD116-6", "organism": "Homo sapiens", "synonyms": ["HBII-85-6"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-7", "id": "NCBIGene:100033419", "label": "SNORD116-7", "organism": "Homo sapiens", "synonyms": ["HBII-85-7"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-8", "id": "NCBIGene:100033420", "label": "SNORD116-8", "organism": "Homo sapiens", "synonyms": ["HBII-85-8"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-9", "id": "NCBIGene:100033421", "label": "SNORD116-9", "organism": "Homo sapiens", "synonyms": ["HBII-85-9"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-10", "id": "NCBIGene:100033422", "label": "SNORD116-10", "organism": "Homo sapiens", "synonyms": ["HBII-85-10"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-11", "id": "NCBIGene:100033423", "label": "SNORD116-11", "organism": "Homo sapiens", "synonyms": ["HBII-85-11"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-12", "id": "NCBIGene:100033424", "label": "SNORD116-12", "organism": "Homo sapiens", "synonyms": ["HBII-85-12"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-13", "id": "NCBIGene:100033425", "label": "SNORD116-13", "organism": "Homo sapiens", "synonyms": ["HBII-85-13"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-14", "id": "NCBIGene:100033426", "label": "SNORD116-14", "organism": "Homo sapiens", "synonyms": ["HBII-85-14"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-15", "id": "NCBIGene:100033427", "label": "SNORD116-15", "organism": "Homo sapiens", "synonyms": ["HBII-85-15"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-16", "id": "NCBIGene:100033428", "label": "SNORD116-16", "organism": "Homo sapiens", "synonyms": ["HBII-85-16"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-17", "id": "NCBIGene:100033429", "label": "SNORD116-17", "organism": "Homo sapiens", "synonyms": ["HBII-85-17"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-18", "id": "NCBIGene:100033430", "label": "SNORD116-18", "organism": "Homo sapiens", "synonyms": ["HBII-85-18"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-20", "id": "NCBIGene:100033431", "label": "SNORD116-20", "organism": "Homo sapiens", "synonyms": ["HBII-85-20"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-21", "id": "NCBIGene:100033432", "label": "SNORD116-21", "organism": "Homo sapiens", "synonyms": ["HBII-85-21"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-22", "id": "NCBIGene:100033433", "label": "SNORD116-22", "organism": "Homo sapiens", "synonyms": ["HBII-85-22"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-23", "id": "NCBIGene:100033434", "label": "SNORD116-23", "organism": "Homo sapiens", "synonyms": ["HBII-85-23"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-24", "id": "NCBIGene:100033435", "label": "SNORD116-24", "organism": "Homo sapiens", "synonyms": ["HBII-85-24"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-25", "id": "NCBIGene:100033436", "label": "SNORD116-25", "organism": "Homo sapiens", "synonyms": ["HBII-85-25"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-2", "id": "NCBIGene:100033437", "label": "SNORD115-2", "organism": "Homo sapiens", "synonyms": ["HBII-52-2"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-26", "id": "NCBIGene:100033438", "label": "SNORD116-26", "organism": "Homo sapiens", "synonyms": ["HBII-85-26"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-27", "id": "NCBIGene:100033439", "label": "SNORD116-27", "organism": "Homo sapiens", "synonyms": ["HBII-85-27"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-3", "id": "NCBIGene:100033440", "label": "SNORD115-3", "organism": "Homo sapiens", "synonyms": ["HBII-52-3"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-4", "id": "NCBIGene:100033441", "label": "SNORD115-4", "organism": "Homo sapiens", "synonyms": ["HBII-52-4"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-5", "id": "NCBIGene:100033442", "label": "SNORD115-5", "organism": "Homo sapiens", "synonyms": ["HBII-52-5"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-6", "id": "NCBIGene:100033443", "label": "SNORD115-6", "organism": "Homo sapiens", "synonyms": ["HBII-52-6"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-7", "id": "NCBIGene:100033444", "label": "SNORD115-7", "organism": "Homo sapiens", "synonyms": ["HBII-52-7"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-8", "id": "NCBIGene:100033445", "label": "SNORD115-8", "organism": "Homo sapiens", "synonyms": ["HBII-52-8"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-9", "id": "NCBIGene:100033446", "label": "SNORD115-9", "organism": "Homo sapiens", "synonyms": ["HBII-52-9"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-10", "id": "NCBIGene:100033447", "label": "SNORD115-10", "organism": "Homo sapiens", "synonyms": ["HBII-52-10"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-11", "id": "NCBIGene:100033448", "label": "SNORD115-11", "organism": "Homo sapiens", "synonyms": ["HBII-52-11"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-12", "id": "NCBIGene:100033449", "label": "SNORD115-12", "organism": "Homo sapiens", "synonyms": ["HBII-52-12"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-13", "id": "NCBIGene:100033450", "label": "SNORD115-13", "organism": "Homo sapiens", "synonyms": ["HBII-52-13"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-14", "id": "NCBIGene:100033451", "label": "SNORD115-14", "organism": "Homo sapiens", "synonyms": ["HBII-52-14"], "tax_id": "9606"}
+{"definition": "glyceraldehyde-3-phosphate dehydrogenase pseudogene", "id": "NCBIGene:100033452", "label": "Gm13394", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "small nucleolar RNA, C/D box 115-15", "id": "NCBIGene:100033453", "label": "SNORD115-15", "organism": "Homo sapiens", "synonyms": ["HBII-52-15"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-16", "id": "NCBIGene:100033454", "label": "SNORD115-16", "organism": "Homo sapiens", "synonyms": ["HBII-52-16"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-17", "id": "NCBIGene:100033455", "label": "SNORD115-17", "organism": "Homo sapiens", "synonyms": ["HBII-52-17"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-18", "id": "NCBIGene:100033456", "label": "SNORD115-18", "organism": "Homo sapiens", "synonyms": ["HBII-52-18"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-19", "id": "NCBIGene:100033458", "label": "SNORD115-19", "organism": "Homo sapiens", "synonyms": ["HBII-52-19"], "tax_id": "9606"}
+{"definition": "interferon activated gene 208", "id": "NCBIGene:100033459", "label": "Ifi208", "organism": "Mus musculus", "synonyms": ["9830148g24rik", "E430029J22Rik", "NG2creBAC", "Pydc3", "Pyr-rv1", "Tg(Cspg4-cre)1Akik"], "tax_id": "10090"}
+{"definition": "small nucleolar RNA, C/D box 115-20", "id": "NCBIGene:100033460", "label": "SNORD115-20", "organism": "Homo sapiens", "synonyms": ["HBII-52-20"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-21", "id": "NCBIGene:100033603", "label": "SNORD115-21", "organism": "Homo sapiens", "synonyms": ["HBII-52-21"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-22", "id": "NCBIGene:100033799", "label": "SNORD115-22", "organism": "Homo sapiens", "synonyms": ["HBII-52-22"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-23", "id": "NCBIGene:100033800", "label": "SNORD115-23", "organism": "Homo sapiens", "synonyms": ["HBII-52-23"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-25", "id": "NCBIGene:100033801", "label": "SNORD115-25", "organism": "Homo sapiens", "synonyms": ["HBII-52-25"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-26", "id": "NCBIGene:100033802", "label": "SNORD115-26", "organism": "Homo sapiens", "synonyms": ["HBII-52-26"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-29", "id": "NCBIGene:100033803", "label": "SNORD115-29", "organism": "Homo sapiens", "synonyms": ["HBII-52-29"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-30", "id": "NCBIGene:100033804", "label": "SNORD115-30", "organism": "Homo sapiens", "synonyms": ["HBII-52-30"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-31", "id": "NCBIGene:100033805", "label": "SNORD115-31", "organism": "Homo sapiens", "synonyms": ["HBII-52-31"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-32", "id": "NCBIGene:100033806", "label": "SNORD115-32", "organism": "Homo sapiens", "synonyms": ["HBII-52-32"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-33", "id": "NCBIGene:100033807", "label": "SNORD115-33", "organism": "Homo sapiens", "synonyms": ["HBII-52-33"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-34", "id": "NCBIGene:100033808", "label": "SNORD115-34", "organism": "Homo sapiens", "synonyms": ["HBII-52-34"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-35", "id": "NCBIGene:100033809", "label": "SNORD115-35", "organism": "Homo sapiens", "synonyms": ["HBII-52-35"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-36", "id": "NCBIGene:100033810", "label": "SNORD115-36", "organism": "Homo sapiens", "synonyms": ["HBII-52-36"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-37", "id": "NCBIGene:100033811", "label": "SNORD115-37", "organism": "Homo sapiens", "synonyms": ["HBII-52-37"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-38", "id": "NCBIGene:100033812", "label": "SNORD115-38", "organism": "Homo sapiens", "synonyms": ["HBII-52-38"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-39", "id": "NCBIGene:100033813", "label": "SNORD115-39", "organism": "Homo sapiens", "synonyms": ["HBII-52-39"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-40", "id": "NCBIGene:100033814", "label": "SNORD115-40", "organism": "Homo sapiens", "synonyms": ["HBII-52-40"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-41", "id": "NCBIGene:100033815", "label": "SNORD115-41", "organism": "Homo sapiens", "synonyms": ["HBII-52-41"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-42", "id": "NCBIGene:100033816", "label": "SNORD115-42", "organism": "Homo sapiens", "synonyms": ["HBII-52-42"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-43", "id": "NCBIGene:100033817", "label": "SNORD115-43", "organism": "Homo sapiens", "synonyms": ["HBII-52-43"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-44", "id": "NCBIGene:100033818", "label": "SNORD115-44", "organism": "Homo sapiens", "synonyms": ["HBII-52-44"], "tax_id": "9606"}
+{"definition": "microRNA 675", "id": "NCBIGene:100033819", "label": "MIR675", "organism": "Homo sapiens", "synonyms": ["MIRN675", "hsa-mir-675"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-28", "id": "NCBIGene:100033820", "label": "SNORD116-28", "organism": "Homo sapiens", "synonyms": ["HBII-85-28"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 116-29", "id": "NCBIGene:100033821", "label": "SNORD116-29", "organism": "Homo sapiens", "synonyms": ["HBII-85-29"], "tax_id": "9606"}
+{"definition": "small nucleolar RNA, C/D box 115-48", "id": "NCBIGene:100033822", "label": "SNORD115-48", "organism": "Homo sapiens", "synonyms": ["HBII-52-48"], "tax_id": "9606"}
+{"definition": "expressed sequence AI115610", "id": "NCBIGene:100034", "label": "AI115610", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "WAP four-disulfide core domain 17", "id": "NCBIGene:100034251", "label": "Wfdc17", "organism": "Mus musculus", "synonyms": ["Amwap", "Gm11428"], "tax_id": "10090"}
+{"definition": "G protein nucleolar 3 like", "id": "NCBIGene:100034253", "label": "Gnl3l", "organism": "Rattus norvegicus", "synonyms": [], "tax_id": "10116"}
+{"definition": "RIKEN cDNA 9330171B17 gene", "id": "NCBIGene:100034360", "label": "9330171B17Rik", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "microfibrillar-associated protein 1B", "id": "NCBIGene:100034361", "label": "Mfap1b", "organism": "Mus musculus", "synonyms": ["Mfap1a"], "tax_id": "10090"}
+{"definition": "thymosin beta 15b2", "id": "NCBIGene:100034363", "label": "Tmsb15b2", "organism": "Mus musculus", "synonyms": ["Tb15c"], "tax_id": "10090"}
+{"definition": "predicted gene 12802", "id": "NCBIGene:100034661", "label": "Gm12802", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "vacuole membrane protein 1 pseudogene", "id": "NCBIGene:100034662", "label": "Gm1969", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "predicted gene 11335", "id": "NCBIGene:100034675", "label": "Gm11335", "organism": "Mus musculus", "synonyms": ["1700024h08rik"], "tax_id": "10090"}
+{"definition": "cystatin domain containing 5", "id": "NCBIGene:100034684", "label": "Cstdc5", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "Alopecia areata 1", "id": "NCBIGene:100034700", "label": "AA1", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "Alopecia areata 2", "id": "NCBIGene:100034703", "label": "AA2", "organism": "Homo sapiens", "synonyms": [], "tax_id": "9606"}
+{"definition": "ribosomal protein L15, pseudogene 3", "id": "NCBIGene:100034724", "label": "Rpl15-ps3", "organism": "Mus musculus", "synonyms": ["Gm15505"], "tax_id": "10090"}
+{"definition": "ribosomal protein L26 pseudogene", "id": "NCBIGene:100034726", "label": "Gm15772", "organism": "Mus musculus", "synonyms": ["Rpl26", "SIG-20"], "tax_id": "10090"}
+{"definition": "ribosomal protein S12, pseudogene 3", "id": "NCBIGene:100034727", "label": "Rps12-ps3", "organism": "Mus musculus", "synonyms": ["Gm10195"], "tax_id": "10090"}
+{"definition": "ribosomal protein S12, pseudogene 4", "id": "NCBIGene:100034728", "label": "Rps12-ps4", "organism": "Mus musculus", "synonyms": ["Gm1970"], "tax_id": "10090"}
+{"definition": "predicted gene 15114", "id": "NCBIGene:100034729", "label": "Gm15114", "organism": "Mus musculus", "synonyms": ["Ott-like"], "tax_id": "10090"}
+{"definition": "RIKEN cDNA 2610305J24 gene", "id": "NCBIGene:100034733", "label": "2610305J24Rik", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "predicted gene, 17762", "id": "NCBIGene:100034739", "label": "Gm17762", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "PDZ domain containing 1 pseudogene 1", "id": "NCBIGene:100034743", "label": "PDZK1P1", "organism": "Homo sapiens", "synonyms": ["PDZK1P2"], "tax_id": "9606"}
+{"definition": "proline rich 35", "id": "NCBIGene:100034748", "label": "Prr35", "organism": "Mus musculus", "synonyms": ["A93001711Rik", "A930017K11Rik"], "tax_id": "10090"}
+{"definition": "T cell ratio modifier QTL 1", "id": "NCBIGene:100034757", "label": "Trmq1", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "blood pressure QTL 7", "id": "NCBIGene:100034758", "label": "Bpq7", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "modifier of Min 3", "id": "NCBIGene:100034759", "label": "Mom3", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "salmonella enteritidis susceptibility 3", "id": "NCBIGene:100034760", "label": "Ses3", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "macronutrient intake, fat 2", "id": "NCBIGene:100034761", "label": "Mnif2", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "kilocalorie 1", "id": "NCBIGene:100034762", "label": "Kcal1", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "macronutrient intake, fat 3", "id": "NCBIGene:100034763", "label": "Mnif3", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "cytokine deficiency colitis susceptibility 9", "id": "NCBIGene:100034764", "label": "Cdcs9", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "susceptibility to sialadenitis 2", "id": "NCBIGene:100034766", "label": "Ssial2", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "graft-versus host disease 4", "id": "NCBIGene:100034767", "label": "Gvhd4", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "tooth central size 2", "id": "NCBIGene:100034768", "label": "Tcsz2", "organism": "Mus musculus", "synonyms": ["QTL-CS7.2"], "tax_id": "10090"}
+{"definition": "tooth central size 3", "id": "NCBIGene:100034769", "label": "Tcsz3", "organism": "Mus musculus", "synonyms": ["QTL-CS14.1"], "tax_id": "10090"}
+{"definition": "tooth shape 2", "id": "NCBIGene:100034770", "label": "Tshp2", "organism": "Mus musculus", "synonyms": ["QTL-TSH1.2"], "tax_id": "10090"}
+{"definition": "tooth shape 9", "id": "NCBIGene:100034771", "label": "Tshp9", "organism": "Mus musculus", "synonyms": ["QTL-TSH11.1"], "tax_id": "10090"}
+{"definition": "tooth shape 10", "id": "NCBIGene:100034772", "label": "Tshp10", "organism": "Mus musculus", "synonyms": ["QTL-TSH11.2"], "tax_id": "10090"}
+{"definition": "tooth shape 12", "id": "NCBIGene:100034773", "label": "Tshp12", "organism": "Mus musculus", "synonyms": ["QTL-TSH12.2"], "tax_id": "10090"}
+{"definition": "tooth shape 15", "id": "NCBIGene:100034774", "label": "Tshp15", "organism": "Mus musculus", "synonyms": ["QTL-TSH15.1"], "tax_id": "10090"}
+{"definition": "tooth shape 17", "id": "NCBIGene:100034775", "label": "Tshp17", "organism": "Mus musculus", "synonyms": ["QTL-TSH16.1"], "tax_id": "10090"}
+{"definition": "tooth shape 18", "id": "NCBIGene:100034776", "label": "Tshp18", "organism": "Mus musculus", "synonyms": ["QTL-TSH18.1"], "tax_id": "10090"}
+{"definition": "progression of autoimmune arthritis in MRL mice 2", "id": "NCBIGene:100034778", "label": "Paam2", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "susceptibility to lung cancer 18", "id": "NCBIGene:100034779", "label": "Sluc18", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "susceptibility to lung cancer 25", "id": "NCBIGene:100034780", "label": "Sluc25", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "kilocalorie 3", "id": "NCBIGene:100034781", "label": "Kcal3", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "keratoconus 1", "id": "NCBIGene:100034782", "label": "Krcn1", "organism": "Mus musculus", "synonyms": ["Krcn"], "tax_id": "10090"}
+{"definition": "non-insulin-dependent diabetes mellitus in SJL", "id": "NCBIGene:100034783", "label": "Nidds", "organism": "Mus musculus", "synonyms": ["Nidd/SJL"], "tax_id": "10090"}
+{"definition": "heart failure modifier 2", "id": "NCBIGene:100034784", "label": "Hrtfm2", "organism": "Mus musculus", "synonyms": ["Hfm2"], "tax_id": "10090"}
+{"definition": "bone mineral density 16", "id": "NCBIGene:100034785", "label": "Bmd16", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "body weight, QTL 5", "id": "NCBIGene:100034786", "label": "Bwq5", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "ADAM metallopeptidase domain 3", "id": "NCBIGene:11497", "label": "Adam3", "organism": "Mus musculus", "synonyms": ["Cyrn1", "Taz83", "tMDC"], "tax_id": "10090"}
+{"definition": "bone morphogenetic protein 4", "id": "NCBIGene:12159", "label": "Bmp4", "organism": "Mus musculus", "synonyms": ["Bmp-4", "Bmp2b", "Bmp2b-1", "Bmp2b1"], "tax_id": "10090"}
+{"definition": "chromogranin A", "id": "NCBIGene:12652", "label": "Chga", "organism": "Mus musculus", "synonyms": ["ChrA", "cgA"], "tax_id": "10090"}
+{"definition": "dopamine beta hydroxylase", "id": "NCBIGene:13166", "label": "Dbh", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "GATA binding protein 2", "id": "NCBIGene:14461", "label": "Gata2", "organism": "Mus musculus", "synonyms": ["Gata-2"], "tax_id": "10090"}
+{"definition": "GATA binding protein 3", "id": "NCBIGene:14462", "label": "Gata3", "organism": "Mus musculus", "synonyms": ["Gata-3", "jal"], "tax_id": "10090"}
+{"definition": "heart and neural crest derivatives expressed 1", "id": "NCBIGene:15110", "label": "Hand1", "organism": "Mus musculus", "synonyms": ["Ehand1", "Hxt", "Th1", "Thing1", "bHLHa27", "eHAND"], "tax_id": "10090"}
+{"definition": "heart and neural crest derivatives expressed 2", "id": "NCBIGene:15111", "label": "Hand2", "organism": "Mus musculus", "synonyms": ["Ehand2", "Hed", "Th2", "Thing2", "bHLHa26", "dHAND"], "tax_id": "10090"}
+{"definition": "ISL1 transcription factor, LIM/homeodomain", "id": "NCBIGene:16392", "label": "Isl1", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "SMAD family member 1", "id": "NCBIGene:17125", "label": "Smad1", "organism": "Mus musculus", "synonyms": ["Mad1", "Madh1", "Madr1", "Mlp1", "MusMLP", "dwf-A", "mMad1"], "tax_id": "10090"}
+{"definition": "SMAD family member 5", "id": "NCBIGene:17129", "label": "Smad5", "organism": "Mus musculus", "synonyms": ["1110051M15Rik", "Dwf-C", "Madh5", "MusMLP"], "tax_id": "10090"}
+{"definition": "achaete-scute family bHLH transcription factor 1", "id": "NCBIGene:17172", "label": "Ascl1", "organism": "Mus musculus", "synonyms": ["ASH1", "Mash1", "bHLHa46"], "tax_id": "10090"}
+{"definition": "neurotrophic tyrosine kinase, receptor, type 1", "id": "NCBIGene:18211", "label": "Ntrk1", "organism": "Mus musculus", "synonyms": ["Tkr", "TrkA", "trk"], "tax_id": "10090"}
+{"definition": "paired-like homeobox 2b", "id": "NCBIGene:18935", "label": "Phox2b", "organism": "Mus musculus", "synonyms": ["Dilp1", "NBPhox", "Pmx2b", "Px2b"], "tax_id": "10090"}
+{"definition": "phenylethanolamine-N-methyltransferase", "id": "NCBIGene:18948", "label": "Pnmt", "organism": "Mus musculus", "synonyms": ["Pent"], "tax_id": "10090"}
+{"definition": "transcription factor AP-2 beta", "id": "NCBIGene:21419", "label": "Tfap2b", "organism": "Mus musculus", "synonyms": ["AP-2(beta)", "AP2-beta", "E130018K07Rik", "Tcfap2b"], "tax_id": "10090"}
+{"definition": "tyrosine hydroxylase", "id": "NCBIGene:21823", "label": "Th", "organism": "Mus musculus", "synonyms": [], "tax_id": "10090"}
+{"definition": "wingless-type MMTV integration site family, member 1", "id": "NCBIGene:22408", "label": "Wnt1", "organism": "Mus musculus", "synonyms": ["Int-1", "Wnt-1", "sw", "swaying"], "tax_id": "10090"}
+{"definition": "a disintegrin and metallopeptidase domain 6A", "id": "NCBIGene:238406", "label": "Adam6a", "organism": "Mus musculus", "synonyms": ["Adam6", "tMDCIV"], "tax_id": "10090"}
+{"definition": "insulinoma-associated 1", "id": "NCBIGene:53626", "label": "Insm1", "organism": "Mus musculus", "synonyms": ["IA-1"], "tax_id": "10090"}
+{"definition": "SMAD family member 9", "id": "NCBIGene:55994", "label": "Smad9", "organism": "Mus musculus", "synonyms": ["MADH6", "Madh8", "Madh9", "Smad8"], "tax_id": "10090"}
+{"definition": "ribonuclease, RNase A family, 10 (non-active)", "id": "NCBIGene:75019", "label": "Rnase10", "organism": "Mus musculus", "synonyms": ["4930474F22Rik", "Rah1"], "tax_id": "10090"}
+{"definition": "LYR motif containing 7", "id": "NCBIGene:90624", "label": "LYRM7", "organism": "Homo sapiens", "synonyms": ["C5orf31", "MC3DN8", "MZM1L"], "tax_id": "9606"}

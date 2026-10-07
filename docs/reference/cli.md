@@ -393,6 +393,7 @@ library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
 | `--no-browser` | no | — | do not open a browser tab |
 | `--max-calls-cap` | no | `500` | the largest call limit a run against the job's endpoint may request |
 | `--offline-only` | no | — | refuse runs against the job's endpoint |
+| `--max-upload-mb` | no | `512` | the largest file the page may upload |
 | `--verbose` | no | — | log every request to stderr |
 
 A root that is not a directory or a cap below 1 exits `2`.

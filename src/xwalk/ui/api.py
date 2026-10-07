@@ -38,6 +38,7 @@ from xwalk import __version__, ops
 from xwalk.ui import offline
 
 DEFAULT_MAX_CALLS_CAP = 500
+DEFAULT_MAX_UPLOAD_MB = 512
 MAX_PREVIEW = 100
 MAX_EVENTS = 20_000
 MAX_SCAN_DEPTH = 5
@@ -325,14 +326,20 @@ class Workspace:
         *,
         max_calls_cap: int = DEFAULT_MAX_CALLS_CAP,
         allow_endpoint: bool = True,
+        max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB,
     ) -> None:
         self.root = Path(root).resolve()
         if not self.root.is_dir():
             raise ValueError(f"workspace root {self.root} is not a directory")
         if max_calls_cap < 1:
             raise ValueError(f"max_calls_cap must be >= 1, got {max_calls_cap}")
+        if max_upload_mb < 1:
+            raise ValueError(f"max_upload_mb must be >= 1, got {max_upload_mb}")
         self.max_calls_cap = max_calls_cap
         self.allow_endpoint = allow_endpoint
+        self.max_upload_bytes = max_upload_mb * 1024 * 1024
+        # Environment variables this process set from the page (never written to disk).
+        self.session_credentials: set[str] = set()
         self.tasks = TaskManager()
         self._state_lock = threading.Lock()
 
@@ -373,6 +380,20 @@ class Workspace:
             path = self._ui_dir() / "runs.json"
             path.write_text(json.dumps(jobs, indent=1, sort_keys=True), encoding="utf-8")
 
+    def _run_models(self) -> dict[str, str]:
+        data = _read_json(self._ui_dir() / "run-models.json")
+        return {str(k): str(v) for k, v in (data or {}).items()}
+
+    def _remember_model(self, run_dir: Path, model: str) -> None:
+        """Which model answered a run started here (`offline` or `endpoint`). The run's
+        manifest names the job's model either way, so the page needs this to say which."""
+        with self._state_lock:
+            models = self._run_models()
+            models[self.rel(run_dir)] = model
+            self._ui_dir().mkdir(exist_ok=True)
+            path = self._ui_dir() / "run-models.json"
+            path.write_text(json.dumps(models, indent=1, sort_keys=True), encoding="utf-8")
+
     # info and discovery
 
     def info(self, params: Params) -> Response:
@@ -384,6 +405,7 @@ class Workspace:
             "offline_model": offline.OFFLINE_MODEL_NAME,
             "page_size": ops.MAX_PAGE_SIZE,
             "search_limit": ops.MAX_SEARCH_LIMIT,
+            "max_upload_mb": self.max_upload_bytes // (1024 * 1024),
         }
 
     def workspace(self, params: Params) -> Response:
@@ -619,6 +641,8 @@ class Workspace:
                 result = await ops.cluster_async(
                     job, out, max_calls=max_calls, llm=llm, progress=cluster_progress
                 )
+                if result.run is not None:
+                    self._remember_model(out, model)
                 return _mark_offline(result, model)
 
             return self.tasks.start(task, "cluster", cluster_work).view()
@@ -650,6 +674,8 @@ class Workspace:
                 decider=decider,
                 progress=match_progress,
             )
+            if result.run is not None:
+                self._remember_model(out, model)
             return _mark_offline(result, model)
 
         return self.tasks.start(task, "match", match_work).view()
@@ -679,15 +705,23 @@ class Workspace:
         run_dir, manifest = self._run_dir(params)
         kind = _run_kind(manifest)
         job = self._run_jobs().get(self.rel(run_dir))
+        answered_by = self._run_models().get(self.rel(run_dir))
         if kind == "cluster":
             return {
                 "kind": kind,
                 "dir": self.rel(run_dir),
                 "job_path": job,
+                "answered_by": answered_by,
                 "manifest": manifest,
             }
         envelope = _envelope("inspect", lambda: ops.inspect(run_dir))
-        return {"kind": kind, "dir": self.rel(run_dir), "job_path": job, "inspect": envelope}
+        return {
+            "kind": kind,
+            "dir": self.rel(run_dir),
+            "job_path": job,
+            "answered_by": answered_by,
+            "inspect": envelope,
+        }
 
     def results(self, params: Params) -> Response:
         run_dir, _ = self._run_dir(params)
@@ -943,7 +977,9 @@ TASK_ROUTES: dict[tuple[str, str], TaskHandler] = {
 
 def dispatch(workspace: Workspace, method: str, path: str, params: Params) -> Response:
     """Route one request. Raises `ApiError` for an unknown route or bad parameters."""
-    handler = ROUTES.get((method, path))
+    from xwalk.ui.workbench import ROUTES as WORKBENCH_ROUTES
+
+    handler = ROUTES.get((method, path)) or WORKBENCH_ROUTES.get((method, path))
     if handler is not None:
         return handler(workspace, params)
     prefix = "/api/tasks/"
@@ -952,13 +988,14 @@ def dispatch(workspace: Workspace, method: str, path: str, params: Params) -> Re
         task_handler = TASK_ROUTES.get((method, f"/{rest}" if rest else ""))
         if task_handler is not None and task_id:
             return task_handler(workspace, task_id, params)
-    if any(p == path for _, p in ROUTES):
+    if any(p == path for _, p in (*ROUTES, *WORKBENCH_ROUTES)):
         raise ApiError(405, "method_not_allowed", f"{method} is not allowed on {path}")
     raise ApiError(404, "not_found", f"no API route {path}")
 
 
 __all__ = [
     "DEFAULT_MAX_CALLS_CAP",
+    "DEFAULT_MAX_UPLOAD_MB",
     "ApiError",
     "Download",
     "Task",

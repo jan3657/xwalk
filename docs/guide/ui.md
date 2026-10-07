@@ -24,10 +24,66 @@ xwalk ui --offline-only --no-browser      # never call a job's endpoint; print t
 | `--no-browser` | — | do not open a browser tab |
 | `--max-calls-cap` | `500` | the largest call limit a run against the job's endpoint may request |
 | `--offline-only` | — | refuse runs against the job's endpoint; only the offline stand-in |
+| `--max-upload-mb` | `512` | the largest file the page may upload |
 | `--verbose` | — | log every request to stderr |
 
 Ctrl-C stops the server and exits `0`. A root that is not a directory, or a cap below 1,
 exits `2`.
+
+## Bring your own data
+
+The start page offers what most people come for. Each one writes an ordinary job
+directory under `<root>/projects/<name>/` (a `job.yaml` you can also run with `xwalk
+match`, its `slots.yaml`, and the records it read), then runs it like any other job.
+
+| Task | Where | What happens |
+|---|---|---|
+| Map a file to an ontology | **Map a file** | upload a CSV, TSV, JSONL or text file; choose the column with the text to match, an optional id column and context columns; pick one or more ontologies from the library |
+| Map one file onto another | **Map a file → My own file** | the target is a second upload: choose its label, id, synonyms (and their separator) and definition columns |
+| Find duplicates in one file | **Find duplicates** | the same upload step, written as a `kind: cluster` job (experimental) |
+| Map a few terms | **Quick map** | paste terms (one per line; `term<TAB>context` adds context), choose ontologies or a file, then either *candidates only* or a run |
+| Browse and add ontologies | **Ontologies** | search and filter each entry; import a file; download from a URL |
+| Review in a spreadsheet | **Run → Review** | download the worksheet, fill it in, upload it back |
+| Use a real model | **Settings** | paste an API key for this server process only |
+
+**Files.** Uploads go to `<root>/uploads/` (at most `--max-upload-mb`, default 512 MB).
+Each file is read once into normalized records, so a column name with spaces or
+punctuation never reaches a template: a source record has `text`, `context` and its other
+columns; a target record has `label`, `synonyms` (a list), `definition` and its other
+columns. The page suggests which column is which from the names and the first rows. A
+repeated id or a missing column is reported with the row or column to fix. Spreadsheets
+(`.xlsx`) are not read directly: save them as CSV (UTF-8).
+
+**Candidates only** is retrieval with no model: for each term, the top candidates from
+the job's own BM25 index and fusion, with a flag where the term equals a label or synonym.
+It is free and instant, and a good first look at whether the right answers are
+retrievable at all. It is not a decision; the first candidate is the best text match.
+
+**The ontology library** holds parsed term collections:
+
+- *Built in*: 200-term samples of ChEBI, FoodOn, the CTD disease vocabulary (MeSH/OMIM)
+  and NCBI Gene, the slices the examples use (`scripts/build_ui_ontologies.py` makes
+  them). They are marked *sample*: they are not the full ontologies.
+- *Imported*: an OBO, OWL (needs `xwalk[ontology]` at import time only), CSV, TSV or
+  JSONL file, parsed once into `<root>/.xwalk-ui/library/<name>/terms.jsonl`.
+- *Downloaded*: any OBO Foundry ontology from the catalog (HPO, Mondo, DOID, GO, ChEBI,
+  Uberon, CL, PATO, UO, ENVO by their permanent `purl.obolibrary.org` URLs), or any
+  `http(s)` URL ending in `.obo`, `.owl`, `.csv`, `.tsv` or `.jsonl` (gzip is
+  unpacked). The download runs as a background task with progress.
+
+Mapping onto several entries at once combines their terms, each tagged with its
+`ontology`, which the model sees in the candidate text. An id two entries share keeps
+the first entry's term, and the overlap is reported.
+
+**Session API keys.** *Settings* sets a key such as `OPENAI_API_KEY` in the memory of the
+`xwalk ui` process, where a job's `api_key_env` reads it. It is never written to disk or
+sent back to the page, and it is gone when the server stops. Only names ending in
+`_API_KEY`, `_KEY` or `_TOKEN` are accepted, and only keys set from the page can be
+cleared from it. Keys already in the environment work as before.
+
+**Which model answered.** A run's manifest names the job's model even when the offline
+stand-in answered, so the page records which one a run started here used
+(`.xwalk-ui/run-models.json`) and labels offline runs as such.
 
 ## A first session
 
@@ -140,3 +196,13 @@ failed; misuse of the API raises `ApiError` with an HTTP status. Routes:
 | POST | `/api/eval` | evaluate against a gold CSV |
 | GET | `/api/export` | download a view (`raw`, `reviewed`, `history`; cluster runs: `members`, `clusters`, `unresolved`, `decisions`) |
 | GET | `/api/clusters`, `/api/cluster-member` | a cluster run's clusters; one record's membership and decisions |
+| POST | `/api/upload?name=` | store the request body as `uploads/<name>` (streamed; `--max-upload-mb`) |
+| GET, POST | `/api/files`, `/api/files/delete`, `/api/inspect` | list uploads; delete one; columns, sample rows and suggested roles of a file |
+| GET | `/api/library`, `/api/library/catalog`, `/api/library/terms` | library entries; the download catalog; a page of an entry's terms (`filter`) |
+| POST | `/api/library/import`, `/api/library/download`, `/api/library/delete`, `/api/library/search` | parse a file into the library; download a URL as a task; delete an import; ranked search |
+| POST | `/api/projects` | write a matching or clustering project from a file or pasted text |
+| POST | `/api/quickmap` | pasted terms: `candidates` (retrieval only) or a run (`offline`, `endpoint`) |
+| GET | `/api/mapping`, `/api/mapping.csv` | a run's results with source texts and target labels; the same as CSV |
+| GET | `/api/job-file`, `/api/review-sheet` | download a job file; download the review worksheet |
+| POST | `/api/review-upload` | apply a filled-in worksheet from the workspace |
+| GET, POST | `/api/presets`, `/api/credentials` | model presets; session API keys (state only, never values) |

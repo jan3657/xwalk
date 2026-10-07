@@ -16,6 +16,17 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- `xwalk ui` for people who bring data rather than job files: upload CSV/TSV/JSONL/TXT/
+  OBO/OWL files (streamed, `--max-upload-mb`), inspect them with suggested column roles,
+  and build projects (ordinary job directories under `projects/`) that map a file onto
+  ontologies or onto another file, or cluster one file. Quick map takes pasted terms and
+  answers with retrieval-only candidates (no model) or a run. An ontology library ships
+  parsed 200-term samples of ChEBI, FoodOn, CTD diseases and NCBI Gene
+  (`scripts/build_ui_ontologies.py`), imports files once into JSONL, and downloads OBO
+  Foundry ontologies or any URL as a background task. Also: results with source texts
+  and target labels (and as CSV), job file and review worksheet downloads, applying a
+  filled-in worksheet, session-only API keys, and a label on runs the offline stand-in
+  answered. See `docs/guide/ui.md`.
 - `xwalk ui`: a local web app over `xwalk.ops` (`xwalk.ui`), standard library only, for
   exploring jobs and runs: workspace discovery, validation, record previews through the
   templates, index search, background match and cluster runs with live progress and

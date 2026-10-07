@@ -227,5 +227,7 @@ def test_the_wheel_ships_the_bundled_example_and_prompt_skeletons(tmp_path):
     for name in ("select.j2", "score.j2", "verify.j2", "rewrite.j2"):
         assert any(n.endswith(f"/{name}") for n in names), name
     assert "xwalk/ops.py" in names and "xwalk/py.typed" in names
-    for name in ("index.html", "app.js", "app.css", "favicon.svg"):
+    for name in ("index.html", "app.js", "workbench.js", "app.css", "favicon.svg"):
         assert f"xwalk/ui/static/{name}" in names, name
+    for name in ("index.json", "chebi-sample.jsonl", "foodon-sample.jsonl"):
+        assert f"xwalk/ui/ontologies/{name}" in names, name

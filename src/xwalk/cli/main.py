@@ -253,6 +253,9 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="refuse runs against the job's endpoint; only the offline stand-in model",
     )
+    ui.add_argument(
+        "--max-upload-mb", type=int, default=512, help="the largest file the page may upload"
+    )
     ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
 
     review = sub.add_parser("review", help="export or apply human review")
@@ -769,6 +772,7 @@ def _serve_ui(args: argparse.Namespace) -> int:
             if args.max_calls_cap is None
             else args.max_calls_cap,
             offline_only=args.offline_only,
+            max_upload_mb=args.max_upload_mb,
             open_browser=not args.no_browser,
             verbose=args.verbose,
         )

@@ -1,0 +1,200 @@
+{"definition": "Cheese is a food derived from milk that is produced in a wide range of flavors, textures, and forms by coagulation of the milk protein casein.", "id": "FOODON:00001013", "label": "cheese food product", "synonyms": ["cheese"]}
+{"definition": "", "id": "FOODON:00001053", "label": "fermented dairy food product", "synonyms": []}
+{"definition": "A liquid produced from the fermentation of ethanol in a process that yields its key ingredient, acetic acid.", "id": "FOODON:00001073", "label": "vinegar food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001083", "label": "sugar condiment", "synonyms": []}
+{"definition": "", "id": "FOODON:00001093", "label": "cereal grain food product", "synonyms": []}
+{"definition": "SIREN DB annotation: * liquid FOODON:03430130 * microbial/enzymatic modification process FOODON:03460119 * curing or aging process FOODON:03460253", "id": "FOODON:00001094", "label": "fermented beverage", "synonyms": ["alcoholic beverage"]}
+{"definition": "SIREN DB annotation: * liquid, low viscosity FOODON:03430109 * acidified FOODON:03460200 * ingredient: water addition process FOODON:03460148 * ingredient: sweetener added FOODON:03460202 * ingredient: flavoring, spice or herb added FOODON:03460227", "id": "FOODON:00001100", "label": "orange fruit beverage", "synonyms": []}
+{"definition": "", "id": "FOODON:00001101", "label": "grape beverage", "synonyms": []}
+{"definition": "", "id": "FOODON:00001106", "label": "camelid dairy food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001107", "label": "bovine dairy food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001111", "label": "equine dairy food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001119", "label": "cervid dairy food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001162", "label": "grape extract", "synonyms": []}
+{"definition": "", "id": "FOODON:00001174", "label": "plant lipid food product", "synonyms": []}
+{"definition": "Food material which is cooked.", "id": "FOODON:00001181", "label": "food (cooked)", "synonyms": ["cooked"]}
+{"definition": "A food product derived from Theobroma cacao.", "id": "FOODON:00001215", "label": "cacao food product", "synonyms": ["cocoa and cocoa products"]}
+{"definition": "A product made from the seeds of a mustard plant (white or yellow mustard, Sinapis hirta; brown or Indian mustard, Brassica juncea; or black mustard, Brassica nigra).", "id": "FOODON:00001230", "label": "mustard seed food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001233", "label": "nut oil food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001243", "label": "animal lipid food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001252", "label": "animal derived beverage", "synonyms": []}
+{"definition": "A beverage derived from plants.", "id": "FOODON:00001253", "label": "plant derived beverage", "synonyms": []}
+{"definition": "", "id": "FOODON:00001257", "label": "milk or milk based food product", "synonyms": []}
+{"definition": "Food material which has been fermented.", "id": "FOODON:00001258", "label": "food (fermented)", "synonyms": []}
+{"definition": "A sauce for a salad.", "id": "FOODON:00001290", "label": "salad dressing", "synonyms": []}
+{"definition": "Fermented fish in liquid form", "id": "FOODON:00001313", "label": "nam-budu", "synonyms": []}
+{"definition": "Nham-pla are made from four kinds of fish, namely, striped catfish and nile tilapia from the fresh water fish and threadfin bream and barracuda from the marine fish.", "id": "FOODON:00001316", "label": "nham-pla", "synonyms": []}
+{"definition": "Rolled grain is grain has been mechanicallly crushed to separate the hull from the endosperm.", "id": "FOODON:00001570", "label": "rolled grain", "synonyms": []}
+{"definition": "A salad food product with a prominent animal meat ingredient.", "id": "FOODON:00001596", "label": "animal based salad food product", "synonyms": []}
+{"definition": "A dressing which has an animal product ingredient.", "id": "FOODON:00001601", "label": "animal product based dressing", "synonyms": []}
+{"definition": "", "id": "FOODON:00001603", "label": "animal product dressing", "synonyms": []}
+{"definition": "", "id": "FOODON:00001610", "label": "apple condiment", "synonyms": []}
+{"definition": "", "id": "FOODON:00001613", "label": "apple vinegar food product", "synonyms": []}
+{"definition": "Food material which is output of or is part of a home or commercial bakery process.", "id": "FOODON:00001626", "label": "bakery food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001637", "label": "beet pickle food product", "synonyms": []}
+{"definition": "A food product derived from black olives.", "id": "FOODON:00001648", "label": "black olive food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001649", "label": "black or white pepper product", "synonyms": ["pepper"]}
+{"definition": "", "id": "FOODON:00001650", "label": "black pepper food product", "synonyms": []}
+{"definition": "A food product made from a whole broiler or fryer chicken or part thereof", "id": "FOODON:00001667", "label": "broiler chicken meat food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001668", "label": "broth or stock food product", "synonyms": []}
+{"definition": "A caper food product is a food product derived from the flower buds or fruit of the caper plant.", "id": "FOODON:00001681", "label": "caper food product", "synonyms": ["caper", "capers"]}
+{"definition": "A cardamom food product is a food product derived from a black or green cardamom plant.", "id": "FOODON:00001683", "label": "cardamom food product", "synonyms": ["cardamon", "cardamum"]}
+{"definition": "", "id": "FOODON:00001716", "label": "chemical sweetener product", "synonyms": []}
+{"definition": "A food product deriving from the chive plant.", "id": "FOODON:00001732", "label": "chive food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001738", "label": "cinnamon food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001741", "label": "citrus nectar beverage", "synonyms": []}
+{"definition": "", "id": "FOODON:00001745", "label": "clove food product", "synonyms": ["cloves"]}
+{"definition": "", "id": "FOODON:00001761", "label": "condiment sauce", "synonyms": []}
+{"definition": "", "id": "FOODON:00001763", "label": "coriander food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001800", "label": "dairy dessert food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001811", "label": "dill food product", "synonyms": ["dill"]}
+{"definition": "", "id": "FOODON:00001813", "label": "diluted citrus fruit beverage", "synonyms": []}
+{"definition": "", "id": "FOODON:00001840", "label": "field corn based bakery food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001848", "label": "field corn sweetener product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001859", "label": "flaxseed food product", "synonyms": ["linseed food product"]}
+{"definition": "A spread is a food that is spread, generally with a knife, onto foods such as bread and crackers.", "id": "FOODON:00001873", "label": "food spread", "synonyms": ["spread"]}
+{"definition": "", "id": "FOODON:00001879", "label": "frozen dairy food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001896", "label": "chickpea (whole or pieces)", "synonyms": []}
+{"definition": "", "id": "FOODON:00001901", "label": "ginger food product", "synonyms": ["ginger"]}
+{"definition": "", "id": "FOODON:00001904", "label": "ginseng food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001919", "label": "grain based vinegar food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001920", "label": "grape spread or sauce", "synonyms": []}
+{"definition": "", "id": "FOODON:00001928", "label": "grape vinegar food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001936", "label": "green olive food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001956", "label": "hot pepper food product", "synonyms": ["red pepper"]}
+{"definition": "", "id": "FOODON:00001959", "label": "hungarian wax pepper food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00001978", "label": "jelly condiment", "synonyms": []}
+{"definition": "", "id": "FOODON:00002002", "label": "lime preserve or jam food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002019", "label": "mandarin orange juice", "synonyms": []}
+{"definition": "", "id": "FOODON:00002023", "label": "marjoram food product", "synonyms": ["marjoram"]}
+{"definition": "", "id": "FOODON:00002031", "label": "milk based gravy or sauce food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002057", "label": "nonalcoholic beverage", "synonyms": []}
+{"definition": "Nutmeg food product is a product made from the nutmeg seed or seed skin.", "id": "FOODON:00002061", "label": "nutmeg food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002065", "label": "olive fat or oil refined food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002067", "label": "onion flavouring food product", "synonyms": []}
+{"definition": "A spice or herb which derives from one or more oregano leaves.", "id": "FOODON:00002073", "label": "oregano food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002078", "label": "palm fat or oil refined food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002084", "label": "parsley food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002098", "label": "peanut fat or oil refined food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002110", "label": "green or red pepper pickle food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002112", "label": "peppermint food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002128", "label": "plant based gravy or sauce food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002132", "label": "plant based salad food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002146", "label": "plant product dressing", "synonyms": []}
+{"definition": "", "id": "FOODON:00002151", "label": "plant seed based bakery food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002152", "label": "plant seed cereal food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002153", "label": "plant seed vegetable food product", "synonyms": []}
+{"definition": "Food material which is the output of a food preservation process.", "id": "FOODON:00002158", "label": "food (preserved)", "synonyms": ["preserved"]}
+{"definition": "", "id": "FOODON:00002186", "label": "rape fat or oil refined food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002198", "label": "relish food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002205", "label": "rice cereal food product", "synonyms": []}
+{"definition": "Flour made from rice.", "id": "FOODON:00002207", "label": "rice flour", "synonyms": []}
+{"definition": "", "id": "FOODON:00002210", "label": "rock cornish fowl meat food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002212", "label": "rosemary food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002213", "label": "rye based bakery food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002217", "label": "sage food product", "synonyms": ["sage"]}
+{"definition": "", "id": "FOODON:00002253", "label": "soft drink food product", "synonyms": []}
+{"definition": "A multi-component food product which is soup.", "id": "FOODON:00002257", "label": "soup food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002262", "label": "soybean condiment", "synonyms": []}
+{"definition": "", "id": "FOODON:00002263", "label": "soybean dressing food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002287", "label": "sugar based vinegar food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002288", "label": "sugar beet sweetener food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002289", "label": "sugar beet food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002291", "label": "sugar cane food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002293", "label": "sugar palm sweetener food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002300", "label": "sweetener food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002311", "label": "tarragon food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002312", "label": "thyme food product", "synonyms": ["thyme"]}
+{"definition": "A condiment which has tomato as a defining ingredient.", "id": "FOODON:00002315", "label": "tomato condiment", "synonyms": []}
+{"definition": "", "id": "FOODON:00002323", "label": "turmeric food product", "synonyms": ["Curcuma"]}
+{"definition": "", "id": "FOODON:00002327", "label": "uncured cow milk cheese food product", "synonyms": []}
+{"definition": "A vanilla bean food product is derived from the fruit, a seed capsule, of a vanilla plant.", "id": "FOODON:00002328", "label": "vanilla bean food product", "synonyms": ["vanilla"]}
+{"definition": "A water food product is a food product derived from H20 (water) in its liquid form.", "id": "FOODON:00002340", "label": "water food product", "synonyms": ["water"]}
+{"definition": "", "id": "FOODON:00002347", "label": "wheat based bakery food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002361", "label": "white pepper food product", "synonyms": []}
+{"definition": "The term white vegetables refers to vegetables that are white or near white in color and includes potatoes, cauliflowers, turnips, onions, parsnips, white corn, kohlrabi, and mushrooms (technically fungi but generally considered a vegetable).", "id": "FOODON:00002436", "label": "white vegetable (whole or pieces)", "synonyms": []}
+{"definition": "", "id": "FOODON:00002472", "label": "fruit (fresh)", "synonyms": []}
+{"definition": "", "id": "FOODON:00002492", "label": "sarsaparilla food product", "synonyms": []}
+{"definition": "", "id": "FOODON:00002496", "label": "licorice plant food product", "synonyms": []}
+{"definition": "Spice rub is any mixture of ground spices that is made for the purpose of being rubbed on raw food before the food is cooked. The spice rub forms a coating on the food. The food can be marinated in the spice rub for some time for the flavors to incorporate into the food or it can be cooked immediately after it is coated in the rub. The spice rub can be left on or partially removed before cooking.", "id": "FOODON:00002500", "label": "spice rub", "synonyms": []}
+{"definition": "A chipotle is a smoke-dried ripe jalapeño chili pepper used for seasoning.", "id": "FOODON:00002563", "label": "chipotle", "synonyms": []}
+{"definition": "Grapeseed refers to the seeds of grapes, from which oil can be extracted", "id": "FOODON:00002568", "label": "grape seed", "synonyms": []}
+{"definition": "Food material which is chilled.", "id": "FOODON:00002642", "label": "food (chilled)", "synonyms": ["chilled"]}
+{"definition": "Food material which contains an outer layer and inner core of different food materials, and which is the output of a food filling process.", "id": "FOODON:00002644", "label": "food (filled)", "synonyms": ["filled", "stuffed"]}
+{"definition": "Food material which has its flavour or taste enhanced by some process which may include the addition of flavourings.", "id": "FOODON:00002646", "label": "food (flavored)", "synonyms": ["flavoured"]}
+{"definition": "Food material which has been milled.", "id": "FOODON:00002649", "label": "food (milled)", "synonyms": ["milled"]}
+{"definition": "Food material which has been colored.", "id": "FOODON:00002650", "label": "food (colored)", "synonyms": ["colored", "coloured"]}
+{"definition": "Food material which has been hydrolized.", "id": "FOODON:00002653", "label": "food (hydrolized)", "synonyms": ["hydrolized"]}
+{"definition": "Food material which has been pasteurized.", "id": "FOODON:00002654", "label": "food (pasteurized)", "synonyms": ["pasteurized"]}
+{"definition": "Food material which has been peeled.", "id": "FOODON:00002655", "label": "food (peeled)", "synonyms": ["peeled"]}
+{"definition": "Food material which has been puffed.", "id": "FOODON:00002656", "label": "food (puffed)", "synonyms": ["puffed"]}
+{"definition": "Food material which is made from various nutritional components to resemble conventional protein-source foods in texture such as meat, seafood, or poultry.", "id": "FOODON:00002658", "label": "food (textured)", "synonyms": ["textured"]}
+{"definition": "Food material which is breaded.", "id": "FOODON:00002661", "label": "food (breaded)", "synonyms": ["breaded"]}
+{"definition": "Food material which is batter-coated.", "id": "FOODON:00002662", "label": "food (batter-coated)", "synonyms": ["batter-coated", "battered"]}
+{"definition": "Allspice is the dried unripe fruit (berries, used as a spice) of Pimenta dioica, a midcanopy tree native to the Greater Antilles, southern Mexico, and Central America, now cultivated in many warm parts of the world.", "id": "FOODON:00002667", "label": "allspice", "synonyms": ["Jamaica pepper", "Jamaica pimento", "myrtle pepper", "pimenta", "pimento"]}
+{"definition": "A chicken nugget is a chicken product made from chicken meat that is breaded or battered, then deep-fried or baked.", "id": "FOODON:00002672", "label": "chicken nugget", "synonyms": []}
+{"definition": "", "id": "FOODON:00002700", "label": "canola plant food product", "synonyms": []}
+{"definition": "Food material which is the output of a cleaning process.", "id": "FOODON:00002708", "label": "food (cleaned)", "synonyms": ["cleaned"]}
+{"definition": "Food material which has been ground into smaller pieces.", "id": "FOODON:00002713", "label": "food (ground)", "synonyms": ["ground"]}
+{"definition": "A bell pepper is a fruits in different colours - including red, yellow, orange, green, white, and purple - from a bell pepper plant cultivar.  Bell peppers are sometimes grouped with less pungent pepper varieties as \"sweet peppers\".", "id": "FOODON:00003013", "label": "bell pepper food product", "synonyms": ["pepper"]}
+{"definition": "", "id": "FOODON:00003016", "label": "orange bell pepper (raw)", "synonyms": ["orange bell pepper", "orange pepper"]}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * seed (anatomical part) FOODON:03420155 * water removal process FOODON:03460138 * preservation by dehydration or drying FOODON:03470116", "id": "FOODON:00003024", "label": "cumin seed (dried)", "synonyms": ["cumin"]}
+{"definition": "Hummus is a Levantine dip or spread made from cooked, mashed chickpeas or other beans, blended with tahini, olive oil, lemon juice, salt, and garlic.", "id": "FOODON:00003049", "label": "hummus", "synonyms": ["حمص بالطحينة‎", "ḥummuṣ bi-ṭaḥini"]}
+{"definition": "", "id": "FOODON:00003247", "label": "parmesan cheese food product", "synonyms": ["parmesan"]}
+{"definition": "A seed of a cumin plant (Cuminum cyminum).", "id": "FOODON:00003396", "label": "cumin seed", "synonyms": ["cumin"]}
+{"definition": "A rosette of a cabbage plant (Brassica oleracea var. capitata).", "id": "FOODON:00003406", "label": "cabbage head", "synonyms": ["cabbage"]}
+{"definition": "A berry fruit of a grape plant.", "id": "FOODON:00003417", "label": "grape", "synonyms": ["de-stemmed grape"]}
+{"definition": "A berry fruit of a jalapeno pepper plant (Capsicum annuum).", "id": "FOODON:00003494", "label": "jalapeno pepper", "synonyms": []}
+{"definition": "A berry fruit of a pepper plant (Capsicum)", "id": "FOODON:00003520", "label": "pepper", "synonyms": []}
+{"definition": "A drupe fruit of an almond plant (Prunus dulcis).", "id": "FOODON:00003523", "label": "almond", "synonyms": []}
+{"definition": "A bulb of a garlic plant (Allium sativum)", "id": "FOODON:00003582", "label": "garlic bulb", "synonyms": ["garlic"]}
+{"definition": "A hesperidium fruit of a lime plant.", "id": "FOODON:00003661", "label": "lime", "synonyms": []}
+{"definition": "An anatomical part of a plant that is consumed by humans or other animals as food.", "id": "FOODON:00003816", "label": "vegetable", "synonyms": []}
+{"definition": "A condiment made from toasted ground hulled sesame.", "id": "FOODON:00003855", "label": "tahini", "synonyms": ["tahina"]}
+{"definition": "SIREN DB annotation: * finely ground FOODON:03430106 * not heat-treated FOODON:03440003 * seed, skin removed, germ removed (endosperm) FOODON:03420208 * water removal process FOODON:03460138 * preservation by dehydration or drying FOODON:03470116", "id": "FOODON:03301116", "label": "white wheat flour (not heat treated)", "synonyms": ["flour"]}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140", "id": "FOODON:03301123", "label": "grape (raw)", "synonyms": ["grape"]}
+{"definition": "SIREN DB annotation: * bark FOODON:03420264", "id": "FOODON:03301175", "label": "cinnamon", "synonyms": []}
+{"definition": "SIREN DB annotation: * divided into pieces FOODON:03430152 * not heat-treated FOODON:03440003 * bark FOODON:03420264 * water removal process FOODON:03460138 * preservation by dehydration or drying FOODON:03470116", "id": "FOODON:03301224", "label": "cinnamon stick", "synonyms": []}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * head (plant) FOODON:03420151", "id": "FOODON:03301326", "label": "cabbage head (raw)", "synonyms": ["cabbage"]}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * seed (anatomical part) FOODON:03420155", "id": "FOODON:03301355", "label": "almond (raw)", "synonyms": ["almond"]}
+{"definition": "SIREN DB annotation: * semisolid with smooth consistency FOODON:03430119 * partially heat-treated FOODON:03440018 * fat or oil FOODON:03420190 * acidified FOODON:03460200 * ingredient: spice or herb added FOODON:03460151", "id": "FOODON:03301440", "label": "mayonnaise", "synonyms": []}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140", "id": "FOODON:03301441", "label": "lemon (raw)", "synonyms": ["lemon"]}
+{"definition": "Ground allspice is a powder consisting of dried and ground allspice berry.", "id": "FOODON:03301554", "label": "allspice (ground)", "synonyms": ["allspice"]}
+{"definition": "A rice food product consisting of hulled rice kernels.", "id": "FOODON:03301641", "label": "rice kernel food product", "synonyms": ["rice"]}
+{"definition": "SIREN DB annotation: * solid FOODON:03430151 * not heat-treated FOODON:03440003 * root, tuber or bulb, with peel FOODON:03420239", "id": "FOODON:03301704", "label": "onion (raw)", "synonyms": ["onion"]}
+{"definition": "SIREN DB annotation: * liquid, low viscosity, with no visible particles FOODON:03430123 * not heat-treated FOODON:03440003 * alcohol-acetic acid fermentation process FOODON:03460123 * curing or aging process FOODON:03460253 * preservation by heat treatment FOODON:03470120", "id": "FOODON:03301705", "label": "vinegar", "synonyms": []}
+{"definition": "SIREN DB annotation: * liquid, high viscosity, with no visible particles FOODON:03430139 * fat or oil FOODON:03420190", "id": "FOODON:03301826", "label": "olive oil", "synonyms": []}
+{"definition": "SIREN DB annotation: * semisolid with smooth consistency FOODON:03430119 * curd FOODON:03420245 * lactic acid fermentation process FOODON:03460101", "id": "FOODON:03301889", "label": "cream cheese", "synonyms": ["philadelphia cream cheese"]}
+{"definition": "SIREN DB annotation: * liquid, low viscosity, with no visible particles FOODON:03430123 * not heat-treated FOODON:03440003 * root, tuber or bulb, with peel FOODON:03420239", "id": "FOODON:03302034", "label": "beet juice", "synonyms": []}
+{"definition": "SIREN DB annotation: * solid FOODON:03430151 * curd FOODON:03420245 * curing or aging process FOODON:03460253 * interior bacteria curing process FOODON:03460328", "id": "FOODON:03302458", "label": "cheddar cheese", "synonyms": []}
+{"definition": "An italian, semi-hard cheese made from cow's milk, aged for a minimum of four months with a very sharp taste.", "id": "FOODON:03302916", "label": "provolone cheese", "synonyms": ["provolone"]}
+{"definition": "SIREN DB annotation: * solid FOODON:03430151 * partially heat-treated FOODON:03440018 * curd FOODON:03420245 * lactic acid-other agent fermentation process FOODON:03460107 * pasteurization by heating FOODON:03470135", "id": "FOODON:03303578", "label": "mozzarella cheese", "synonyms": []}
+{"definition": "SIREN DB annotation: * liquid, low viscosity, with small particles FOODON:03430114 * partially heat-treated FOODON:03440018 * sugar FOODON:03420108 * alcohol-acetic acid fermentation process FOODON:03460123 * alcoholated FOODON:03460160 * curing or aging 12 months or over FOODON:03460294 * pasteurization by heating FOODON:03470135 * ingredient: flavoring, spice or herb added FOODON:03460227", "id": "FOODON:03305003", "label": "worcestershire sauce", "synonyms": []}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140", "id": "FOODON:03305086", "label": "lime (raw)", "synonyms": ["lime"]}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * root, tuber or bulb FOODON:03420238", "id": "FOODON:03305208", "label": "garlic bulb (raw)", "synonyms": ["garlic"]}
+{"definition": "SIREN DB annotation: * liquid, high viscosity, with no visible particles FOODON:03430139 * fat or oil FOODON:03420190", "id": "FOODON:03305263", "label": "vegetable oil", "synonyms": []}
+{"definition": "SIREN DB annotation: * liquid, low viscosity FOODON:03430109 * fruit, peel present, core, pit or seed present FOODON:03420140", "id": "FOODON:03305428", "label": "lemon juice", "synonyms": []}
+{"definition": "SIREN DB annotation: * liquid, low viscosity FOODON:03430109 * fruit, peel present, core, pit or seed present FOODON:03420140", "id": "FOODON:03306160", "label": "lime juice", "synonyms": []}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * root, tuber or bulb, with peel FOODON:03420239", "id": "FOODON:03306696", "label": "beet (raw)", "synonyms": ["beet"]}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * unripe or immature FOODON:03530051 * pod containing small, immature seed FOODON:03420169", "id": "FOODON:03306726", "label": "sweet green pepper (raw)", "synonyms": ["green bell pepper", "green pepper"]}
+{"definition": "SIREN DB annotation: * whole, shape achieved by forming, thickness <0.3 cm. FOODON:03430153 * fully heat-treated FOODON:03440014 * seed (anatomical part) FOODON:03420155", "id": "FOODON:03307668", "label": "tortilla", "synonyms": []}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * pod or seed FOODON:03420158", "id": "FOODON:03309928", "label": "pepper (raw)", "synonyms": ["pepper"]}
+{"definition": "SIREN DB annotation: * liquid, high viscosity, with no visible particles FOODON:03430139 * fat or oil FOODON:03420190", "id": "FOODON:03310387", "label": "oil", "synonyms": []}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * not heat-treated FOODON:03440003 * fruit, peel present, core, pit or seed present FOODON:03420140", "id": "FOODON:03310943", "label": "zucchini squash", "synonyms": ["green zucchini", "zucchini"]}
+{"definition": "SIREN DB annotation: * liquid FOODON:03430130", "id": "FOODON:03311146", "label": "sauce", "synonyms": []}
+{"definition": "A cumin food product is derived from the seed of a cumin plant.", "id": "FOODON:03311872", "label": "cumin food product", "synonyms": ["cumin"]}
+{"definition": "A hesperidium fruit of an orange tree (Citrus sinensis).", "id": "FOODON:03315106", "label": "orange", "synonyms": []}
+{"definition": "SIREN DB annotation: * whole, natural shape FOODON:03430150 * ripe or mature FOODON:03530052 * fruit, peel present FOODON:03420137 * curing or aging process FOODON:03460253", "id": "FOODON:03315145", "label": "olive (ripe)", "synonyms": ["olive"]}
+{"definition": "SIREN DB annotation: * ingredient: fat or oil added FOODON:03460221", "id": "FOODON:03315498", "label": "dressing", "synonyms": []}
+{"definition": "", "id": "FOODON:03315552", "label": "juice beverage", "synonyms": ["juice"]}
+{"definition": "", "id": "FOODON:03316042", "label": "salad", "synonyms": []}
+{"definition": "Vanilla extract is a solution containing the flavor compound vanillin as the primary ingredient.  It is made by macerating and percolating vanilla pods in a solution of ethanol and water.", "id": "FOODON:03316764", "label": "vanilla bean extract", "synonyms": ["natural vanilla", "vanilla"]}
+{"definition": "A primary root of a commonbeet plant (Beta vulgaris).", "id": "FOODON:03317254", "label": "beetroot", "synonyms": ["beet"]}
+{"definition": "A drupe fruit of an olive tree (Olea europaea).", "id": "FOODON:03317509", "label": "olive", "synonyms": ["ripe olive"]}
+{"definition": "Vanilla, the vanilla orchids, forms a flowering plant genus of about 110 species in the orchid family (*Orchidaceae*). The most widely known member is the flat-leaved vanilla (*V. planifolia*), native to Mexico, from which commercial vanilla flavoring is derived.   The fruit is termed \"vanilla bean\", though true beans are fabaceaen eudicots not at all closely related to orchids. Rather, the vanilla fruit is technically an elongate, fleshy and later dehiscent capsule 10-20 cm long. It ripens gradually for 8 to 9 months after flowering, eventually turning black in color and giving off a strong aroma. Each pod contains thousands of minute seeds, and both the pods and seeds within are used to create vanilla flavoring. Vanilla beans are harvested by hand from commercial orchards. [https://en.wikipedia.org/wiki/Vanilla_(genus)]", "id": "FOODON:03411355", "label": "vanilla plant", "synonyms": ["Vanilla", "Vanilla Mill.", "Vanilla planifolia Andr.", "Vanilla spp."]}
+{"definition": "A whole chicken.", "id": "FOODON:03411457", "label": "chicken", "synonyms": ["Gallus gallus (Linnaeus, 1758)"]}
+{"definition": "A whole lamb.", "id": "FOODON:03411669", "label": "lamb", "synonyms": []}
+{"definition": "A chemical food component in liquid form.", "id": "FOODON:03412974", "label": "liquid chemical food component", "synonyms": ["Liquid as food source"]}
+{"definition": "A broad term that includes the nutritive sweeteners dextrose, fructose, galactose, lactose, maltose and sucrose, which are simple carbohydrates with molecules composed of one or two saccharide units. Note that on a product label or in a recipe, 'sugar' means *SUCROSE* and should be so indexed. Use the broad term *SUGAR* only if the specific sugar used is not known or not listed in the vocabulary.", "id": "FOODON:03420108", "label": "sugar", "synonyms": []}
+{"definition": "Soft sugar whose crystals are covered by a film of refined dark syrup that imparts color, flavor, and moisture.", "id": "FOODON:03420156", "label": "brown sugar", "synonyms": []}
+{"definition": "White sugar is highly refined crystalline sugar, mostly sucrose, that appears white in color.  White sugar is commonly used in North America and Europe, made either of beet sugar or cane sugar, that has undergone a refining process which removes molasses.", "id": "FOODON:03420157", "label": "white sugar", "synonyms": []}
