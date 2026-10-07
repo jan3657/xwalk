@@ -19,7 +19,7 @@ import json
 import re
 import shutil
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -112,7 +112,7 @@ def slugify(name: str) -> str:
 class Ontology:
     slug: str
     name: str
-    kind: str  # builtin or imported
+    kind: str  # hosted, builtin or imported
     count: int
     path: Path
     description: str = ""
@@ -135,6 +135,7 @@ class Ontology:
             "licence": self.licence,
             "created": self.created,
             "sample": self.sample,
+            "read_only": self.kind != "imported",
         }
 
 
@@ -143,8 +144,13 @@ def _builtin_dir() -> Path:
 
 
 class Library:
-    def __init__(self, directory: Path) -> None:
+    """Entries from three places: `shared` directories (read-only, pre-parsed by the
+    operator, kind ``hosted``), the samples shipped with xwalk (``builtin``) and the
+    workspace's own `directory` (``imported``)."""
+
+    def __init__(self, directory: Path, *, shared: Sequence[Path] = ()) -> None:
         self.directory = directory
+        self.shared = tuple(shared)
 
     def builtin(self) -> list[Ontology]:
         index = json.loads((_builtin_dir() / "index.json").read_text(encoding="utf-8"))
@@ -165,35 +171,16 @@ class Library:
         ]
 
     def imported(self) -> list[Ontology]:
+        return _read_entries(self.directory, "imported")
+
+    def hosted(self) -> list[Ontology]:
         found: list[Ontology] = []
-        if not self.directory.is_dir():
-            return found
-        for entry in sorted(self.directory.iterdir()):
-            meta_path = entry / META_FILE
-            if not (meta_path.is_file() and (entry / TERMS_FILE).is_file()):
-                continue
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            except ValueError:
-                continue
-            found.append(
-                Ontology(
-                    slug=entry.name,
-                    name=str(meta.get("name") or entry.name),
-                    kind="imported",
-                    count=int(meta.get("count") or 0),
-                    path=entry / TERMS_FILE,
-                    description=str(meta.get("description", "")),
-                    source=str(meta.get("source", "")),
-                    homepage=str(meta.get("homepage", "")),
-                    licence=str(meta.get("licence", "")),
-                    created=meta.get("created"),
-                )
-            )
+        for directory in self.shared:
+            found += _read_entries(directory, "hosted")
         return found
 
     def all(self) -> list[Ontology]:
-        return self.builtin() + self.imported()
+        return self.hosted() + self.builtin() + self.imported()
 
     def get(self, slug: str) -> Ontology:
         for entry in self.all():
@@ -212,10 +199,11 @@ class Library:
         source: str,
         description: str = "",
         homepage: str = "",
+        slug: str | None = None,
     ) -> Ontology:
         """Store parsed terms under a new slug. Ids must be unique; empty labels are
         dropped (a term nobody can name cannot be matched)."""
-        slug = self._free_slug(slugify(name))
+        slug = self._free_slug(slugify(slug or name))
         directory = self.directory / slug
         seen: set[str] = set()
 
@@ -249,7 +237,7 @@ class Library:
     def delete(self, slug: str) -> None:
         entry = self.get(slug)
         if entry.kind != "imported":
-            raise LibraryError(f"{entry.name} is built in and cannot be deleted")
+            raise LibraryError(f"{entry.name} is shared and cannot be deleted")
         shutil.rmtree(self.directory / slug)
 
     def _free_slug(self, base: str) -> str:
@@ -260,6 +248,35 @@ class Library:
         while f"{base}-{n}" in taken:
             n += 1
         return f"{base}-{n}"
+
+
+def _read_entries(directory: Path, kind: str) -> list[Ontology]:
+    found: list[Ontology] = []
+    if not directory.is_dir():
+        return found
+    for entry in sorted(directory.iterdir()):
+        meta_path = entry / META_FILE
+        if not (meta_path.is_file() and (entry / TERMS_FILE).is_file()):
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        found.append(
+            Ontology(
+                slug=entry.name,
+                name=str(meta.get("name") or entry.name),
+                kind=kind,
+                count=int(meta.get("count") or 0),
+                path=entry / TERMS_FILE,
+                description=str(meta.get("description", "")),
+                source=str(meta.get("source", "")),
+                homepage=str(meta.get("homepage", "")),
+                licence=str(meta.get("licence", "")),
+                created=meta.get("created"),
+            )
+        )
+    return found
 
 
 def combined_terms(library: Library, slugs: list[str]) -> tuple[list[Record], list[str]]:

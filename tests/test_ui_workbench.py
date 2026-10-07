@@ -210,7 +210,7 @@ def test_importing_and_deleting(tmp_path: Path) -> None:
     assert again.slug == "toy-chocolate-2"
     library.delete("toy-chocolate-2")
     assert [o.slug for o in library.imported()] == ["toy-chocolate"]
-    with pytest.raises(LibraryError, match="built in"):
+    with pytest.raises(LibraryError, match="shared"):
         library.delete("chebi-sample")
     with pytest.raises(LibraryError):
         library.get("nope")

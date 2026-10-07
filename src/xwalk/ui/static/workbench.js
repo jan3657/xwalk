@@ -196,7 +196,7 @@ function targetPicker({ preselect = [] } = {}) {
     for (const o of d.ontologies) {
       const box = h("input", { type: "checkbox", checked: chosen.has(o.slug), onchange: (e) => (e.target.checked ? chosen.add(o.slug) : chosen.delete(o.slug)) });
       append(libBox, h("label", { class: "onto" }, box,
-        h("div", {}, h("b", {}, o.name), " ", o.sample ? badge("partial", "sample") : badge("accent", "imported"),
+        h("div", {}, h("b", {}, o.name), " ", o.sample ? badge("partial", "sample") : o.kind === "hosted" ? badge("ok", "full") : badge("accent", "imported"),
           h("div", { class: "muted small" }, `${fmt(o.count)} terms${o.description ? ` · ${o.description}` : ""}`))));
     }
   }).catch((err) => append(clear(libBox), failureBox(err)));
@@ -245,6 +245,7 @@ views.home = async (page) => {
   const card = (icon, title, text, href, cta) => h("a", { class: "usecase", href },
     h("div", { class: "uc-icon" }, icon), h("h3", {}, title), h("p", {}, text), h("span", { class: "uc-cta" }, `${cta} →`));
   append(page, [
+    state.info.public ? notice("info", "hosted version", "Your files and runs live in a private workspace tied to this browser and are deleted after a day without use. Do not upload confidential data. Runs use the free offline stand-in unless you add your own model key in Settings.") : null,
     h("section", { class: "hero" },
       h("h1", {}, "Map messy records onto a reference collection"),
       h("p", {}, "Bring a spreadsheet of names, pick an ontology (or your own reference list), and xwalk finds each record's match: retrieval proposes candidates, a model chooses, a policy decides how sure it is, and every decision is recorded so you can check it."),
@@ -491,7 +492,7 @@ function mappingTable(dir, rows, { title } = {}) {
 // --- the ontology library ---------------------------------------------------------------
 
 views.library = async (page) => {
-  const [{ ontologies }, { catalog }] = await Promise.all([api("GET", "/api/library"), api("GET", "/api/library/catalog")]);
+  const [{ ontologies }, { catalog, allow_download: allowDownload }] = await Promise.all([api("GET", "/api/library"), api("GET", "/api/library/catalog")]);
   const name = h("input", { type: "text", placeholder: "name in the library" });
   const importer = fileWithColumns("target", { onReady: (insp) => { if (!name.value) name.value = insp.path.split("/").pop().replace(/\.[^.]+$/, ""); } });
   const importOut = h("div", {});
@@ -533,7 +534,7 @@ views.library = async (page) => {
   append(page, [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Ontology library"), h("p", { class: "muted" }, "Parsed term collections ready to map onto. Parsing happens once, at import."))),
     h("div", { class: "onto-cards" }, ontologies.map((o) => h("div", { class: "card onto-card" },
-      h("div", { class: "card-head" }, h("h3", {}, o.name), o.sample ? badge("partial", "sample") : badge("accent", "imported")),
+      h("div", { class: "card-head" }, h("h3", {}, o.name), o.sample ? badge("partial", "sample") : o.kind === "hosted" ? badge("ok", "full") : badge("accent", "imported")),
       h("p", { class: "small" }, o.description || h("span", { class: "muted" }, o.source)),
       h("div", { class: "muted small" }, `${fmt(o.count)} terms`, o.licence ? ` · ${o.licence}` : "", o.sample ? " · a 200-term slice, not the full ontology" : ""),
       h("div", { class: "inline", style: { marginTop: "10px" } },
@@ -549,6 +550,9 @@ views.library = async (page) => {
         h("p", { class: "muted small" }, "OBO and OWL files are read with their labels, synonyms and definitions (OWL needs xwalk[ontology]). For CSV/TSV/JSONL, choose the columns."),
         h("form", { class: "form", onsubmit: doImport }, importer.el, h("div", { class: "inline" }, name, h("button", { class: "primary", type: "submit" }, "Import"))),
         importOut),
+      !allowDownload ? h("section", { class: "card" },
+        h("h2", {}, "Ready-parsed ontologies"),
+        h("p", { class: "muted small" }, "On this hosted version the full ontologies above marked “full” were downloaded and parsed when the site was built, with their search indexes ready. To add your own, import a file on the left: it stays in your private workspace.")) :
       h("section", { class: "card" },
         h("h2", {}, "Download an ontology"),
         h("p", { class: "muted small" }, "From the OBO Foundry's permanent URLs, then parsed into the library. Large ontologies take a while."),
@@ -651,10 +655,12 @@ views.settings = async (page) => {
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Settings"))),
     h("section", { class: "card" },
       h("h2", {}, "API keys for this session"),
-      h("p", { class: "muted small" }, "A key set here lives only in the memory of this xwalk ui process, where a job's api_key_env reads it. It is never written to disk, never shown again, and gone when the server stops. Keys set in the environment before starting are used too."),
+      h("p", { class: "muted small" }, state.info.public
+        ? "A key set here is kept only in memory, for your browser session: it is used for your own runs, never written to disk, never shown again, never visible to other visitors, and gone when your session ends. Calls are billed to your account by your provider."
+        : "A key set here lives only in the memory of this xwalk ui process, where a job's api_key_env reads it. It is never written to disk, never shown again, and gone when the server stops. Keys set in the environment before starting are used too."),
       table([
         { label: "Variable", render: (c) => h("code", {}, c.env) },
-        { label: "State", render: (c) => (c.set ? badge("ok", c.from_page ? "set from this page" : "set in the environment") : badge("unknown", "not set")) },
+        { label: "State", render: (c) => (c.set ? badge("ok", state.info.public ? "set for this session" : c.from_page ? "set from this page" : "set in the environment") : badge("unknown", "not set")) },
         { label: "", render: (c) => {
           const v = h("input", { type: "password", placeholder: "paste the key", autocomplete: "off" });
           return h("form", { class: "inline", onsubmit: (e) => { e.preventDefault(); if (v.value) save(c.env, v.value); } }, v, h("button", { type: "submit" }, "Set"),

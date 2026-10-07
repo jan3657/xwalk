@@ -15,7 +15,9 @@ terms?" -- with the job's own retrievers and fusion and no model call.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import threading
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -347,6 +349,48 @@ _CLUSTER_HEADER = """\
 
 # --- retrieval-only lookup --------------------------------------------------------------
 
+_LOCKS: dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def lookup_lock(key: Path | str) -> threading.Lock:
+    """One lock per lookup project, so two requests never build the same index at once."""
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault(str(key), threading.Lock())
+
+
+def lookup_key(library: Library, choice: TargetChoice, key: Mapping[str, Any]) -> str:
+    """The cache key of a target set: the choice plus each library entry's identity."""
+    stamp: dict[str, Any] = dict(key)
+    if choice.libraries:
+        stamp["entries"] = [
+            (o.slug, o.count, o.created) for o in library.all() if o.slug in choice.libraries
+        ]
+    return hashlib.sha256(json.dumps(stamp, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def library_lookup_key(slugs: Sequence[str]) -> dict[str, Any]:
+    """The `key` a lookup over library entries only is cached under."""
+    return {"target": {"libraries": list(slugs)}}
+
+
+def lookup_job(library: Library, choice: TargetChoice, key: Mapping[str, Any], base: Path) -> Path:
+    """The job file of the hidden project for one target set under `base`, made once."""
+    directory = base / lookup_key(library, choice, key)
+    with lookup_lock(directory):
+        found = sorted((directory / PROJECTS_DIR).glob("*/job.yaml"))
+        if found:
+            return found[0]
+        summary = create_map_project(
+            directory,
+            library,
+            name="lookup",
+            sources=[Record("q1", {"text": "lookup", "context": ""})],
+            targets=choice,
+            model={"preset": "openai"},
+        )
+        return Path(summary["job_path"])
+
 
 async def lookup_async(
     job_path: Path,
@@ -427,5 +471,9 @@ __all__ = [
     "llm_block",
     "lookup",
     "lookup_async",
+    "lookup_job",
+    "lookup_key",
+    "lookup_lock",
+    "library_lookup_key",
     "slots_document",
 ]

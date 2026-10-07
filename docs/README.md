@@ -15,6 +15,7 @@ Task-oriented, in the order you will need them.
 |---|---|
 | [Getting started](guide/getting-started.md) | You have two CSV files and want a mapping table. |
 | [Exploring in the browser](guide/ui.md) | You want to click through validate, search, run, explain, review and evaluate (`xwalk ui`). |
+| [Hosting the explorer](guide/hosting.md) | You want the explorer online for others, with full ontologies parsed in advance (`xwalk ui --public`, Docker, free hosting options). |
 | [The Python SDK, component by component](guide/python-sdk.md) | A job file cannot express what you need and you want to build every component by hand. |
 | [Concepts](concepts.md) | You want to know why the loop is shaped this way before you trust it. |
 | [Architecture](architecture.md) | You are changing xwalk: layers, invariants, and which modules and tests a change touches. |

@@ -25,9 +25,12 @@ import secrets
 import sys
 import threading
 import webbrowser
+from collections.abc import Sequence
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlsplit
 
@@ -38,6 +41,14 @@ from xwalk.ui.api import (
     Download,
     Workspace,
     dispatch,
+)
+from xwalk.ui.hosting import (
+    DEFAULT_MAX_TASKS,
+    DEFAULT_SESSION_TTL,
+    SESSION_COOKIE,
+    PublicRefusal,
+    Sessions,
+    library_dirs,
 )
 
 DEFAULT_HOST = "127.0.0.1"
@@ -73,9 +84,15 @@ class UIServer(ThreadingHTTPServer):
         *,
         token: str | None = None,
         quiet: bool = True,
+        sessions: Sessions | None = None,
+        frame_ancestors: str | None = None,
     ) -> None:
         super().__init__(address, _Handler)
+        # Local mode serves `workspace`; public mode serves one workspace per visitor
+        # from `sessions` (`workspace` is then only the template the others copy).
         self.workspace = workspace
+        self.sessions = sessions
+        self.frame_ancestors = frame_ancestors
         self.token = token or secrets.token_urlsafe(24)
         self.quiet = quiet
 
@@ -176,16 +193,53 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # never a traceback to the browser
             self._error(ApiError(500, "server_error", f"{type(exc).__name__}: {exc}"))
 
+    def _cookie_session(self) -> str | None:
+        jar = SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie") or "")
+        except CookieError:
+            return None
+        morsel = jar.get(SESSION_COOKIE)
+        return morsel.value if morsel is not None else None
+
+    def _session_cookie(self, session: str) -> str:
+        cookie = f"{SESSION_COOKIE}={session}; Path=/; HttpOnly"
+        secure = (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
+        if self.server.frame_ancestors:
+            # Inside another site's frame a cookie travels only as SameSite=None; Secure.
+            return cookie + "; SameSite=None; Secure"
+        return cookie + "; SameSite=Lax" + ("; Secure" if secure else "")
+
+    def _visitor(self) -> Workspace:
+        if self.server.sessions is None:
+            return self.server.workspace
+        workspace = self.server.sessions.get(self._cookie_session())
+        if workspace is None:
+            raise ApiError(401, "session_expired", "your session has ended; reload the page")
+        assert isinstance(workspace, Workspace)
+        return workspace
+
     def _page(self, path: str) -> None:
+        if path == "/healthz":
+            self._send(200, b"ok", "text/plain; charset=utf-8")
+            return
         if path in ("/", "/index.html"):
             html = _static("index.html").decode("utf-8")
             body = html.replace(TOKEN_PLACEHOLDER, self.server.token).encode("utf-8")
-            self._send(
-                200,
-                body,
-                "text/html; charset=utf-8",
-                extra={"Content-Security-Policy": _CSP, "X-Frame-Options": "DENY"},
-            )
+            extra = {"Content-Security-Policy": _CSP, "X-Frame-Options": "DENY"}
+            if self.server.frame_ancestors:
+                extra = {
+                    "Content-Security-Policy": _CSP.replace(
+                        "frame-ancestors 'none'", f"frame-ancestors {self.server.frame_ancestors}"
+                    )
+                }
+            sessions = self.server.sessions
+            if sessions is not None and sessions.get(self._cookie_session()) is None:
+                try:
+                    extra["Set-Cookie"] = self._session_cookie(sessions.create())
+                except PublicRefusal as exc:
+                    raise ApiError(503, "busy", str(exc)) from None
+            self._send(200, body, "text/html; charset=utf-8", extra=extra)
             return
         name = path.removeprefix("/static/")
         if path.startswith("/static/") and name in _STATIC_TYPES:
@@ -209,7 +263,7 @@ class _Handler(BaseHTTPRequestHandler):
             params["_length"] = self._length()
         elif method == "POST":
             params.update(self._body())
-        result = dispatch(self.server.workspace, method, path, params)
+        result = dispatch(self._visitor(), method, path, params)
         if isinstance(result, Download):
             disposition = f"attachment; filename*=UTF-8''{quote(result.filename)}"
             self._send(
@@ -254,14 +308,59 @@ def make_server(
     max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB,
     token: str | None = None,
     quiet: bool = True,
+    public: bool = False,
+    library: Sequence[str] = (),
+    lookup_cache: str | None = None,
+    session_ttl: float = DEFAULT_SESSION_TTL,
+    max_tasks: int = DEFAULT_MAX_TASKS,
+    frame_ancestors: str | None = None,
 ) -> UIServer:
+    shared = library_dirs(library)
     workspace = Workspace(
         root,
         max_calls_cap=max_calls_cap,
         allow_endpoint=not offline_only,
         max_upload_mb=max_upload_mb,
+        shared_library=shared,
     )
-    return UIServer((host, port), workspace, token=token, quiet=quiet)
+    if not public:
+        return UIServer((host, port), workspace, token=token, quiet=quiet)
+
+    cache = Path(lookup_cache) if lookup_cache else workspace.root / "cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    sessions: Sessions
+
+    def gate() -> None:
+        if sessions.running_tasks() >= max_tasks:
+            raise ApiError(429, "busy", "the site is running other people's jobs; try again soon")
+
+    def visitor(directory: Path) -> Workspace:
+        return Workspace(
+            directory,
+            max_calls_cap=max_calls_cap,
+            allow_endpoint=not offline_only,
+            max_upload_mb=max_upload_mb,
+            public=True,
+            shared_library=shared,
+            lookup_cache=cache,
+            task_gate=gate,
+        )
+
+    sessions = Sessions(
+        workspace.root / "sessions",
+        make_workspace=visitor,
+        ttl=session_ttl,
+        max_tasks=max_tasks,
+    )
+    sessions.sweep(force=True)
+    return UIServer(
+        (host, port),
+        workspace,
+        token=token,
+        quiet=quiet,
+        sessions=sessions,
+        frame_ancestors=frame_ancestors,
+    )
 
 
 def serve(
@@ -274,6 +373,12 @@ def serve(
     max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB,
     open_browser: bool = True,
     verbose: bool = False,
+    public: bool = False,
+    library: Sequence[str] = (),
+    lookup_cache: str | None = None,
+    session_ttl: float = DEFAULT_SESSION_TTL,
+    max_tasks: int = DEFAULT_MAX_TASKS,
+    frame_ancestors: str | None = None,
 ) -> None:
     """Serve until interrupted (`xwalk ui`). Status lines go to stderr."""
     server = make_server(
@@ -284,10 +389,22 @@ def serve(
         offline_only=offline_only,
         max_upload_mb=max_upload_mb,
         quiet=not verbose,
+        public=public,
+        library=library,
+        lookup_cache=lookup_cache,
+        session_ttl=session_ttl,
+        max_tasks=max_tasks,
+        frame_ancestors=frame_ancestors,
     )
     print(f"xwalk ui: serving {server.workspace.root}", file=sys.stderr)
     print(f"xwalk ui: open {server.url}  (Ctrl-C to stop)", file=sys.stderr)
-    if host not in _LOOPBACK_NAMES:
+    if public:
+        print(
+            "xwalk ui: public mode: one private workspace per visitor, deleted after "
+            f"{session_ttl / 3600:g} h idle; shared library: {', '.join(library) or 'none'}",
+            file=sys.stderr,
+        )
+    elif host not in _LOOPBACK_NAMES:
         print(
             "xwalk ui: warning: listening beyond this machine; anyone who can reach "
             f"{server.url} can read and write the workspace",

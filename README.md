@@ -200,7 +200,9 @@ command. BM25 runs on Tantivy, a base dependency with no silent fallback; see
   file and map it onto ontologies or onto another file, find duplicates, quick-map
   pasted terms, keep a library of parsed ontologies (built-in samples, imports, OBO
   Foundry downloads), then click any row to see why, review, evaluate and export
-  ([UI guide](docs/guide/ui.md)). Standard library only.
+  ([UI guide](docs/guide/ui.md)). Standard library only. `xwalk ui --public` and the
+  `Dockerfile` run it as a website with full ontologies parsed at build time
+  ([hosting](docs/guide/hosting.md)).
 - **Agent access (optional extra)**: `xwalk mcp` serves bounded validate, search, match
   and read operations over the Model Context Protocol ([MCP guide](docs/guide/mcp.md)).
 - **Clustering (experimental)**: `xwalk cluster` groups one collection into clusters of
