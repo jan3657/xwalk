@@ -16,6 +16,16 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- `xwalk ui`: a local web app over `xwalk.ops` (`xwalk.ui`), standard library only, for
+  exploring jobs and runs: workspace discovery, validation, record previews through the
+  templates, index search, background match and cluster runs with live progress and
+  cancellation, results with per-record explanations (attempts, keyed candidates, scores,
+  verifier, raw output), in-page review applied through `ops.review_apply`, evaluation
+  against gold labels, and downloads. Runs default to offline stand-ins (the scripted
+  quickstart reply, `FakeDecider`, and a word-overlap clustering judge), labelled
+  `offline_model`; the job's endpoint requires a call limit and can be disabled with
+  `--offline-only`. Local by default, with a per-process API token, a Host check and
+  workspace path confinement. See `docs/guide/ui.md`.
 - A decider path: a `decider:` block on a job routes matching through a decision model
   (TypeSafe's Jev, `JevClient`) that answers typed questions with probabilities instead
   of writing prose -- screen every retrieved candidate, choose among the survivors, then

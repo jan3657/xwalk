@@ -235,6 +235,26 @@ def _build_parser() -> argparse.ArgumentParser:
         "endpoint (demos and tests; results are meaningless)",
     )
 
+    ui = sub.add_parser("ui", help="serve a local web app to explore jobs and runs")
+    ui.add_argument(
+        "--root", default=".", help="the workspace directory the app may read and write"
+    )
+    ui.add_argument("--host", default="127.0.0.1", help="address to listen on")
+    ui.add_argument("--port", type=int, default=8765, help="port to listen on (0: any free)")
+    ui.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
+    ui.add_argument(
+        "--max-calls-cap",
+        type=int,
+        default=None,
+        help="the largest max_calls a run with the job's endpoint may request (default 500)",
+    )
+    ui.add_argument(
+        "--offline-only",
+        action="store_true",
+        help="refuse runs against the job's endpoint; only the offline stand-in model",
+    )
+    ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
+
     review = sub.add_parser("review", help="export or apply human review")
     review_sub = review.add_subparsers(dest="review_command")
     rexport = review_sub.add_parser("export", parents=[common])
@@ -735,6 +755,31 @@ def _serve_mcp(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _serve_ui(args: argparse.Namespace) -> int:
+    """Serve the web app until Ctrl-C. Status lines go to stderr."""
+    try:
+        from xwalk.ui import serve
+        from xwalk.ui.api import DEFAULT_MAX_CALLS_CAP
+
+        serve(
+            args.root,
+            host=args.host,
+            port=args.port,
+            max_calls_cap=DEFAULT_MAX_CALLS_CAP
+            if args.max_calls_cap is None
+            else args.max_calls_cap,
+            offline_only=args.offline_only,
+            open_browser=not args.no_browser,
+            verbose=args.verbose,
+        )
+    except KeyboardInterrupt:
+        return EXIT_OK
+    except (OSError, ValueError) as exc:
+        print(f"error: ui: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(argv) if argv is not None else sys.argv[1:]
     as_json = "--json" in arguments
@@ -765,6 +810,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "mcp":
         return _serve_mcp(args)
+    if args.command == "ui":
+        return _serve_ui(args)
 
     handler = _DISPATCH.get(args.command)
     if handler is None:

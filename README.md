@@ -196,6 +196,10 @@ command. BM25 runs on Tantivy, a base dependency with no silent fallback; see
   candidate, choose, gate on declared properties); `xwalk fit` fits its thresholds on
   gold. Same run directories, exit codes and `--max-calls` as the LLM path
   ([decision models](docs/reference/decide.md)).
+- **A browser UI**: `xwalk ui` serves a local web app over the same operations: validate
+  a job, preview what its templates render, search its index, run it (offline by
+  default), click any row to see why, review, evaluate and export
+  ([UI guide](docs/guide/ui.md)). Standard library only.
 - **Agent access (optional extra)**: `xwalk mcp` serves bounded validate, search, match
   and read operations over the Model Context Protocol ([MCP guide](docs/guide/mcp.md)).
 - **Clustering (experimental)**: `xwalk cluster` groups one collection into clusters of

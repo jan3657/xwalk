@@ -379,6 +379,24 @@ and exits `2`. See the [MCP guide](../guide/mcp.md).
 | `--max-calls-cap` | no | `500` | the largest `max_calls` a `match_records` call may request |
 | `--offline-model` | no | — | answer every model call with a fixed scripted reply (demos and tests; the results are meaningless) |
 
+## `ui`
+
+Serves a local web app to explore jobs and runs: validate, preview records, search, run
+(offline stand-in or the job's endpoint), explain, review, evaluate and export. Standard
+library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--root` | no | `.` | the workspace directory the app may read and write |
+| `--host` | no | `127.0.0.1` | address to listen on |
+| `--port` | no | `8765` | port (`0`: any free port) |
+| `--no-browser` | no | — | do not open a browser tab |
+| `--max-calls-cap` | no | `500` | the largest call limit a run against the job's endpoint may request |
+| `--offline-only` | no | — | refuse runs against the job's endpoint |
+| `--verbose` | no | — | log every request to stderr |
+
+A root that is not a directory or a cap below 1 exits `2`.
+
 ## `export`
 
 Writes one explicit view of a run.
