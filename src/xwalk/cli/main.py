@@ -256,6 +256,29 @@ def _build_parser() -> argparse.ArgumentParser:
     ui.add_argument(
         "--max-upload-mb", type=int, default=512, help="the largest file the page may upload"
     )
+    ui.add_argument(
+        "--public",
+        action="store_true",
+        help="run as a website: a private workspace per visitor, visitors' own model keys, "
+        "no server-side URL downloads (see docs/guide/hosting.md)",
+    )
+    ui.add_argument(
+        "--library",
+        action="append",
+        default=[],
+        help="a directory of pre-parsed ontologies to offer read-only (repeatable; made by "
+        "scripts/build_ontology_library.py)",
+    )
+    ui.add_argument("--lookup-cache", default=None, help="public mode: shared search-index cache")
+    ui.add_argument(
+        "--session-hours", type=float, default=24.0, help="public mode: delete idle sessions after"
+    )
+    ui.add_argument(
+        "--max-tasks", type=int, default=4, help="public mode: runs at once across visitors"
+    )
+    ui.add_argument(
+        "--frame-ancestors", default=None, help="origins allowed to embed the page in a frame"
+    )
     ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
 
     review = sub.add_parser("review", help="export or apply human review")
@@ -775,6 +798,12 @@ def _serve_ui(args: argparse.Namespace) -> int:
             max_upload_mb=args.max_upload_mb,
             open_browser=not args.no_browser,
             verbose=args.verbose,
+            public=args.public,
+            library=args.library,
+            lookup_cache=args.lookup_cache,
+            session_ttl=args.session_hours * 3600,
+            max_tasks=args.max_tasks,
+            frame_ancestors=args.frame_ancestors,
         )
     except KeyboardInterrupt:
         return EXIT_OK

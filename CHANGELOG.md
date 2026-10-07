@@ -16,6 +16,14 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- `xwalk ui --public` and a `Dockerfile` to run the explorer as a website: a private
+  workspace per visitor (cookie session, deleted when idle), a shared read-only library
+  of full ontologies parsed and indexed while the image is built
+  (`scripts/build_ontology_library.py`, `--library`, `--lookup-cache`), visitors' own
+  model keys kept per session and never in the process environment, model endpoints
+  limited to public `https` hosts, no server-side URL downloads, run limits, hidden
+  server paths and `/healthz`. Free hosting options are compared in
+  `docs/guide/hosting.md`.
 - `xwalk ui` for people who bring data rather than job files: upload CSV/TSV/JSONL/TXT/
   OBO/OWL files (streamed, `--max-upload-mb`), inspect them with suggested column roles,
   and build projects (ordinary job directories under `projects/`) that map a file onto

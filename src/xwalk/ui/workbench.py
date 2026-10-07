@@ -8,8 +8,6 @@ unreadable file) answer `422` with a message that says what to change.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import re
 import tempfile
@@ -46,7 +44,12 @@ _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*_(API_KEY|KEY|TOKEN)$")
 
 
 def library(ws: Workspace) -> Library:
-    return Library(ws.root / UI_DIR / "library")
+    return Library(ws.root / UI_DIR / "library", shared=ws.shared_library)
+
+
+def _not_public(ws: Workspace, what: str) -> None:
+    if ws.public:
+        raise ApiError(403, "not_allowed_here", f"{what} is not available on the hosted version")
 
 
 def _problem(exc: BaseException) -> ApiError:
@@ -247,7 +250,7 @@ def library_catalog(ws: Workspace, params: Params) -> Response:
     imported = {o.source for o in library(ws).imported()}
     return {
         "catalog": [{**entry, "imported": entry["url"] in imported} for entry in CATALOG],
-        "allow_download": True,
+        "allow_download": not ws.public,
     }
 
 
@@ -276,6 +279,7 @@ def library_import(ws: Workspace, params: Params) -> Response:
 
 def library_download(ws: Workspace, params: Params) -> Response:
     """Download an ontology (a catalog id or a URL) and import it, as a background task."""
+    _not_public(ws, "downloading from a URL")
     catalog_id = _str(params, "catalog_id", required=False)
     entry = next((c for c in CATALOG if c["id"] == catalog_id), None) if catalog_id else None
     if catalog_id and entry is None:
@@ -397,27 +401,11 @@ def library_terms(ws: Workspace, params: Params) -> Response:
 
 def _lookup_project(ws: Workspace, choice: projects.TargetChoice, key: Mapping[str, Any]) -> Path:
     """A hidden project holding one target set, reused across lookups (job path)."""
-    lib = library(ws)
-    stamp: dict[str, Any] = dict(key)
-    if choice.libraries:
-        stamp["entries"] = [
-            (o.slug, o.count, o.created) for o in lib.all() if o.slug in choice.libraries
-        ]
-    digest = hashlib.sha256(json.dumps(stamp, sort_keys=True, default=str).encode()).hexdigest()
-    directory = ws.root / UI_DIR / LOOKUPS_DIR / digest[:16]
-    job = directory / "projects"
-    found = sorted(job.glob("*/job.yaml")) if job.is_dir() else []
-    if found:
-        return found[0]
-    summary = projects.create_map_project(
-        directory,
-        lib,
-        name="lookup",
-        sources=[Record("q1", {"text": "lookup", "context": ""})],
-        targets=choice,
-        model={"preset": "openai"},
-    )
-    return Path(summary["job_path"])
+    base = ws.root / UI_DIR / LOOKUPS_DIR
+    if ws.lookup_cache is not None and choice.records is None:
+        # Library-only target sets are the same for every visitor: share their index.
+        base = ws.lookup_cache
+    return projects.lookup_job(library(ws), choice, key, base)
 
 
 def _lookup(ws: Workspace, target: Any, queries: list[Record], top_k: int) -> dict[str, Any]:
@@ -430,8 +418,8 @@ def _lookup(ws: Workspace, target: Any, queries: list[Record], top_k: int) -> di
 
     def work() -> Response:
         job = _lookup_project(ws, choice, key)
-        index_dir = job.parent / "index"
-        result = projects.lookup(job, queries, index_dir=index_dir, top_k=top_k)
+        with projects.lookup_lock(job):
+            result = projects.lookup(job, queries, index_dir=job.parent / "index", top_k=top_k)
         result["target_description"] = choice.description
         return result
 
@@ -655,8 +643,19 @@ def presets(ws: Workspace, params: Params) -> Response:
 
 def credentials(ws: Workspace, params: Params) -> Response:
     names = {str(p["api_key_env"]) for p in projects.PRESETS.values() if p["api_key_env"]}
+    if ws.public:
+        # A visitor sees only the keys of their own session, never the server's.
+        names |= set(ws.session_keys)
+        return {
+            "credentials": [
+                {"env": n, "set": bool(ws.session_keys.get(n)), "from_page": n in ws.session_keys}
+                for n in sorted(names)
+            ],
+            "scope": "session",
+        }
     names |= ws.session_credentials
     return {
+        "scope": "process",
         "credentials": [
             {
                 "env": name,
@@ -664,7 +663,7 @@ def credentials(ws: Workspace, params: Params) -> Response:
                 "from_page": name in ws.session_credentials,
             }
             for name in sorted(names)
-        ]
+        ],
     }
 
 
@@ -684,6 +683,12 @@ def set_credential(ws: Workspace, params: Params) -> Response:
     value = params.get("value")
     if not isinstance(value, str):
         raise ApiError(400, "invalid_parameter", "value must be a string")
+    if ws.public:
+        if value.strip():
+            ws.session_keys[name] = value.strip()
+        else:
+            ws.session_keys.pop(name, None)
+        return {"env": name, "set": name in ws.session_keys}
     if value.strip():
         os.environ[name] = value.strip()
         ws.session_credentials.add(name)

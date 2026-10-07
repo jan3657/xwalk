@@ -27,7 +27,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Coroutine, Iterator, Mapping
+from collections.abc import Callable, Coroutine, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -327,6 +327,10 @@ class Workspace:
         max_calls_cap: int = DEFAULT_MAX_CALLS_CAP,
         allow_endpoint: bool = True,
         max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB,
+        public: bool = False,
+        shared_library: Sequence[Path] = (),
+        lookup_cache: Path | None = None,
+        task_gate: Callable[[], None] | None = None,
     ) -> None:
         self.root = Path(root).resolve()
         if not self.root.is_dir():
@@ -340,6 +344,13 @@ class Workspace:
         self.max_upload_bytes = max_upload_mb * 1024 * 1024
         # Environment variables this process set from the page (never written to disk).
         self.session_credentials: set[str] = set()
+        # Public mode (xwalk.ui.hosting): one visitor's workspace among many.
+        self.public = public
+        self.shared_library = tuple(shared_library)
+        self.lookup_cache = lookup_cache
+        self.task_gate = task_gate
+        # A visitor's model keys, by variable name: memory only, never os.environ.
+        self.session_keys: dict[str, str] = {}
         self.tasks = TaskManager()
         self._state_lock = threading.Lock()
 
@@ -350,9 +361,8 @@ class Workspace:
         raw = Path(os.path.expanduser(value))
         resolved = (raw if raw.is_absolute() else self.root / raw).resolve()
         if resolved != self.root and self.root not in resolved.parents:
-            raise ApiError(
-                403, "outside_workspace", f"{value!r} is outside the workspace {self.root}"
-            )
+            where = "your workspace" if self.public else f"the workspace {self.root}"
+            raise ApiError(403, "outside_workspace", f"{value!r} is outside {where}")
         if must_exist and not resolved.exists():
             raise ApiError(404, "not_found", f"{value!r} does not exist")
         return resolved
@@ -399,13 +409,14 @@ class Workspace:
     def info(self, params: Params) -> Response:
         return {
             "version": __version__,
-            "root": str(self.root),
+            "root": "your private workspace" if self.public else str(self.root),
             "max_calls_cap": self.max_calls_cap,
             "allow_endpoint": self.allow_endpoint,
             "offline_model": offline.OFFLINE_MODEL_NAME,
             "page_size": ops.MAX_PAGE_SIZE,
             "search_limit": ops.MAX_SEARCH_LIMIT,
             "max_upload_mb": self.max_upload_bytes // (1024 * 1024),
+            "public": self.public,
         }
 
     def workspace(self, params: Params) -> Response:
@@ -461,7 +472,7 @@ class Workspace:
                 break
         runs.sort(key=lambda r: r["modified"], reverse=True)
         return {
-            "root": str(self.root),
+            "root": "your private workspace" if self.public else str(self.root),
             "jobs": jobs,
             "runs": runs,
             "gold": golds,
@@ -616,6 +627,14 @@ class Workspace:
                 )
         if self.tasks.running_for(str(out)) is not None:
             raise ApiError(409, "task_running", f"a task is already writing {self.rel(out)}")
+        endpoint_llm = None
+        if self.public:
+            if any(t.state == "running" for t in self.tasks.all()):
+                raise ApiError(429, "busy", "one run at a time; wait for the current one")
+            if self.task_gate is not None:
+                self.task_gate()
+            if model == "endpoint":
+                endpoint_llm = self._public_llm(job, kind)
         if kind == "cluster" and limit is not None:
             raise ApiError(400, "invalid_parameter", "limit is not supported for clustering")
 
@@ -637,7 +656,7 @@ class Workspace:
                 task.add_event({"source_id": source_id, "status": outcome})
 
             async def cluster_work() -> ops.OpResult:
-                llm = offline.cluster_llm() if model == "offline" else None
+                llm = offline.cluster_llm() if model == "offline" else endpoint_llm
                 result = await ops.cluster_async(
                     job, out, max_calls=max_calls, llm=llm, progress=cluster_progress
                 )
@@ -658,7 +677,7 @@ class Workspace:
             )
 
         async def match_work() -> ops.OpResult:
-            llm = decider = None
+            llm, decider = endpoint_llm, None
             if model == "offline":
                 from xwalk.decide.fake import FakeDecider
 
@@ -679,6 +698,25 @@ class Workspace:
             return _mark_offline(result, model)
 
         return self.tasks.start(task, "match", match_work).view()
+
+    def _public_llm(self, job: Path, kind: str) -> Any:
+        """The visitor's model client for a public endpoint run (keys from the session)."""
+        from xwalk.ui.hosting import PublicRefusal, endpoint_client
+
+        try:
+            if kind == "cluster":
+                from xwalk.cluster.operation import load_job as load_cluster
+
+                spec: Any = load_cluster(job, "match")
+            else:
+                spec = ops.load_valid_job(job, operation="match")
+                if spec.decider is not None:
+                    raise PublicRefusal("decider jobs cannot run on the hosted version")
+            return endpoint_client(spec.llm, self.session_keys)
+        except PublicRefusal as exc:
+            raise ApiError(403, "not_allowed_here", str(exc)) from None
+        except ops.OpError as exc:
+            raise ApiError(400, "job_invalid", str(exc)) from None
 
     def list_tasks(self, params: Params) -> Response:
         return {"tasks": [{**t.view(), "events": []} for t in self.tasks.all()]}
