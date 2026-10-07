@@ -257,7 +257,7 @@ def served(tmp_path: Path) -> Iterator[str]:
     """A local HTTP server for `tmp_path/www` (plain and gzipped ontologies)."""
     www = tmp_path / "www"
     www.mkdir()
-    (www / "toy.obo").write_text(TOY_OBO, encoding="utf-8")
+    (www / "toy.obo").write_bytes(TOY_OBO.encode("utf-8"))
     (www / "toy-gz.obo").write_bytes(gzip.compress(TOY_OBO.encode("utf-8")))
 
     class Quiet(http.server.SimpleHTTPRequestHandler):
