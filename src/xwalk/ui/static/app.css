@@ -111,6 +111,10 @@ p { margin: 0 0 10px; }
 .sidebar nav a:hover, .side-list a:hover { background: var(--panel-2); text-decoration: none; }
 .sidebar nav a.active, .side-list a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .side-section h4 { padding: 0 10px; margin-bottom: 4px; }
+.chatgpt-account { margin: 12px 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.chatgpt-account h4 { padding: 0; }
+.chatgpt-account .small { overflow: hidden; text-overflow: ellipsis; margin: 6px 0; }
+.chatgpt-card { border-color: var(--accent); }
 .side-list { display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
 .side-list a span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-list .empty { padding: 4px 10px; color: var(--muted); font-size: 12px; }

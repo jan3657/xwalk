@@ -280,6 +280,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--frame-ancestors", default=None, help="origins allowed to embed the page in a frame"
     )
     ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
+    ui.add_argument(
+        "--chatgpt-login",
+        action="store_true",
+        help="enable local Sign in with ChatGPT (requires xwalk[chatgpt] and --host 127.0.0.1)",
+    )
+    ui.add_argument(
+        "--dense",
+        action="store_true",
+        help="enable general and biomedical dense retrieval alongside BM25 (requires xwalk[dense])",
+    )
+    ui.add_argument(
+        "--dense-device",
+        default=None,
+        help="dense encoder device, e.g. cpu or mps (default: automatic)",
+    )
 
     review = sub.add_parser("review", help="export or apply human review")
     review_sub = review.add_subparsers(dest="review_command")
@@ -804,6 +819,9 @@ def _serve_ui(args: argparse.Namespace) -> int:
             session_ttl=args.session_hours * 3600,
             max_tasks=args.max_tasks,
             frame_ancestors=args.frame_ancestors,
+            chatgpt_login=args.chatgpt_login,
+            dense=args.dense,
+            dense_device=args.dense_device,
         )
     except KeyboardInterrupt:
         return EXIT_OK

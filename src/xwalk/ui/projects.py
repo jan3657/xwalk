@@ -66,6 +66,13 @@ PRESETS: dict[str, dict[str, Any]] = {
         "api_key_env": None,
         "profile": "unknown",
     },
+    "chatgpt": {
+        "label": "ChatGPT plan (sign in)",
+        "model": "",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": None,
+        "profile": "unknown",
+    },
 }
 
 DEFAULT_DESCRIPTIONS = {
@@ -145,6 +152,11 @@ def llm_block(model: Mapping[str, Any] | None) -> dict[str, Any]:
     if preset_name not in PRESETS:
         raise FileProblem(f"unknown model preset {preset_name!r}; choose from {sorted(PRESETS)}")
     preset = PRESETS[preset_name]
+    if preset_name == "chatgpt":
+        model_name = str(choice.get("model") or "").strip()
+        if not model_name:
+            raise FileProblem("Sign in with ChatGPT in Settings, then choose an available model")
+        return {"kind": "chatgpt", "model": model_name}
     block: dict[str, Any] = {"kind": "openai_compat"}
     for key in ("model", "base_url", "api_key_env", "profile"):
         value = choice.get(key)
@@ -221,6 +233,7 @@ def create_map_project(
     model: Mapping[str, Any] | None = None,
     policy: Mapping[str, Any] | None = None,
     provenance: Mapping[str, Any] | None = None,
+    retrievers: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Write a matching project and return its summary (`job_path`, counts, warnings)."""
     llm = llm_block(model)
@@ -245,7 +258,8 @@ def create_map_project(
             "templates": dict(_TEMPLATES),
             "target": {"kind": "jsonl", "path": "targets.jsonl"},
             "source": {"kind": "jsonl", "path": "sources.jsonl"},
-            "retrievers": [
+            "retrievers": [dict(r) for r in retrievers]
+            or [
                 {"kind": "bm25", "name": "bm25", "limit": 30, "exact_fields": ["label", "synonyms"]}
             ],
             "llm": llm,
@@ -374,9 +388,19 @@ def library_lookup_key(slugs: Sequence[str]) -> dict[str, Any]:
     return {"target": {"libraries": list(slugs)}}
 
 
-def lookup_job(library: Library, choice: TargetChoice, key: Mapping[str, Any], base: Path) -> Path:
+def lookup_job(
+    library: Library,
+    choice: TargetChoice,
+    key: Mapping[str, Any],
+    base: Path,
+    *,
+    retrievers: Sequence[Mapping[str, Any]] = (),
+) -> Path:
     """The job file of the hidden project for one target set under `base`, made once."""
-    directory = base / lookup_key(library, choice, key)
+    identity = dict(key)
+    if retrievers and any(r.get("kind") == "dense" for r in retrievers):
+        identity["retrievers"] = [dict(r) for r in retrievers]
+    directory = base / lookup_key(library, choice, identity)
     with lookup_lock(directory):
         found = sorted((directory / PROJECTS_DIR).glob("*/job.yaml"))
         if found:
@@ -388,6 +412,7 @@ def lookup_job(library: Library, choice: TargetChoice, key: Mapping[str, Any], b
             sources=[Record("q1", {"text": "lookup", "context": ""})],
             targets=choice,
             model={"preset": "openai"},
+            retrievers=retrievers,
         )
         return Path(summary["job_path"])
 

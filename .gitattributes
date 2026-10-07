@@ -1,0 +1,2 @@
+# Keep frozen benchmark digests and generated-file comparisons stable on Windows.
+* text=auto eol=lf

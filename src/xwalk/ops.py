@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import functools
 import importlib.util
 import json
 import os
 import shutil
+import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
@@ -486,8 +488,17 @@ class PlannedIndex:
         raise RuntimeError(f"{self.name} is planned, not built; call prepare_indexes")
 
 
+_ENCODER_FACTORY_LOCK = threading.Lock()
+
+
 def _default_encoder_factory(spec: RetrieverSpec) -> Encoder:
-    return JobSpec.build_encoder(spec)
+    with _ENCODER_FACTORY_LOCK:
+        return _cached_encoder(spec.model_dump_json(exclude_unset=True))
+
+
+@functools.lru_cache(maxsize=4)
+def _cached_encoder(spec_json: str) -> Encoder:
+    return JobSpec.build_encoder(RetrieverSpec.model_validate_json(spec_json))
 
 
 def plan_indexes(

@@ -405,7 +405,7 @@ def _lookup_project(ws: Workspace, choice: projects.TargetChoice, key: Mapping[s
     if ws.lookup_cache is not None and choice.records is None:
         # Library-only target sets are the same for every visitor: share their index.
         base = ws.lookup_cache
-    return projects.lookup_job(library(ws), choice, key, base)
+    return projects.lookup_job(library(ws), choice, key, base, retrievers=ws.retrieval_heads)
 
 
 def _lookup(ws: Workspace, target: Any, queries: list[Record], top_k: int) -> dict[str, Any]:
@@ -481,6 +481,7 @@ def create_project(ws: Workspace, params: Params) -> Response:
                 model=model,
                 policy=policy if isinstance(policy, Mapping) else None,
                 provenance={**source_meta, **target_meta},
+                retrievers=ws.retrieval_heads,
             )
         )
     assert isinstance(summary, dict)
@@ -636,13 +637,25 @@ def review_sheet(ws: Workspace, params: Params) -> Response:
 
 def presets(ws: Workspace, params: Params) -> Response:
     return {
-        "presets": projects.PRESETS,
+        "presets": {
+            k: v
+            for k, v in projects.PRESETS.items()
+            if k != "chatgpt" or ws.chatgpt_auth is not None
+        },
         "descriptions": projects.DEFAULT_DESCRIPTIONS,
+        "chatgpt": ws.chatgpt_auth.status() if ws.chatgpt_auth else {"available": False},
+        "default_preset": "chatgpt"
+        if ws.chatgpt_auth and ws.chatgpt_auth.status()["plan_enabled"]
+        else "openai",
     }
 
 
 def credentials(ws: Workspace, params: Params) -> Response:
-    names = {str(p["api_key_env"]) for p in projects.PRESETS.values() if p["api_key_env"]}
+    names = {
+        str(p["api_key_env"])
+        for k, p in projects.PRESETS.items()
+        if k != "chatgpt" and p["api_key_env"]
+    }
     if ws.public:
         # A visitor sees only the keys of their own session, never the server's.
         names |= set(ws.session_keys)
@@ -704,7 +717,62 @@ def set_credential(ws: Workspace, params: Params) -> Response:
 
 Handler = Callable[[Workspace, Params], Response]
 
+
+def chatgpt(ws: Workspace, params: Params) -> Response:
+    if ws.chatgpt_auth is None:
+        return {"available": False}
+    return ws.chatgpt_auth.status()
+
+
+def chatgpt_action(ws: Workspace, params: Params) -> Response:
+    from xwalk.ui.chatgpt import ChatGPTError
+
+    auth = ws.chatgpt_auth
+    if auth is None:
+        raise ApiError(
+            403,
+            "chatgpt_unavailable",
+            "ChatGPT sign-in is available only in a local explorer started with --chatgpt-login",
+        )
+    try:
+        action = _str(params, "action")
+        account = _str(params, "account", required=False) or None
+        if action == "sign_in":
+            return {
+                "url": auth.begin(
+                    account, return_to=_str(params, "return_to", required=False) or "/#/quick"
+                )
+            }
+        if action == "select" and account:
+            auth.select(account)
+            return auth.status()
+        if action == "sign_out":
+            if any(t.state == "running" for t in ws.tasks.all()):
+                raise ApiError(
+                    409, "task_running", "Wait for or cancel the running task before signing out"
+                )
+            confirmed = auth.sign_out()
+            return {**auth.status(), "revocation_confirmed": confirmed}
+        raise ApiError(400, "invalid_parameter", "Unknown ChatGPT action")
+    except ChatGPTError as exc:
+        raise ApiError(400, "chatgpt_error", str(exc)) from None
+
+
+def chatgpt_models(ws: Workspace, params: Params) -> Response:
+    from xwalk.ui.chatgpt import ChatGPTError
+
+    if ws.chatgpt_auth is None:
+        raise ApiError(403, "chatgpt_unavailable", "ChatGPT sign-in is not enabled here")
+    try:
+        return {"models": ws.chatgpt_auth.models()}
+    except ChatGPTError as exc:
+        raise ApiError(400, "chatgpt_error", str(exc)) from None
+
+
 ROUTES: dict[tuple[str, str], Handler] = {
+    ("GET", "/api/chatgpt"): chatgpt,
+    ("POST", "/api/chatgpt"): chatgpt_action,
+    ("GET", "/api/chatgpt/models"): chatgpt_models,
     ("POST", "/api/upload"): upload,
     ("GET", "/api/files"): list_files,
     ("POST", "/api/files/delete"): delete_file,

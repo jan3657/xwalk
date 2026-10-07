@@ -299,6 +299,7 @@ async function render() {
   const page = h("div", {});
   append(clear(main), page);
   try {
+    if (typeof refreshChatGPTConnection === "function") await refreshChatGPTConnection();
     await view(page, route.params, route);
   } catch (err) {
     if (seq === renderSeq) append(clear(page), failureBox(err));
@@ -700,7 +701,7 @@ async function jobRun(body, job, params, runs) {
     for (const [k, b] of Object.entries(segBtns)) b.classList.toggle("active", k === m);
     append(clear(modelHelp), m === "offline"
       ? (isCluster ? "Lexical stand-in: clusters records whose labels share most of their words. No endpoint, no cost." : "Scripted stand-in: always the first candidate with confidence 0.9 (decider jobs: word-overlap FakeDecider). Exercises the whole pipeline; no endpoint, no cost.")
-      : notice("warn", "billed", "Uses the endpoint and model named in the job; every call is billed by your provider. The credential variable must be set in the environment that started xwalk ui. A call limit is required."));
+      : notice("warn", "model usage", "Uses the model named in the job and your provider billing or connected ChatGPT plan. Set your API key or connect ChatGPT in Settings. A call limit is required."));
     maxCalls.required = m === "endpoint";
   };
   segBtns.offline = h("button", { type: "button", onclick: () => setModel("offline") }, "Offline stand-in");

@@ -55,12 +55,13 @@ Changelog = "https://github.com/jan3657/xwalk/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 dense = ["sentence-transformers>=3.0", "torch>=2.0", "faiss-cpu>=1.8"]
 ontology = ["rdflib>=7.0"]
+chatgpt = ["PyJWT[crypto]>=2.10,<3"]
 sql = ["sqlalchemy>=2.0"]
 litellm = ["litellm>=1.40"]
 # `xwalk mcp`: tested against mcp 2.3.0. mcp 2 renamed FastMCP to MCPServer and changed
 # the result types, so 1.x is not supported; 3.x may change them again.
 mcp = ["mcp>=2.3,<3"]
-all = ["xwalk[dense,ontology,sql,litellm,mcp]"]
+all = ["xwalk[dense,ontology,sql,litellm,mcp,chatgpt]"]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.24",
@@ -91,6 +92,7 @@ markers = [
     "ontology: needs xwalk[ontology]",
     "sql: needs xwalk[sql]",
     "mcp: needs xwalk[mcp]",
+    "chatgpt: needs xwalk[chatgpt]; OAuth and inference are mocked",
 ]
 
 [tool.ruff]

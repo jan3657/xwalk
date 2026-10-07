@@ -208,27 +208,100 @@ function targetPicker({ preselect = [] } = {}) {
 }
 
 /* The model a project's job names (used when running against the endpoint). */
-function modelPicker(presets) {
-  const preset = h("select", {}, Object.entries(presets).map(([k, p]) => h("option", { value: k }, p.label)));
+async function connectChatGPT(connection, returnTo = "/#/quick", beforeConnect = () => {}) {
+  try {
+    beforeConnect();
+    const { url } = await api("POST", "/api/chatgpt", {
+      action: "sign_in", account: connection.active || undefined, return_to: returnTo,
+    });
+    location.assign(url);
+  } catch (err) { toast(err.message, "error"); }
+}
+
+function chatgptConnectionCard(connection, { returnTo = "/#/quick", beforeConnect } = {}) {
+  if (!connection.available) return null;
+  const active = (connection.accounts || []).find((a) => a.id === connection.active);
+  return h("section", { class: "card chatgpt-card" },
+    h("div", { class: "card-head" }, h("h2", {}, "ChatGPT"), connection.plan_enabled ? badge("matched", "Connected") : null),
+    connection.plan_enabled
+      ? [h("p", {}, active?.label || "Your ChatGPT account"),
+        h("p", { class: "small muted" }, "Your subscription is ready to use. Choose “With ChatGPT” when you map terms."),
+        h("div", { class: "inline" }, h("a", { href: link("settings") }, "Manage connection"),
+          h("a", { href: "https://chatgpt.com/settings/usage", target: "_blank", rel: "noopener" }, "Manage usage"))]
+      : [h("p", {}, "Use your ChatGPT subscription. No API key needed."),
+        h("p", { class: "small muted" }, connection.connected ? "Enable plan usage to make AI decisions." : "Connect a Plus or Pro account to let a model choose the right matches."),
+        h("button", { type: "button", class: "primary", onclick: () => connectChatGPT(connection, returnTo, beforeConnect) }, "Continue with ChatGPT")]);
+}
+
+async function refreshChatGPTConnection() {
+  const sidebar = document.getElementById("chatgpt-connection");
+  if (!sidebar) return;
+  const connection = await api("GET", "/api/chatgpt");
+  sidebar.hidden = !connection.available;
+  if (!connection.available) return;
+  const active = (connection.accounts || []).find((a) => a.id === connection.active);
+  clear(sidebar);
+  append(sidebar, h("h4", {}, "ChatGPT"), connection.plan_enabled
+    ? [badge("matched", "Connected"), h("div", { class: "small muted" }, active?.label || "Your account"), h("a", { href: link("settings") }, "Manage connection")]
+    : h("button", { type: "button", onclick: () => connectChatGPT(connection) }, "Continue with ChatGPT"));
+}
+
+function modelPicker(presets, { chatgpt = {}, default_preset = "openai", beforeConnect, returnTo = "/#/quick" } = {}) {
+  const preset = h("select", { "aria-label": "Model provider" }, Object.entries(presets).map(([k, p]) => h("option", { value: k }, p.label)));
+  preset.value = default_preset;
   const model = h("input", { type: "text" });
+  const chatgptModel = h("select", { hidden: true, "aria-label": "ChatGPT model" });
+  const planHelp = h("p", { class: "small muted", hidden: true });
   const base = h("input", { type: "text" });
   const env = h("input", { type: "text", placeholder: "none" });
-  const fill = () => {
+  const apiFields = h("div", { class: "form-row" },
+    h("label", { class: "field" }, "Model", model),
+    h("label", { class: "field" }, "Endpoint URL", base),
+    h("label", { class: "field" }, "Key variable", env, h("span", { class: "help" }, "Set your key in ", h("a", { href: link("settings") }, "Settings"))));
+  const planModelField = h("label", { class: "field" }, "ChatGPT model", chatgptModel);
+  let loadSeq = 0;
+  const fill = async () => {
+    const seq = ++loadSeq;
     const p = presets[preset.value];
+    const usesPlan = preset.value === "chatgpt";
+    apiFields.hidden = usesPlan;
+    planModelField.hidden = !usesPlan;
+    model.hidden = usesPlan;
+    chatgptModel.hidden = !usesPlan;
+    base.disabled = usesPlan;
+    env.disabled = usesPlan;
+    planHelp.hidden = !usesPlan;
     model.value = p.model || "";
     base.value = p.base_url || "";
     env.value = p.api_key_env || "";
+    if (usesPlan) {
+      clear(chatgptModel);
+      planHelp.textContent = "Loading models for your connected ChatGPT account…";
+      try {
+        const { models } = await api("GET", "/api/chatgpt/models");
+        if (seq !== loadSeq) return;
+        append(chatgptModel, models.map((m) => h("option", { value: m.slug }, m.display_name)));
+        const savedModel = remember(`chatgpt:model:${chatgpt.active}`);
+        if (models.some((m) => m.slug === savedModel)) chatgptModel.value = savedModel;
+        clear(planHelp);
+        append(planHelp, "Using ChatGPT plan. Requests count toward your plan limits. ",
+          h("a", { href: "https://chatgpt.com/settings/usage", target: "_blank", rel: "noopener" }, "Manage usage"));
+      } catch (err) {
+        if (seq !== loadSeq) return;
+        clear(planHelp);
+        append(planHelp, err.message, " ", h("button", { type: "button", onclick: () => connectChatGPT(chatgpt, returnTo, beforeConnect) }, "Continue with ChatGPT"));
+      }
+    }
   };
   preset.addEventListener("change", fill);
+  chatgptModel.addEventListener("change", () => remember(`chatgpt:model:${chatgpt.active}`, chatgptModel.value));
   fill();
   return {
     el: h("div", { class: "form" },
-      h("div", { class: "form-row" },
-        h("label", { class: "field" }, "Provider", preset),
-        h("label", { class: "field" }, "Model", model),
-        h("label", { class: "field" }, "Endpoint URL", base),
-        h("label", { class: "field" }, "Key variable", env, h("span", { class: "help" }, "the key itself is never written; set it in ", h("a", { href: link("settings") }, "Settings"), " or the environment")))),
-    value: () => ({ preset: preset.value, model: model.value, base_url: base.value, api_key_env: env.value }),
+      chatgpt.available && !chatgpt.plan_enabled ? chatgptConnectionCard(chatgpt, { returnTo, beforeConnect }) : null,
+      planModelField, planHelp,
+      h("label", { class: "field" }, "Model provider", preset), apiFields),
+    value: () => ({ preset: preset.value, model: preset.value === "chatgpt" ? chatgptModel.value : model.value, base_url: base.value, api_key_env: env.value }),
   };
 }
 
@@ -242,14 +315,16 @@ function section(n, title, help, ...content) {
 
 views.home = async (page) => {
   const ws = state.workspace || (await loadWorkspace());
+  const chatgpt = await api("GET", "/api/chatgpt");
   const card = (icon, title, text, href, cta) => h("a", { class: "usecase", href },
     h("div", { class: "uc-icon" }, icon), h("h3", {}, title), h("p", {}, text), h("span", { class: "uc-cta" }, `${cta} →`));
   append(page, [
-    state.info.public ? notice("info", "hosted version", "Your files and runs live in a private workspace tied to this browser and are deleted after a day without use. Do not upload confidential data. Runs use the free offline stand-in unless you add your own model key in Settings.") : null,
+    state.info.public ? notice("info", "Your workspace", "Your files and runs are private to this browser and are deleted after a day without use. Do not upload confidential data.") : null,
     h("section", { class: "hero" },
       h("h1", {}, "Map messy records onto a reference collection"),
       h("p", {}, "Bring a spreadsheet of names, pick an ontology (or your own reference list), and xwalk finds each record's match: retrieval proposes candidates, a model chooses, a policy decides how sure it is, and every decision is recorded so you can check it."),
       pipelineDiagram()),
+    chatgptConnectionCard(chatgpt),
     h("h2", { class: "section-title" }, "What do you want to do?"),
     h("div", { class: "usecases" },
       card("🗂", "Map a file to an ontology", "Upload a CSV or text file of terms and map every row onto ChEBI, FoodOn, a disease vocabulary or any ontology you add.", link("new", { mode: "map" }), "Start"),
@@ -274,7 +349,7 @@ views.home = async (page) => {
 
 views.new = async (page, params) => {
   const mode = params.mode === "cluster" ? "cluster" : "map";
-  const { presets, descriptions } = await api("GET", "/api/presets");
+  const { presets, descriptions, chatgpt, default_preset } = await api("GET", "/api/presets");
   const source = fileWithColumns("source", {
     onReady: (insp) => { if (!name.value) name.value = insp.path.split("/").pop().replace(/\.[^.]+$/, ""); },
   });
@@ -286,7 +361,7 @@ views.new = async (page, params) => {
   const targetNoun = h("input", { type: "text", placeholder: descriptions.target_noun });
   const brief = h("textarea", { rows: 2, placeholder: descriptions.domain_brief });
   const relation = h("textarea", { rows: 3, placeholder: "default: same entity or concept, interchangeable labels; broader, narrower or related is not equivalent" });
-  const model = modelPicker(presets);
+  const model = modelPicker(presets, { chatgpt, default_preset, returnTo: "/#/new?mode=" + mode });
   const acceptAt = h("input", { type: "number", min: 0, max: 1, step: 0.05, value: 0.7 });
   const floor = h("input", { type: "number", min: 0, max: 1, step: 0.05, value: 0.4 });
   const name = h("input", { type: "text", placeholder: mode === "cluster" ? "clustering" : "mapping" });
@@ -361,14 +436,15 @@ function downloadUrl2(path, params) {
 // --- quick map -----------------------------------------------------------------------------
 
 views.quick = async (page, params) => {
-  const { presets } = await api("GET", "/api/presets");
+  const { presets, chatgpt, default_preset } = await api("GET", "/api/presets");
   const terms = h("textarea", { rows: 8, placeholder: "one term per line, e.g.\ncheddar\nmyocardial infarction\nglucose" });
   terms.value = remember("quick:terms") || "";
   const target = targetPicker({ preselect: params.library ? [params.library] : (JSON.parse(remember("quick:libs") || "[]")) });
   let mode = "candidates";
   const topK = h("input", { type: "number", min: 1, max: 50, value: 5, style: { width: "80px" } });
-  const maxCalls = h("input", { type: "number", min: 1, max: state.info.max_calls_cap, placeholder: `≤ ${state.info.max_calls_cap}`, style: { width: "120px" } });
-  const model = modelPicker(presets);
+  const maxCalls = h("input", { type: "number", min: 1, max: state.info.max_calls_cap, value: Math.min(50, state.info.max_calls_cap), style: { width: "120px" } });
+  const saveInputs = () => { remember("quick:terms", terms.value); const tgt = target.value(); if (tgt?.libraries) remember("quick:libs", JSON.stringify(tgt.libraries)); };
+  const model = modelPicker(presets, { chatgpt, default_preset, beforeConnect: saveInputs, returnTo: "/#/quick?with=chatgpt" });
   const modelBox = h("div", { hidden: true }, model.el, h("label", { class: "field" }, "Max model calls", maxCalls));
   const help = h("p", { class: "small muted" });
   const segs = {};
@@ -380,12 +456,12 @@ views.quick = async (page, params) => {
     help.textContent = {
       candidates: "Retrieval only: the top candidates for each term, ranked, with exact label/synonym hits flagged. No model, no cost, instant.",
       offline: "Runs the whole pipeline with the offline stand-in (always the first candidate). Shows the mechanics, not a judgement.",
-      endpoint: "Runs the whole pipeline with your model. Every call is billed by your provider; set a call limit.",
+      endpoint: "Runs the whole pipeline with your model. Uses your provider billing or connected ChatGPT plan; set a call limit.",
     }[m];
   };
   segs.candidates = h("button", { type: "button", onclick: () => setMode("candidates") }, "Candidates only (free)");
   segs.offline = h("button", { type: "button", onclick: () => setMode("offline") }, "Offline stand-in");
-  segs.endpoint = h("button", { type: "button", disabled: !state.info.allow_endpoint, onclick: () => setMode("endpoint") }, "With a model");
+  segs.endpoint = h("button", { type: "button", disabled: !state.info.allow_endpoint, onclick: () => setMode("endpoint") }, chatgpt.plan_enabled ? "With ChatGPT" : "With a model");
   const out = h("div", {});
   const run = async (e) => {
     e.preventDefault();
@@ -411,6 +487,7 @@ views.quick = async (page, params) => {
   };
   append(page, [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Quick map"), h("p", { class: "muted" }, "Type or paste terms, choose where to look, and see what they map to."))),
+    chatgpt.available && !chatgpt.plan_enabled ? chatgptConnectionCard(chatgpt, { beforeConnect: saveInputs, returnTo: "/#/quick?with=chatgpt" }) : null,
     h("form", { class: "grid two quick", onsubmit: run },
       h("section", { class: "card" }, h("h2", {}, "Terms"), terms,
         h("p", { class: "small muted" }, "Tip: add context after a tab (term⇥context) to help a model disambiguate.")),
@@ -421,7 +498,7 @@ views.quick = async (page, params) => {
       help, modelBox),
     out,
   ]);
-  setMode("candidates");
+  setMode(params.with === "chatgpt" && chatgpt.plan_enabled ? "endpoint" : "candidates");
 };
 
 function candidatesView(r) {
@@ -443,14 +520,15 @@ function candidatesView(r) {
       h("h2", {}, `Candidates for ${rows.length} term${rows.length === 1 ? "" : "s"}`),
       h("div", { class: "inline" }, h("span", { class: "muted small" }, `${exact} exact hit${exact === 1 ? "" : "s"} · ${none} with nothing retrieved · searched ${fmt(r.targets)} targets in ${r.target_description}`),
         h("button", { onclick: csv }, "Download CSV"))),
-    h("p", { class: "small muted" }, "Ranked by retrieval only: the first candidate is the best text match, not a decision. ", badge("matched", "exact"), " means the term equals the label or a synonym."),
+    h("p", { class: "small muted" }, "Searched with ", Object.keys(r.indexes || {}).map((name) => ({ bm25: "keyword", "dense-general": "general semantic", "dense-biomedical": "biomedical semantic" }[name] || name)).join(" + "), ". ", badge("matched", "exact"), " means the term equals the label or a synonym. Candidates still need a model or your review to confirm a match."),
     h("div", { class: "table-wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, ["Term", "Best candidate", "Ontology", "Other candidates"].map((t) => h("th", {}, t)))),
       h("tbody", {}, rows.map((row) => {
         const [best, ...rest] = row.candidates;
         return h("tr", {},
           h("td", {}, h("b", {}, row.text)),
-          h("td", {}, best ? [best.exact ? badge("matched", "exact") : null, " ", h("code", {}, best.id), " ", best.label, best.synonyms.length ? h("div", { class: "muted small" }, best.synonyms.join("; ")) : null] : h("span", { class: "muted" }, "nothing retrieved")),
+          h("td", {}, best ? [best.exact ? badge("matched", "exact") : null, " ", h("code", {}, best.id), " ", best.label, best.synonyms.length ? h("div", { class: "muted small" }, best.synonyms.join("; ")) : null,
+            h("div", { class: "muted small" }, Object.entries(best.retrievers || {}).map(([name, rank]) => `${({ bm25: "Keyword", "dense-general": "Semantic", "dense-biomedical": "Biomedical" }[name] || name)} #${rank}`).join(" · "))] : h("span", { class: "muted" }, "nothing retrieved")),
           h("td", { class: "small" }, best ? best.ontology || "" : ""),
           h("td", { class: "small" }, rest.map((c) => h("div", {}, h("code", {}, c.id), " ", c.label, c.exact ? [" ", badge("matched", "exact")] : null))));
       })))));
@@ -640,6 +718,26 @@ views.files = async (page) => {
 
 views.settings = async (page) => {
   const { credentials } = await api("GET", "/api/credentials");
+  const chatgpt = await api("GET", "/api/chatgpt");
+  const account = h("select", {}, (chatgpt.accounts || []).map((a) => h("option", { value: a.id }, a.label)));
+  if (chatgpt.active) account.value = chatgpt.active;
+  const connect = async (saved = false) => {
+    try {
+      const { url } = await api("POST", "/api/chatgpt", { action: "sign_in", account: saved ? account.value : undefined, return_to: "/#/quick?with=chatgpt" });
+      location.assign(url);
+    } catch (err) { toast(err.message, "error"); }
+  };
+  account.addEventListener("change", async () => {
+    try { await api("POST", "/api/chatgpt", { action: "select", account: account.value }); render(); }
+    catch (err) { toast(err.message, "error"); }
+  });
+  const disconnect = async () => {
+    try {
+      const result = await api("POST", "/api/chatgpt", { action: "sign_out" });
+      toast(result.revocation_confirmed ? "Signed out of ChatGPT" : "Signed out locally; remote revocation was not confirmed. Disconnect xwalk in ChatGPT Settings.", result.revocation_confirmed ? "ok" : "error");
+      render();
+    } catch (err) { toast(err.message, "error"); }
+  };
   const envName = h("input", { type: "text", placeholder: "MY_PROVIDER_API_KEY" });
   const envValue = h("input", { type: "password", placeholder: "paste the key", autocomplete: "off" });
   const save = async (name, value) => {
@@ -653,6 +751,21 @@ views.settings = async (page) => {
   };
   append(page, [
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Settings"))),
+    h("section", { class: "card" },
+      h("h2", {}, "Use your ChatGPT plan"),
+      chatgpt.available ? [
+        h("p", { class: "muted small" }, "Eligible Plus and Pro subscribers can use their ChatGPT plan for model requests. This uses your existing plan limits. xwalk receives no access to your ChatGPT conversations."),
+        chatgpt.plan_enabled ? [notice("info", "Connected", "Your ChatGPT subscription is ready to use."), h("p", {}, (chatgpt.accounts || []).find((a) => a.id === chatgpt.active)?.label), h("a", { class: "btn primary", href: link("quick", { with: "chatgpt" }) }, "Map with ChatGPT ▸")] : null,
+        chatgpt.connected && !chatgpt.plan_enabled ? notice("warn", "Plan usage disabled", "You are signed in, but have not granted permission to use your ChatGPT plan. Continue with ChatGPT to enable it, or use an API key.") : null,
+        !chatgpt.plan_enabled ? h("button", { type: "button", class: "primary", onclick: () => connect(Boolean(chatgpt.active)) }, "Continue with ChatGPT") : null,
+        h("div", { class: "inline", style: { marginTop: "12px" } },
+          h("a", { href: "https://chatgpt.com/settings/usage", target: "_blank", rel: "noopener" }, "Manage usage"),
+          details("Manage accounts", h("div", { class: "form" },
+            (chatgpt.accounts || []).length > 1 ? account : null,
+            h("button", { type: "button", onclick: () => connect() }, "Connect another account"),
+            chatgpt.connected ? h("button", { type: "button", onclick: disconnect }, "Sign out") : null))),
+        h("p", { class: "muted small" }, chatgpt.persistent ? "Credentials are saved in protected local configuration outside the workspace." : "Credentials stay in your browser session's server memory and are cleared when that session ends or the server restarts. Open this explorer at 127.0.0.1 for sign-in."),
+      ] : h("p", { class: "muted small" }, "Available in the local explorer with --chatgpt-login and xwalk[chatgpt]. Shared remotely hosted sites require separate OpenAI approval.")),
     h("section", { class: "card" },
       h("h2", {}, "API keys for this session"),
       h("p", { class: "muted small" }, state.info.public

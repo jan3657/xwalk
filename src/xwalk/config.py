@@ -248,7 +248,7 @@ class RetrieverSpec(_Spec):
 
 
 class LLMSpec(_Spec):
-    kind: Literal["openai_compat", "litellm"] = "openai_compat"
+    kind: Literal["openai_compat", "litellm", "chatgpt"] = "openai_compat"
     model: str
     base_url: str | None = None
     api_key_env: str | None = None
@@ -267,6 +267,13 @@ class LLMSpec(_Spec):
             )
         if self.kind == "openai_compat" and not self.base_url:
             raise ValueError("openai_compat needs a base_url")
+        if self.kind == "chatgpt":
+            if self.api_key_env:
+                raise ValueError(
+                    "chatgpt uses Sign in with ChatGPT in the local explorer; omit api_key_env"
+                )
+            if self.base_url not in (None, "https://api.openai.com/v1"):
+                raise ValueError("chatgpt uses only the official Responses API")
         if self.profile not in CAPABILITY_PROFILES:
             raise ValueError(
                 f"unknown profile {self.profile!r}; choose from {sorted(CAPABILITY_PROFILES)}"
@@ -687,6 +694,10 @@ class JobSpec(_Spec):
 
 def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
     """`where` is the spec's path in the job file, for the missing-key error."""
+    if spec.kind == "chatgpt":
+        raise ValueError(
+            "ChatGPT plan projects must run in the local explorer with --chatgpt-login"
+        )
     api_key = None
     if spec.api_key_env:
         api_key = os.environ.get(spec.api_key_env)

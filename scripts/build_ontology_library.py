@@ -24,6 +24,7 @@ from pathlib import Path
 
 from xwalk.ui import files, projects
 from xwalk.ui.library import CATALOG, Library, download, slugify
+from xwalk.ui.retrieval import heads
 
 
 def _build(
@@ -50,10 +51,18 @@ def _build(
     return entry.slug
 
 
-def _index(library: Library, slug: str, cache: Path) -> None:
+def _index(
+    library: Library, slug: str, cache: Path, *, dense: bool = False, device: str | None = None
+) -> None:
     started = time.monotonic()
     choice = projects.TargetChoice(libraries=[slug])
-    job = projects.lookup_job(library, choice, projects.library_lookup_key([slug]), cache)
+    job = projects.lookup_job(
+        library,
+        choice,
+        projects.library_lookup_key([slug]),
+        cache,
+        retrievers=heads(dense=dense, device=device),
+    )
     from xwalk.records import Record
 
     projects.lookup(
@@ -72,6 +81,12 @@ def main(argv: list[str] | None = None) -> int:
         "--url", action="append", default=[], help="NAME=URL of another ontology (repeatable)"
     )
     parser.add_argument("--refresh", action="store_true", help="rebuild entries already there")
+    parser.add_argument(
+        "--dense",
+        action="store_true",
+        help="also index the general and biomedical dense heads (requires xwalk[dense])",
+    )
+    parser.add_argument("--dense-device", help="dense encoder device, e.g. cpu or mps")
     parser.add_argument(
         "--keep-going", action="store_true", help="report a failed ontology and continue"
     )
@@ -97,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             slug = _build(library, slug_hint, name, url, description, args.refresh)
             if args.cache:
-                _index(library, slug, Path(args.cache))
+                _index(library, slug, Path(args.cache), dense=args.dense, device=args.dense_device)
         except Exception as exc:
             failures += 1
             print(f"{name}: FAILED: {exc}", file=sys.stderr, flush=True)
