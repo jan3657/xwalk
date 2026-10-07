@@ -16,9 +16,18 @@
         <span>xwalk <small id="version"></small></span>
       </a>
       <nav>
-        <a href="#/" data-nav="home">Workspace</a>
-        <a href="#/guide" data-nav="guide">How xwalk works</a>
+        <a href="#/" data-nav="home">Start</a>
+        <a href="#/new?mode=map" data-nav="new-map">Map a file</a>
+        <a href="#/quick" data-nav="quick">Quick map</a>
+        <a href="#/new?mode=cluster" data-nav="new-cluster">Find duplicates</a>
+        <a href="#/library" data-nav="library">Ontologies</a>
+        <a href="#/files" data-nav="files">Files</a>
+      </nav>
+      <nav class="nav-secondary">
+        <a href="#/workspace" data-nav="workspace">Workspace</a>
         <a href="#/tasks" data-nav="tasks">Tasks <span class="pill" id="task-count" hidden></span></a>
+        <a href="#/guide" data-nav="guide">How xwalk works</a>
+        <a href="#/settings" data-nav="settings">Settings</a>
       </nav>
       <div class="side-section">
         <h4>Jobs</h4>
@@ -46,5 +55,6 @@
   </div>
   <div id="toasts" class="toasts" aria-live="polite"></div>
   <script src="/static/app.js"></script>
+  <script src="/static/workbench.js"></script>
 </body>
 </html>

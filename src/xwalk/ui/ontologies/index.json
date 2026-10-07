@@ -1,0 +1,38 @@
+[
+ {
+  "slug": "chebi-sample",
+  "name": "ChEBI (sample)",
+  "description": "Chemical Entities of Biological Interest: chemical compounds, as used by the CRAFT ChEBI example.",
+  "homepage": "https://www.ebi.ac.uk/chebi/",
+  "licence": "CC BY 4.0",
+  "count": 200,
+  "source": "examples/chebi/job.yaml (target collection)"
+ },
+ {
+  "slug": "foodon-sample",
+  "name": "FoodOn (sample)",
+  "description": "Food ontology terms: foods, ingredients and food products, as used by the cafeteria example.",
+  "homepage": "https://foodon.org/",
+  "licence": "CC BY 4.0",
+  "count": 200,
+  "source": "examples/cafeteria_fcd/job.yaml (target collection)"
+ },
+ {
+  "slug": "ctd-disease-sample",
+  "name": "CTD diseases / MeSH (sample)",
+  "description": "Disease records (MeSH and OMIM identifiers) from the CTD disease vocabulary, as used by the NCBI Disease example.",
+  "homepage": "https://ctdbase.org/voc.go?type=disease",
+  "licence": "see the CTD and MeSH terms of use",
+  "count": 200,
+  "source": "examples/ncbi_disease/job.yaml (target collection)"
+ },
+ {
+  "slug": "ncbi-gene-sample",
+  "name": "NCBI Gene (sample)",
+  "description": "Gene records with symbols, aliases and organism, as used by the NLM-Gene example.",
+  "homepage": "https://www.ncbi.nlm.nih.gov/gene",
+  "licence": "public domain (NCBI)",
+  "count": 200,
+  "source": "examples/nlm_gene/job.yaml (target collection)"
+ }
+]

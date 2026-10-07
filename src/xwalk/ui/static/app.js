@@ -292,7 +292,7 @@ async function render() {
   const route = parseRoute();
   const seq = ++renderSeq;
   drawer.close();
-  for (const a of document.querySelectorAll("[data-nav]")) a.classList.toggle("active", a.dataset.nav === route.name);
+  for (const a of document.querySelectorAll("[data-nav]")) a.classList.toggle("active", a.dataset.nav === route.name || (a.dataset.nav === "new-" + route.params.mode && route.name === "new"));
   highlightSidebar(route);
   const main = $("#main");
   const view = views[route.name] || views.notFound;
@@ -423,7 +423,7 @@ function pipelineDiagram() {
   return h("div", { class: "pipeline" }, parts);
 }
 
-views.home = async (page) => {
+views.workspace = async (page) => {
   const ws = state.workspace || (await loadWorkspace());
   const destInput = h("input", { type: "text", value: "xwalk-demo", "aria-label": "destination directory" });
   const createDemo = async () => {
@@ -765,12 +765,14 @@ views.run = async (page, params, route) => {
   }
   const tab = params.tab || "summary";
   const counts = env.counts || {};
+  const offlineRun = run.answered_by === "offline";
   append(page, [
+    offlineRun ? notice("info", "offline stand-in", "This run was answered by the offline stand-in (always the first candidate, confidence 0.9; FakeDecider word overlap on decider jobs), not by the model named below. Its decisions show the mechanics, not a judgement. Run again into a new directory with the job endpoint for real decisions.") : null,
     h("div", { class: "page-head" },
       h("div", {},
         h("div", { class: "crumbs" }, h("a", { href: "#/" }, "Workspace"), " / run"),
         h("h1", {}, run.dir),
-        h("div", { class: "meta" }, badge(env.run.run_state), h("span", { class: "muted small" }, `job ${env.data.job || "?"} · model `, h("code", {}, env.data.model || "?"), ` · fingerprint `, h("code", {}, env.run.run_fingerprint)))),
+        h("div", { class: "meta" }, badge(env.run.run_state), offlineRun ? badge("accent", "offline stand-in") : null, h("span", { class: "muted small" }, `job ${env.data.job || "?"} · ${offlineRun ? "job's model (not used) " : "model "}`, h("code", {}, env.data.model || "?"), ` · fingerprint `, h("code", {}, env.run.run_fingerprint)))),
       run.job_path ? h("div", { class: "inline" },
         h("a", { class: "btn", href: link("job", { path: run.job_path }) }, "Job"),
         h("a", { class: "btn primary", href: link("job", { path: run.job_path, tab: "run", out: run.dir }) }, "Continue / re-run ▸")) : null),
@@ -833,14 +835,14 @@ async function runResults(body, run, params) {
       h("button", { class: `chip ${status ? "" : "active"}`, onclick: () => goTo({ status: "", offset: 0 }) }, `all ${fmt(counts.total || 0)}`),
       STATUSES.filter((s) => counts[s]).map((s) => h("button", { class: `chip ${status === s ? "active" : ""}`, title: STATUS_HELP[s], onclick: () => goTo({ status: s, offset: 0 }) }, `${s} ${counts[s]}`))),
     h("span", { class: "muted small" }, "click a row to see why")));
-  const env = await api("GET", "/api/results", { dir: run.dir, offset, limit, status });
+  const env = await api("GET", "/api/mapping", { dir: run.dir, offset, limit, status });
   if (env.status === "error") return append(card, messages(env));
   const d = env.data;
   append(card, [
     table([
-      { label: "Source", render: (r) => h("code", {}, r.source_id) },
+      { label: "Source", render: (r) => (r.source_text ? h("span", {}, h("b", {}, r.source_text), h("div", { class: "muted small" }, r.source_id)) : h("code", {}, r.source_id)) },
       { label: "Status", render: (r) => badge(r.status) },
-      { label: "Matched target", render: (r) => (r.matched_id ? h("code", {}, r.matched_id) : "–") },
+      { label: "Matched target", render: (r) => (r.matched_id ? h("span", {}, h("code", {}, r.matched_id), r.target_label ? [" ", r.target_label] : null, r.target_ontology ? h("div", { class: "muted small" }, r.target_ontology) : null) : "–") },
       { label: "Confidence", render: (r) => scoreBar(r.confidence) },
       { label: "Reason", render: (r) => h("span", { class: "small" }, r.reason || "–") },
       { label: "Rev", key: "revision", num: true },
@@ -991,6 +993,25 @@ async function runReview(body, run) {
       append(clear(result), failureBox(err));
     }
   };
+  const sheetOut = h("div", {});
+  const sheetPicker = filePicker({
+    accept: ".csv",
+    hint: "the worksheet, filled in",
+    onChoose: async (path) => {
+      if (!jobPath.value) return toast("fill in the job file below first", "error");
+      try {
+        const out = await api("POST", "/api/review-upload", { dir: run.dir, path, job: jobPath.value });
+        append(clear(sheetOut), out.status === "error" ? messages(out) : notice("ok", "applied", `${out.counts.applied} decision(s) recorded`), out.status === "error" ? null : messages(out));
+        if (out.status !== "error") setTimeout(() => render(), 900);
+      } catch (err) {
+        append(clear(sheetOut), failureBox(err));
+      }
+    },
+  });
+  append(body, details("Review in a spreadsheet instead", h("div", { class: "form" },
+    h("p", { class: "small muted" }, "Download the worksheet, fill in decision (accept, reject, replace, no_match, defer), corrected_target_id for replace, and reviewer; save as CSV and upload it here. Rows without a decision are skipped; one invalid row rejects the file."),
+    h("div", {}, h("a", { class: "btn", href: `/api/review-sheet?${new URLSearchParams({ dir: run.dir, token: TOKEN })}`, download: "" }, "Download worksheet")),
+    sheetPicker, sheetOut)));
   append(body, h("section", { class: "card" },
     h("div", { class: "card-head" }, h("h2", {}, `${rows.length} row${rows.length === 1 ? "" : "s"} need review`), h("a", { href: link("run", { dir: run.dir, tab: "export" }) }, "reviewed export ›")),
     h("p", { class: "muted small" }, "Decisions are recorded as an overlay through xwalk review apply: the model's answer is kept, and all rows are validated before any is applied. Click a source to see its attempts and candidates."),
@@ -1064,6 +1085,12 @@ function runExport(body, run) {
     h("div", { class: "card-head" }, h("h3", {}, title), h("a", { class: "btn primary", href: downloadUrl({ dir: run.dir, view }), download: "" }, "Download")),
     h("p", { class: "muted small" }, text));
   append(body, h("div", { class: "grid three" },
+    h("div", { class: "card" },
+      h("div", { class: "card-head" }, h("h3", {}, "Mapping with labels"), h("a", { class: "btn primary", href: `/api/mapping.csv?${new URLSearchParams({ dir: run.dir, token: TOKEN })}`, download: "" }, "Download")),
+      h("p", { class: "muted small" }, "One row per source record with its text, the matched target's label and ontology, status and confidence: the friendliest table to share.")),
+    run.job_path ? h("div", { class: "card" },
+      h("div", { class: "card-head" }, h("h3", {}, "Job file"), h("a", { class: "btn", href: `/api/job-file?${new URLSearchParams({ path: run.job_path, token: TOKEN })}`, download: "" }, "Download")),
+      h("p", { class: "muted small" }, "The job.yaml behind this run, to rerun it with the command line (xwalk match --job job.yaml).")) : null,
     item("raw", "Raw (mapping.csv)", "The current view as the model decided it: one row per source record, with status, reason and confidence."),
     item("reviewed", "Reviewed", "The final answer per row with review decisions applied, next to the model's original decision."),
     item("history", "History (JSONL)", "Every result ever committed: superseded source versions, removed sources and retried failures included.")));
@@ -1080,7 +1107,7 @@ async function clusterRun(page, run, params, route) {
       h("div", {},
         h("div", { class: "crumbs" }, h("a", { href: "#/" }, "Workspace"), " / cluster run"),
         h("h1", {}, run.dir),
-        h("div", { class: "meta" }, badge(m.run_state), badge("partial", "experimental"), h("span", { class: "muted small" }, `job ${m.job || "?"} · model `, h("code", {}, m.model || "?")))),
+        h("div", { class: "meta" }, badge(m.run_state), badge("partial", "experimental"), run.answered_by === "offline" ? badge("accent", "offline stand-in (word overlap)") : null, h("span", { class: "muted small" }, `job ${m.job || "?"} · ${run.answered_by === "offline" ? "job's model (not used) " : "model "}`, h("code", {}, m.model || "?")))),
       run.job_path ? h("div", { class: "inline" },
         h("a", { class: "btn", href: link("job", { path: run.job_path }) }, "Job"),
         h("a", { class: "btn primary", href: link("job", { path: run.job_path, tab: "run", out: run.dir }) }, "Continue / re-run ▸")) : null),
