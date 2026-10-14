@@ -1,0 +1,27 @@
+.wrap { position: relative; }
+.select {
+  appearance: none;
+  width: 100%;
+  padding: 0 28px 0 9px;
+  font: 400 12px var(--font-mono);
+  color: var(--text-strong);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.select:hover { border-color: var(--border-strong); }
+.select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.select:disabled { cursor: not-allowed; opacity: 0.5; }
+.sm { height: 28px; }
+.md { height: 32px; }
+.lg { height: 40px; }
+.chevron {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-faint);
+  display: flex;
+}

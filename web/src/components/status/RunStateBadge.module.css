@@ -1,0 +1,23 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+  border-radius: var(--radius-xs);
+  font: 600 10.5px/1 var(--font-mono);
+  white-space: nowrap;
+}
+.label { text-transform: uppercase; letter-spacing: 0.04em; }
+.sq { width: 6px; height: 6px; background: currentColor; }
+.running { color: var(--text-strong); border-color: var(--accent); }
+.running .sq { background: var(--accent); animation: xw-blink 0.8s steps(1) infinite; }
+.complete { color: var(--green-700); }
+.partial { color: var(--amber-700); }
+.partial .sq { background: linear-gradient(90deg, currentColor 50%, transparent 50%); box-shadow: inset 0 0 0 1px currentColor; }
+.failed, .aborted { color: var(--red-700); }
+.interrupted { color: var(--gray-700); }
+.interrupted .sq { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+.detail { color: var(--text-faint); font-weight: 400; }

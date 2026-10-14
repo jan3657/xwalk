@@ -1,0 +1,21 @@
+.wrap { display: inline-flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.disabled { cursor: not-allowed; opacity: 0.5; }
+.boxWrap { position: relative; width: 14px; height: 14px; margin-top: 2px; flex-shrink: 0; }
+.input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: inherit; }
+.box {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  color: var(--text-inverse);
+  pointer-events: none;
+  transition: background-color var(--duration-fast) linear;
+}
+.on { background: var(--gray-900); border-color: var(--gray-900); }
+.input:focus-visible + .box { box-shadow: var(--focus-ring); }
+.label { display: block; font: 500 13px/18px var(--font-sans); color: var(--text-strong); }
+.description { display: block; font: 400 12px/1.4 var(--font-sans); color: var(--text-muted); }

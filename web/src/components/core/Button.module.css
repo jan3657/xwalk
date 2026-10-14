@@ -1,0 +1,46 @@
+/* Tactile buttons: mono capitals, 2px corners, hairline borders that darken under the
+   pointer. One ink primary per region; the signal-orange accent is for the single action
+   a screen exists for (Save and next). */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) linear, border-color var(--duration-fast) linear, color var(--duration-fast) linear;
+}
+.button:disabled { cursor: not-allowed; }
+.disabled { opacity: 0.4; }
+.full { display: flex; width: 100%; }
+
+.sm { height: 26px; padding: 0 9px; font-size: 10.5px; }
+.md { height: 30px; padding: 0 12px; font-size: 11px; }
+.lg { height: 38px; padding: 0 16px; font-size: 12px; }
+
+.primary { color: var(--text-inverse); background: var(--gray-900); border-color: var(--gray-900); }
+.primary:hover:not(:disabled) { background: var(--gray-700); border-color: var(--gray-700); }
+
+.secondary { color: var(--text-strong); background: var(--surface-panel); }
+.secondary:hover:not(:disabled) { background: var(--surface-subtle); border-color: var(--text-muted); }
+.secondary:active:not(:disabled) { background: var(--surface-sunken); }
+
+.ghost { color: var(--text-muted); background: transparent; border-color: transparent; }
+.ghost:hover:not(:disabled) { color: var(--text-strong); background: var(--surface-subtle); border-color: var(--border-subtle); }
+
+.accent { color: var(--text-inverse); background: var(--accent); border-color: var(--accent); }
+.accent:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+.danger { color: var(--danger); background: var(--surface-panel); border-color: var(--danger-border); }
+.danger:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger); }
+
+.signal { width: 6px; height: 6px; background: currentColor; animation: xw-blink 0.8s steps(1) infinite; }
+.accent .signal, .primary .signal { background: var(--accent); }
+.accent .signal { background: currentColor; }
+.kbd { display: inline-flex; gap: 2px; margin-left: 4px; }

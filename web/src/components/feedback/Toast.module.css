@@ -1,0 +1,20 @@
+/* A transient confirmation: an ink strip that rises in. */
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 380px;
+  max-width: 100%;
+  padding: 10px 10px 10px 12px;
+  background: var(--gray-900);
+  color: var(--text-inverse);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgba(26, 26, 23, 0.22);
+  animation: xw-rise var(--duration-slow) var(--ease-out) both;
+}
+.mark { width: 6px; height: 6px; margin-top: 6px; flex-shrink: 0; }
+.body { flex: 1; min-width: 0; }
+.title { font: 600 11px/1.5 var(--font-mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-inverse); }
+.description { font: 400 12px/1.45 var(--font-mono); color: rgba(250, 249, 246, 0.65); margin-top: 2px; }
+.close { border: 0; background: transparent; padding: 2px; cursor: pointer; color: rgba(250, 249, 246, 0.55); display: flex; }
+.close:hover { color: var(--text-inverse); }

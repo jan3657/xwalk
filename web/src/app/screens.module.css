@@ -1,0 +1,44 @@
+/* Layout shared by the workbench screens. Components own their own look. */
+.toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-canvas);
+  flex-wrap: wrap;
+}
+.toolbarNote { font: 400 10.5px var(--font-mono); letter-spacing: 0.02em; color: var(--text-faint); }
+.vrule { width: 1px; height: 20px; background: var(--border-default); }
+.spacer { flex: 1; }
+.scroll { flex: 1; overflow: auto; min-height: 0; }
+.pad { padding: 24px; }
+.bannerSlot { padding: 10px 24px 0; }
+.split { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.tableCol { flex: 1; overflow: auto; min-width: 0; min-height: 0; }
+.more { display: flex; justify-content: center; padding: 12px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-panel); }
+.center { flex: 1; display: flex; align-items: center; }
+
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.stackSm { display: flex; flex-direction: column; gap: 10px; }
+.stackLg { display: flex; flex-direction: column; gap: 20px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fieldLabel { display: block; font: var(--type-caps); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.hint { font: 400 11.5px/1.4 var(--font-sans); color: var(--text-faint); margin-top: 6px; }
+.kvLine { display: flex; align-items: center; gap: 10px; font: 400 13px var(--font-sans); }
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); }
+.monoStrong { font: 600 12px var(--font-mono); color: var(--text-strong); }
+.mono11 { font: 400 11px var(--font-mono); color: var(--text-faint); }
+.mono12 { font: 400 12px var(--font-mono); color: var(--text-muted); }
+.small { font: 400 12px var(--font-sans); color: var(--text-muted); }
+.body { font: 400 13px var(--font-sans); color: var(--text-muted); }
+.caps { font: var(--type-caps); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-faint); }
+.inlineIcon { display: flex; gap: 6px; align-items: center; }
+
+/* Narrow screens: one scrolling page instead of fixed panes, so nothing is squeezed to zero. */
+@media (max-width: 900px) {
+  .split, .tableCol, .scroll { flex: none; overflow: visible; min-height: auto; }
+  .tableCol, .scroll { overflow-x: auto; }
+}

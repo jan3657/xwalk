@@ -7,8 +7,10 @@ search its index, run it, open each decision, review uncertain rows, score the r
 gold labels and download the exports.
 
 It needs nothing beyond the base install. The server is the Python standard library's
-`http.server`; the page is plain HTML, CSS and JavaScript shipped in the wheel, with no
-build step and nothing loaded from the internet.
+`http.server`; the pages are HTML, CSS and JavaScript shipped in the wheel, with nothing
+loaded from the internet. The classic explorer at `/` is plain JavaScript with no build
+step; the workbench at [`/app`](#the-workbench-app) is built from `web/` and committed, so
+installing xwalk never needs Node.
 
 ```bash
 xwalk ui                                  # serve the current directory, open a browser tab
@@ -126,6 +128,31 @@ Clustering jobs (experimental) get a cluster view instead: the clusters with the
 members, the unresolved sources, and every decision recorded about one record, with its
 prompt and raw model output.
 
+## The workbench (`/app`)
+
+`http://127.0.0.1:8765/app/` opens the workbench: the same server, token and workspace as
+the classic explorer, laid out for reading results and reviewing them rather than for
+setting jobs up. It has three screens:
+
+- **Runs** — every run directory with its run state (kept apart from record statuses),
+  record statuses, calls and provider-reported tokens (unknown usage reads *unknown*),
+  and the action that applies: open results, resume an interrupted or failed run, or
+  cancel a running one.
+- **Results** — the run's rows in a table with a record inspector on the right: the
+  model's output, the reviewer's decision and the adjudicated answer as separate layers,
+  the candidates under their opaque keys, each attempt and the record's history. *Model
+  output* shows the model's answer unchanged by review; *Reviewed* shows the adjudicated
+  answer with the model's beside it. Export offers the raw, reviewed and history views.
+- **Review** — the `needs_review` queue beside a source/target comparison and the
+  candidate list, with the five decisions in a fixed bar (keys A, P, R, N, D; J/K to move;
+  ⌘↵ to *Save and next*). Each decision is recorded through `ops.review_apply` against the
+  exact result it was made on. A failed save says why and the queue does not advance; a
+  result that changed since the queue loaded is reported as a conflict to reload.
+
+Setting up jobs, uploads, the ontology library, evaluation and clustering stay on the
+classic explorer, which the workbench links to. The source and its design notes are in
+[`web/`](../../web/README.md).
+
 ## Which model answers
 
 The **Run** tab offers two choices.
@@ -162,8 +189,9 @@ jobs' endpoints. The defences are aimed at other web pages open in the same brow
   which defeats DNS rebinding.
 - Every path a request names is resolved, symlinks included, and refused (`403`) when it
   lies outside the root.
-- The page sets a Content Security Policy that allows only its own scripts and styles,
-  and renders record text and model output as text, never as HTML.
+- Both pages set a Content Security Policy that allows only their own scripts and
+  styles, and render record text and model output as text, never as HTML. The
+  workbench's assets are served only by their flat, content-hashed names.
 
 ## The API
 
@@ -202,7 +230,8 @@ failed; misuse of the API raises `ApiError` with an HTTP status. Routes:
 | POST | `/api/library/import`, `/api/library/download`, `/api/library/delete`, `/api/library/search` | parse a file into the library; download a URL as a task; delete an import; ranked search |
 | POST | `/api/projects` | write a matching or clustering project from a file or pasted text |
 | POST | `/api/quickmap` | pasted terms: `candidates` (retrieval only) or a run (`offline`, `endpoint`) |
-| GET | `/api/mapping`, `/api/mapping.csv` | a run's results with source texts and target labels; the same as CSV |
+| GET | `/api/mapping`, `/api/mapping.csv` | a run's results with source texts, contexts and target labels; the same as CSV |
+| GET | `/api/reviews` | a run's review overlay: every decision with its state (`applied`, `superseded`, `stale`) and the adjudicated answer of each reviewed result |
 | GET | `/api/job-file`, `/api/review-sheet` | download a job file; download the review worksheet |
 | POST | `/api/review-upload` | apply a filled-in worksheet from the workspace |
 | GET, POST | `/api/presets`, `/api/credentials` | model presets; session API keys (state only, never values) |

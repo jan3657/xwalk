@@ -1,0 +1,14 @@
+.textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  padding: 8px 9px;
+  font: 400 13px/1.45 var(--font-sans);
+  color: var(--text-strong);
+  background: var(--surface-panel);
+  outline: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+.textarea:focus, .textarea:focus-visible { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 1px var(--accent); border-radius: var(--radius-sm); }
+.invalid, .invalid:focus { border-color: var(--danger); }

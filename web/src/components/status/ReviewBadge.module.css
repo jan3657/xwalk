@@ -1,0 +1,25 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md { font-size: 10.5px; }
+.sm { font-size: 10px; gap: 5px; }
+.label { text-transform: uppercase; letter-spacing: 0.04em; }
+/* The human mark: a 6px square turned 45°. */
+.diamond { width: 6px; height: 6px; flex-shrink: 0; background: currentColor; transform: rotate(45deg); margin: 0 1px; }
+.dash { font-weight: 400; }
+
+.applied { color: var(--human-fg); }
+.unreviewed { color: var(--text-faint); font-weight: 400; }
+.unreviewed .label { text-transform: none; letter-spacing: 0; }
+.superseded { color: var(--gray-500); }
+.superseded .diamond, .stale .diamond { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+.stale { color: var(--amber-700); }
+
+.strike { text-decoration: line-through; }
+.muted { color: var(--text-faint); font-weight: 400; }
+.reviewer { color: var(--text-muted); font-weight: 400; }

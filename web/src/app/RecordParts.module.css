@@ -1,0 +1,103 @@
+.section { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.sectionSq { width: 6px; height: 6px; background: var(--text-strong); flex-shrink: 0; }
+.sectionText { font: 600 10.5px/1 var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-strong); }
+.sectionRule { flex: 1; height: 1px; background: var(--border-default); }
+.note { font: 400 10px var(--font-mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-faint); }
+.faint { color: var(--text-faint); }
+.body { font: 400 13px/1.5 var(--font-sans); color: var(--text-muted); }
+.small { font: 400 12px var(--font-sans); color: var(--text-muted); }
+.mono11 { font: 400 11px var(--font-mono); color: var(--text-faint); }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.stackLg { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.spacer { flex: 1; }
+
+.verdict { font: 600 12px var(--font-mono); }
+.oppose { font: 600 12px var(--font-mono); color: var(--status-review-fg); }
+.explanation { margin: 10px 0 0; font: 400 12.5px/1.55 var(--font-sans); color: var(--text-muted); }
+.shared { margin-top: 12px; display: flex; gap: 8px; align-items: center; font: 400 12px var(--font-sans); color: var(--text-muted); }
+.sharedGlyph { font: 600 13px var(--font-mono); color: var(--text-strong); }
+
+.adjudicated {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.adjLabel { font: 600 10px var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-faint); }
+
+/* Candidates: a ledger keyed by the opaque keys the model saw. */
+.candidates { display: flex; flex-direction: column; border: 1px solid var(--border-default); background: var(--surface-panel); }
+.candidate {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: inset 3px 0 0 transparent;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  animation: xw-row-in var(--duration-slow) var(--ease-out) both;
+  transition: background-color var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out);
+}
+.candidate:last-child { border-bottom: 0; }
+button.candidate { cursor: pointer; }
+button.candidate:hover { background: var(--surface-hover); }
+.picked, button.picked:hover { background: var(--human-bg); box-shadow: inset 3px 0 0 var(--human-solid); }
+.ckey { font: 600 11px/20px var(--font-mono); color: var(--text-muted); }
+.cbody { min-width: 0; }
+.definition, .definitionMissing { font: 400 12.5px/1.5 var(--font-sans); color: var(--text-muted); margin-top: 4px; }
+.definitionMissing { color: var(--text-faint); font-style: italic; }
+.synonyms { font: 400 11px var(--font-mono); color: var(--text-faint); margin-top: 4px; }
+.retrieval { font: 400 10.5px/20px var(--font-mono); color: var(--text-faint); white-space: nowrap; }
+.mark { display: inline-flex; align-items: center; gap: 5px; font: 600 9.5px/1 var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-strong); padding: 3px 5px; border: 1px solid var(--border-default); }
+.markHuman { color: var(--human-fg); border-color: var(--human-border); background: var(--surface-panel); }
+.markSq { width: 5px; height: 5px; background: currentColor; }
+.markDiamond { width: 5px; height: 5px; background: currentColor; transform: rotate(45deg); }
+
+/* Attempts: the stage tree beside its query. */
+.attempt { border: 1px solid var(--border-default); background: var(--surface-panel); }
+.attemptHead {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--surface-subtle);
+}
+.attemptTitle { font: 600 10.5px var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-strong); }
+.attemptBody { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.query { font: 500 12.5px/1.5 var(--font-mono); color: var(--text-strong); overflow-wrap: anywhere; padding: 6px 8px; background: var(--surface-subtle); border: 1px solid var(--border-subtle); }
+.stage { display: flex; align-items: center; gap: 8px; padding-left: 4px; }
+.elbow { width: 12px; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); height: 13px; margin-top: -9px; }
+.stageName { font: 600 11.5px var(--font-mono); color: var(--text-strong); min-width: 56px; }
+.error { display: flex; gap: 8px; align-items: center; font: 500 12px var(--font-mono); color: var(--status-failed-fg); }
+.errSq { width: 6px; height: 6px; background: currentColor; }
+.raw summary { font: 600 10.5px var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); cursor: pointer; }
+.raw summary:hover { color: var(--accent); }
+.raw pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: var(--gray-900);
+  color: #E9E6DD;
+  font: 400 11.5px/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* History: model results (squares) and human decisions (diamonds) in one ledger. */
+.history { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: start; padding: 9px 0; }
+.ruledBottom { border-bottom: 1px solid var(--border-subtle); }
+.histSq, .histDiamond { width: 6px; height: 6px; margin-top: 5px; background: var(--text-strong); }
+.histDiamond { background: var(--human-solid); transform: rotate(45deg); }
+.historyText { font: 600 12px var(--font-mono); color: var(--text-strong); }
+.footnote { margin-top: 10px; font: 400 11px var(--font-sans); color: var(--text-faint); }

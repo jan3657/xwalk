@@ -1,0 +1,24 @@
+.matched { --fg: var(--status-matched-fg); --dot: var(--status-matched-dot); --bg: var(--status-matched-bg); --bd: var(--status-matched-border); }
+.review { --fg: var(--status-review-fg); --dot: var(--status-review-dot); --bg: var(--status-review-bg); --bd: var(--status-review-border); }
+.unmatched { --fg: var(--status-unmatched-fg); --dot: var(--status-unmatched-dot); --bg: var(--status-unmatched-bg); --bd: var(--status-unmatched-border); }
+.failed { --fg: var(--status-failed-fg); --dot: var(--status-failed-dot); --bg: var(--status-failed-bg); --bd: var(--status-failed-border); }
+.pending { --fg: var(--status-pending-fg); --dot: var(--status-pending-dot); --bg: transparent; --bd: var(--status-pending-border); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md { font-size: 10.5px; }
+.sm { font-size: 10px; gap: 5px; }
+.label { text-transform: uppercase; letter-spacing: 0.04em; }
+.raw { font-weight: 500; }
+.sq { width: 6px; height: 6px; flex-shrink: 0; background: var(--dot); }
+/* Pending has not happened yet: an outline, not a fill. */
+.pending .sq { background: transparent; box-shadow: inset 0 0 0 1px var(--dot); }
+.boxed { padding: 3px 7px; background: var(--bg); border: 1px solid var(--bd); border-radius: var(--radius-xs); }
+.pending.boxed { border-style: dashed; }

@@ -528,7 +528,7 @@ def quick_map(ws: Workspace, params: Params) -> Response:
 
 
 def mapping(ws: Workspace, params: Params) -> Response:
-    """A page of a run's results with each source's text and each target's label.
+    """A page of a run's results with each source's text and context and each target's label.
 
     Works for any matching run whose job is known to the UI; labels come from the job's
     own collections. Use `/api/results` for the plain rows.
@@ -541,6 +541,7 @@ def mapping(ws: Workspace, params: Params) -> Response:
     job_rel = ws._run_jobs().get(ws.rel(run_dir))
     labels: dict[str, dict[str, Any]] = {}
     texts: dict[str, str] = {}
+    contexts: dict[str, str] = {}
     if job_rel:
         rows = page["data"]["rows"]
         wanted_targets = {r["matched_id"] for r in rows if r.get("matched_id")}
@@ -557,10 +558,12 @@ def mapping(ws: Workspace, params: Params) -> Response:
             for record in spec.build_source_records():
                 if record.id in wanted_sources:
                     texts[record.id] = templates.render_query(record)
+                    contexts[record.id] = templates.render_context(record)
         except Exception:  # labels are a convenience; the rows stand without them
-            labels, texts = {}, {}
+            labels, texts, contexts = {}, {}, {}
     for row in page["data"]["rows"]:
         row["source_text"] = texts.get(row["source_id"])
+        row["source_context"] = contexts.get(row["source_id"]) or None
         target = labels.get(row.get("matched_id") or "")
         row["target_label"] = target["label"] if target else None
         row["target_ontology"] = target["ontology"] if target else None
@@ -616,6 +619,43 @@ def review_upload(ws: Workspace, params: Params) -> Response:
     sheet = ws.path(_str(params, "path"), must_exist=True)
     job = ws.path(_str(params, "job"), must_exist=True)
     return _envelope("review apply", lambda: ops.review_apply(run_dir, sheet, job))
+
+
+def reviews(ws: Workspace, params: Params) -> Response:
+    """The review overlay of a run: every stored decision with its state, and the final
+    answer for each result a current decision changes.
+
+    `history` is `review.review_history` (``applied``, ``superseded`` or ``stale``), in
+    the order applied. `final` maps a result key to `review.adjudicated`'s answer for the
+    results with an applied decision, so the page never derives a final status itself.
+    """
+    run_dir, manifest = ws._run_dir(params)
+
+    def work() -> ops.OpResult:
+        from xwalk.ledger import Ledger
+        from xwalk.review import adjudicated, review_history
+
+        fingerprint = str(manifest["run_fingerprint"])
+        ledger = Ledger.open(run_dir / "ledger.sqlite")
+        try:
+            history = [
+                {**entry.review, "state": entry.state}
+                for entry in review_history(ledger, fingerprint)
+            ]
+            final = {
+                row.result_key: {
+                    "source_id": row.source_id,
+                    "final_matched_id": row.final_target_id,
+                    "final_status": row.final_status.value,
+                }
+                for row in adjudicated(ledger, fingerprint)
+                if row.reviewer is not None
+            }
+        finally:
+            ledger.close()
+        return ops.OpResult("reviews", data={"history": history, "final": final})
+
+    return _envelope("reviews", work)
 
 
 def review_sheet(ws: Workspace, params: Params) -> Response:
@@ -790,6 +830,7 @@ ROUTES: dict[tuple[str, str], Handler] = {
     ("GET", "/api/mapping.csv"): mapping_csv,
     ("GET", "/api/job-file"): job_file,
     ("GET", "/api/review-sheet"): review_sheet,
+    ("GET", "/api/reviews"): reviews,
     ("POST", "/api/review-upload"): review_upload,
     ("GET", "/api/presets"): presets,
     ("GET", "/api/credentials"): credentials,

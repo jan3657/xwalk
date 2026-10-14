@@ -434,6 +434,7 @@ class Workspace:
         truncated = False
         seen = 0
         run_jobs = self._run_jobs()
+        run_models = self._run_models()
         for directory, dirnames, filenames in os.walk(self.root):
             here = Path(directory)
             depth = len(here.relative_to(self.root).parts)
@@ -449,8 +450,12 @@ class Workspace:
                             "job": manifest.get("job"),
                             "job_path": run_jobs.get(rel),
                             "model": manifest.get("model"),
+                            "answered_by": run_models.get(rel),
+                            "run_fingerprint": manifest.get("run_fingerprint"),
                             "run_state": manifest.get("run_state"),
                             "counts": manifest.get("counts") or {},
+                            # As the manifest records it: unknown tokens stay unknown.
+                            "usage": manifest.get("usage"),
                             "modified": (here / "manifest.json").stat().st_mtime,
                         }
                     )
@@ -847,6 +852,8 @@ class Workspace:
             "job_path": job,
             "answered_by": answered_by,
             "inspect": envelope,
+            # target id -> the source ids that share it (many-to-one is valid).
+            "duplicate_targets": manifest.get("duplicate_targets") or {},
         }
 
     def results(self, params: Params) -> Response:

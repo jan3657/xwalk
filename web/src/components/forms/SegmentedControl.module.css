@@ -1,0 +1,30 @@
+/* Tactile segments joined edge to edge; the chosen one is ink. */
+.group {
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  overflow: hidden;
+}
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-right: 1px solid var(--border-default);
+  border-radius: 0;
+  cursor: pointer;
+  font: 500 10.5px/1 var(--font-mono);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: transparent;
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) linear, color var(--duration-fast) linear;
+}
+.option:last-child { border-right: 0; }
+.option:hover { background: var(--surface-subtle); color: var(--text-strong); }
+.sm { height: 24px; }
+.md { height: 28px; }
+.on, .on:hover { color: var(--text-inverse); background: var(--gray-900); }

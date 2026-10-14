@@ -71,9 +71,35 @@ _CSP = (
 )
 _LOOPBACK_NAMES = {"localhost", "127.0.0.1", "::1"}
 
+# The React workbench (`web/`, built into `static/app/`). Its asset names are content
+# hashed by the build, so only a flat name with one of these extensions is served.
+APP_PAGES = ("/app", "/app/", "/app/index.html")
+_APP_ASSET_PREFIX = "/app/assets/"
+_APP_ASSET_TYPES = {
+    "js": "text/javascript; charset=utf-8",
+    "css": "text/css; charset=utf-8",
+    "woff2": "font/woff2",
+    "woff": "font/woff",
+    "svg": "image/svg+xml",
+}
+
 
 def _static(name: str) -> bytes:
     return (resources.files("xwalk.ui") / "static" / name).read_bytes()
+
+
+def _app_asset(name: str) -> tuple[bytes, str] | None:
+    """A built workbench asset by its flat file name, or None."""
+    stem, dot, extension = name.rpartition(".")
+    if not dot or not stem or "/" in name or "\\" in name or name.startswith("."):
+        return None
+    content_type = _APP_ASSET_TYPES.get(extension)
+    if content_type is None:
+        return None
+    asset = resources.files("xwalk.ui") / "static" / "app" / "assets" / name
+    if not asset.is_file():
+        return None
+    return asset.read_bytes(), content_type
 
 
 class UIServer(ThreadingHTTPServer):
@@ -242,28 +268,43 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, b"ok", "text/plain; charset=utf-8")
             return
         if path in ("/", "/index.html"):
-            html = _static("index.html").decode("utf-8")
-            body = html.replace(TOKEN_PLACEHOLDER, self.server.token).encode("utf-8")
-            extra = {"Content-Security-Policy": _CSP, "X-Frame-Options": "DENY"}
-            if self.server.frame_ancestors:
-                extra = {
-                    "Content-Security-Policy": _CSP.replace(
-                        "frame-ancestors 'none'", f"frame-ancestors {self.server.frame_ancestors}"
-                    )
-                }
-            sessions = self.server.sessions
-            if sessions is not None and sessions.get(self._cookie_session()) is None:
-                try:
-                    extra["Set-Cookie"] = self._session_cookie(sessions.create())
-                except PublicRefusal as exc:
-                    raise ApiError(503, "busy", str(exc)) from None
-            self._send(200, body, "text/html; charset=utf-8", extra=extra)
+            self._html_page("index.html")
+            return
+        if path in APP_PAGES:
+            self._html_page("app/index.html")
+            return
+        if path.startswith(_APP_ASSET_PREFIX):
+            asset = _app_asset(path.removeprefix(_APP_ASSET_PREFIX))
+            if asset is None:
+                raise ApiError(404, "not_found", f"no page {path}")
+            body, content_type = asset
+            self._send(200, body, content_type)
             return
         name = path.removeprefix("/static/")
         if path.startswith("/static/") and name in _STATIC_TYPES:
             self._send(200, _static(name), _STATIC_TYPES[name])
             return
         raise ApiError(404, "not_found", f"no page {path}")
+
+    def _html_page(self, name: str) -> None:
+        """A page with this process's token, the strict policy and, when hosting, a
+        session cookie."""
+        html = _static(name).decode("utf-8")
+        body = html.replace(TOKEN_PLACEHOLDER, self.server.token).encode("utf-8")
+        extra = {"Content-Security-Policy": _CSP, "X-Frame-Options": "DENY"}
+        if self.server.frame_ancestors:
+            extra = {
+                "Content-Security-Policy": _CSP.replace(
+                    "frame-ancestors 'none'", f"frame-ancestors {self.server.frame_ancestors}"
+                )
+            }
+        sessions = self.server.sessions
+        if sessions is not None and sessions.get(self._cookie_session()) is None:
+            try:
+                extra["Set-Cookie"] = self._session_cookie(sessions.create())
+            except PublicRefusal as exc:
+                raise ApiError(503, "busy", str(exc)) from None
+        self._send(200, body, "text/html; charset=utf-8", extra=extra)
 
     def _api(self, method: str, path: str, query: dict[str, str]) -> None:
         from xwalk.ui.workbench import DOWNLOAD_ROUTES

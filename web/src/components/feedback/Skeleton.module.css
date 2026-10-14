@@ -1,0 +1,2 @@
+.bar { display: block; background: var(--surface-sunken); animation: xw-pulse 1.4s ease-in-out infinite; }
+.lines { display: flex; flex-direction: column; }

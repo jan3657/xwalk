@@ -1,0 +1,18 @@
+.anchor { position: relative; display: inline-flex; }
+.tip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 4px 7px;
+  background: var(--gray-900);
+  color: var(--text-inverse);
+  font: 500 10.5px/1.35 var(--font-mono);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+  max-width: 280px;
+  pointer-events: none;
+  animation: xw-fade var(--duration-base) var(--ease-out);
+}
+.top { bottom: 100%; margin-bottom: 6px; }
+.bottom { top: 100%; margin-top: 6px; }

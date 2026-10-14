@@ -1,0 +1,163 @@
+.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--surface-canvas); }
+
+/* Top bar: wordmark, two destinations, and the classic explorer's sections. */
+.top {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 0 20px;
+  background: var(--surface-canvas);
+  border-bottom: 1px solid var(--border-ink);
+  flex-wrap: wrap;
+}
+.topLeft, .topRight { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.topRight { gap: 12px; flex-wrap: wrap; }
+.brand { border: 0; background: none; padding: 0; cursor: pointer; display: inline-flex; }
+.wordmark {
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--font-sans);
+  letter-spacing: -0.045em;
+  color: var(--text-strong);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.dot { display: inline-block; background: var(--accent); }
+.rule { width: 1px; height: 18px; background: var(--border-default); }
+.nav { display: flex; align-items: center; gap: 4px; }
+.navItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) linear, color var(--duration-fast) linear;
+}
+.navItem:hover:not(:disabled) { color: var(--text-strong); border-color: var(--border-default); background: var(--surface-panel); }
+.navItem:disabled { cursor: default; opacity: 0.45; }
+.navOn, .navOn:hover:not(:disabled) { background: var(--gray-900); border-color: var(--gray-900); color: var(--text-inverse); }
+.count { font: 600 10px/1 var(--font-mono); padding: 2px 4px; background: var(--accent); color: var(--text-inverse); }
+.ext {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 10.5px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.ext:hover { color: var(--accent); }
+
+.main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Status line: where the page is connected, what is running, which keys work. */
+.status {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 26px;
+  padding: 0 20px;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.statusItem { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.online, .offline, .blink { width: 6px; height: 6px; flex-shrink: 0; }
+.online { background: var(--green-600); }
+.offline { background: var(--red-600); }
+.blink { background: var(--accent); animation: xw-blink 0.8s steps(1) infinite; }
+.sep { color: var(--border-strong); margin: 0 2px; }
+.spacer { flex: 1; }
+.keys { display: inline-flex; align-items: center; gap: 6px; }
+.key { font: 600 10px/1 var(--font-mono); color: var(--text-muted); padding: 1px 4px; border: 1px solid var(--border-default); background: var(--surface-panel); text-transform: none; }
+
+/* Page header */
+.header { flex-shrink: 0; padding: 16px 24px 0; }
+.ruled { border-bottom: 1px solid var(--border-default); padding-bottom: 14px; }
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: var(--type-caps);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+  min-width: 0;
+}
+.sq { width: 6px; height: 6px; background: var(--accent); }
+.crumbSep { color: var(--border-strong); }
+.crumbLink { border: 0; background: none; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--text-muted); cursor: pointer; }
+.crumbLink:hover { color: var(--accent); }
+.mono { text-transform: none; letter-spacing: 0; }
+.titleRow { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 12px; }
+.titleBlock { min-width: 0; flex: 1 1 380px; }
+.titleLine { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.title { margin: 0; font: var(--type-page-title); letter-spacing: -0.035em; color: var(--text-strong); min-width: 0; overflow-wrap: anywhere; }
+.titleMono { font: 600 24px/1.15 var(--font-mono); letter-spacing: -0.03em; }
+.description { margin: 8px 0 0; font: 400 14px/1.55 var(--font-sans); color: var(--text-muted); max-width: 110ch; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Metric strip */
+.strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--border-default);
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+}
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 14px 9px;
+  background: var(--surface-panel);
+  text-align: left;
+  border: 0;
+  font: inherit;
+  color: inherit;
+}
+.metricButton { cursor: pointer; transition: background-color var(--duration-fast) linear; }
+.metricButton:hover { background: var(--surface-subtle); }
+.metricOn, .metricOn:hover { background: var(--gray-900); }
+.metricOn .metricLabel { color: rgba(250, 249, 246, 0.6); }
+.metricOn .metricValue { color: var(--text-inverse); }
+.metricLabel { font: var(--type-caps); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metricValue { display: flex; align-items: center; gap: 8px; font: 600 18px/1 var(--font-mono); letter-spacing: -0.03em; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+.metricSq { width: 7px; height: 7px; flex-shrink: 0; }
+.danger { color: var(--red-700); }
+.review { color: var(--amber-700); }
+.trailing { justify-content: center; background: var(--surface-subtle); }
+
+@media (max-width: 760px) {
+  .strip { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .topRight > :not(:last-child) { display: none; }
+  .header { padding: 16px 16px 0; }
+  .status .keys { display: none; }
+}
+
+@media (max-width: 900px) {
+  .main { overflow-y: auto; }
+}

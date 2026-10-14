@@ -1,0 +1,5 @@
+/* Shared by Input, Textarea and Select. */
+.field { min-width: 0; }
+.label { display: block; font: var(--type-caps); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.hint { font: 400 11.5px/1.4 var(--font-sans); color: var(--text-faint); margin-top: 5px; }
+.error { color: var(--danger); font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; }

@@ -16,6 +16,20 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- `xwalk ui` serves a workbench at `/app`: Runs, Results with a record inspector, and a
+  Review queue with a fixed decision bar, built in React from the xwalk design system
+  (`web/`, committed as `xwalk/ui/static/app`, so installs still need no Node; CI checks
+  the build matches its source). It keeps model output, reviewer decisions and the
+  adjudicated answer apart, records each decision through `ops.review_apply`, and leaves
+  job setup, uploads, the library, evaluation and clustering to the classic page at `/`.
+  New read route `GET /api/reviews` (`review.review_history` and `review.adjudicated`);
+  `/api/workspace` runs carry `usage`, `run_fingerprint` and `answered_by`;
+  `/api/mapping` rows carry `source_context`; `/api/run` passes the manifest's
+  `duplicate_targets` through. See `docs/guide/ui.md` and `web/README.md`. Redesigned
+  after review: a top bar and status line instead of the sidebar, Results as a
+  source ⟶ target lineage with an inspector drawer, squares for model status and diamonds
+  for human decisions, a decision strand in Review that redraws as you decide, and the
+  equivalent CLI command beside each action.
 - `xwalk ui --public` and a `Dockerfile` to run the explorer as a website: a private
   workspace per visitor (cookie session, deleted when idle), a shared read-only library
   of full ontologies parsed and indexed while the image is built

@@ -1,0 +1,21 @@
+/* Provenance and caveats: small mono capitals in a hairline box. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid;
+  border-radius: var(--radius-xs);
+  font: 600 9.5px/1 var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dashed { border-style: dashed; }
+.neutral { color: var(--text-muted); background: var(--surface-subtle); border-color: var(--border-subtle); }
+.accent { color: var(--orange-700); background: var(--accent-soft); border-color: var(--orange-200); }
+.experimental { color: var(--text-strong); background: transparent; border-color: var(--border-strong); }
+.proposed { color: var(--slate-600); background: transparent; border-color: var(--slate-300); }
+.offline { color: var(--text-inverse); background: var(--gray-700); border-color: var(--gray-700); }
+.fixture { color: var(--orange-700); background: transparent; border-color: var(--orange-200); }

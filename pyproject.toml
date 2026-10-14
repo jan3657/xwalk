@@ -81,7 +81,7 @@ packages = ["src/xwalk"]
 [tool.hatch.build.targets.sdist]
 # `_env.sh` hardcodes this developer's Ceph paths -- useless to anyone else and a
 # needless disclosure of a directory layout. `data/` and `runs/` are run output.
-exclude = ["_env.sh", "data/", "runs/", ".venv/"]
+exclude = ["_env.sh", "data/", "runs/", ".venv/", "web/node_modules/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

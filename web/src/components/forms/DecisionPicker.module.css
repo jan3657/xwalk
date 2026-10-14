@@ -1,0 +1,31 @@
+/* The five review actions as tactile keys. The chosen one turns human-layer blue. */
+.grid { display: grid; gap: 0; border: 1px solid var(--border-default); background: var(--border-default); }
+.row { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; }
+.column { grid-template-columns: 1fr; gap: 1px; }
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  background: var(--surface-panel);
+  color: var(--text-strong);
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) linear, color var(--duration-fast) linear;
+}
+.option:hover:not(:disabled) { background: var(--surface-subtle); }
+.option:disabled { cursor: not-allowed; opacity: 0.5; }
+.on, .on:hover:not(:disabled) { background: var(--human-solid); color: #fff; }
+.text { overflow: hidden; text-overflow: ellipsis; }
+.key { display: inline-flex; }
+.on .key kbd { color: rgba(255, 255, 255, 0.85); background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.3); box-shadow: none; }
+.effect { margin-top: 8px; min-height: 18px; font: 400 12px/1.5 var(--font-sans); color: var(--text-muted); }
+.value { font: 600 11px var(--font-mono); color: var(--human-fg); }

@@ -229,5 +229,11 @@ def test_the_wheel_ships_the_bundled_example_and_prompt_skeletons(tmp_path):
     assert "xwalk/ops.py" in names and "xwalk/py.typed" in names
     for name in ("index.html", "app.js", "workbench.js", "app.css", "favicon.svg"):
         assert f"xwalk/ui/static/{name}" in names, name
+    # The React workbench at /app: built from web/ and committed, so no Node at install.
+    assert "xwalk/ui/static/app/index.html" in names
+    app_assets = [n for n in names if n.startswith("xwalk/ui/static/app/assets/")]
+    for suffix in (".js", ".css", ".woff2"):
+        assert any(n.endswith(suffix) for n in app_assets), suffix
+    assert not any("node_modules" in n or n.startswith("web/") for n in names)
     for name in ("index.json", "chebi-sample.jsonl", "foodon-sample.jsonl"):
         assert f"xwalk/ui/ontologies/{name}" in names, name

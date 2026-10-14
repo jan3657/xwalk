@@ -1,0 +1,32 @@
+/* A notice: a tinted hairline cell whose first line names the tone in mono capitals.
+   Errors name the cause and the fix. */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
+  animation: xw-rise var(--duration-slow) var(--ease-out) both;
+}
+.compact { padding: 7px 10px; }
+.info { --fg: var(--info); --bg: var(--surface-panel); --bd: var(--border-default); }
+.success { --fg: var(--success); --bg: var(--success-bg); --bd: var(--success-border); }
+.warning { --fg: var(--warning); --bg: var(--warning-bg); --bd: var(--warning-border); }
+.danger { --fg: var(--danger); --bg: var(--danger-bg); --bd: var(--danger-border); }
+.stale { --fg: var(--amber-700); --bg: var(--warning-bg); --bd: var(--amber-200); }
+.offline { --fg: var(--text-inverse); --bg: var(--gray-800); --bd: var(--gray-800); color: rgba(250, 249, 246, 0.82); }
+.offline .text { color: rgba(250, 249, 246, 0.82); }
+.sq { width: 6px; height: 6px; margin-top: 6px; flex-shrink: 0; background: var(--fg); }
+.info .sq { background: var(--accent); }
+.body { flex: 1; min-width: 0; font: 400 13px/1.5 var(--font-sans); }
+.title { font: 600 10.5px/1.6 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg); }
+.info .title { color: var(--text-strong); }
+.text { color: var(--text-body); text-wrap: pretty; }
+.text code { font-size: 12px; padding: 0 3px; background: rgba(26, 26, 23, 0.06); }
+.actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.dismiss { border: 0; background: transparent; padding: 2px; cursor: pointer; color: var(--text-faint); display: flex; }
+.dismiss:hover { color: var(--text-strong); }
+.iconSlot { color: var(--fg); display: flex; margin-top: 2px; }

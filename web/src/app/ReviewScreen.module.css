@@ -1,0 +1,182 @@
+/* Progress: one tick per queued record; decided ticks fill blue, the open one is orange. */
+.progress {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 24px;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+.progressText { font: 400 10.5px var(--font-mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-faint); white-space: nowrap; }
+.progressText b { color: var(--text-strong); font-weight: 600; }
+.progressBar { flex: 1; display: flex; gap: 3px; height: 8px; min-width: 0; position: relative; }
+.tick { flex: 1; max-width: 28px; background: var(--surface-subtle); box-shadow: inset 0 0 0 1px var(--border-default); transition: background-color var(--duration-base) linear; }
+.tickDone { background: var(--human-solid); box-shadow: none; }
+.tickOn { background: var(--accent); box-shadow: none; }
+.fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--human-solid); transition: width var(--duration-slow) var(--ease-out); }
+
+.layout { flex: 1; display: flex; flex-direction: row; min-height: 0; }
+.stacked { flex-direction: column; overflow-y: auto; }
+
+.queue {
+  width: 300px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-panel);
+}
+.queueStacked { width: 100%; border-right: 0; border-bottom: 1px solid var(--border-default); max-height: 230px; }
+.queueHead { display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 36px; border-bottom: 1px solid var(--border-default); background: var(--surface-subtle); }
+.queueTitle { display: inline-flex; align-items: center; gap: 8px; font: 600 10.5px var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-strong); }
+.open { font: 400 10.5px var(--font-mono); color: var(--text-faint); }
+.queueList { overflow-y: auto; flex: 1; }
+.queuePad { padding: 14px; }
+.queueFoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border-default); background: var(--surface-subtle); }
+
+.qitem {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: inset 3px 0 0 transparent;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  animation: xw-row-in var(--duration-slow) var(--ease-out) both;
+  transition: background-color var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out);
+}
+.qitem:hover { background: var(--surface-hover); }
+.qon, .qon:hover { background: var(--surface-selected); box-shadow: inset 3px 0 0 var(--accent); }
+.qsaved { animation: xw-flash 900ms var(--ease-out) both; }
+.qon.qsaved { animation: none; }
+.qline { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.qid { font: 500 10.5px var(--font-mono); color: var(--text-faint); }
+.qtext { font: 600 13px var(--font-sans); letter-spacing: -0.01em; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.qmeta { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.qtarget { font: 400 11.5px var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.record { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.stacked .record { flex: none; min-height: auto; }
+.recordScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface-canvas);
+}
+.stacked .recordScroll { flex: none; overflow-y: visible; }
+.recordHead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 6px; margin: -4px -6px; }
+.strobe { animation: xw-strobe-amber 600ms ease-in-out 2; }
+.headId { font: 600 12px var(--font-mono); color: var(--text-strong); padding: 2px 6px; background: var(--surface-panel); border: 1px solid var(--border-default); }
+.position { font: 500 11px var(--font-mono); color: var(--text-faint); }
+
+/* Source ── strand ── target, as one hairline row. */
+.compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(110px, 16%, 190px) minmax(0, 1fr);
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+.compareStacked { grid-template-columns: 1fr; }
+.bridge { display: flex; align-items: center; padding: 0; background: var(--surface-canvas); border-left: 1px solid var(--border-default); border-right: 1px solid var(--border-default); }
+.bridge > div { align-self: center; flex: 1; height: 48px; min-height: 48px; }
+.compareStacked .bridge { height: 48px; border: 0; border-top: 1px solid var(--border-default); border-bottom: 1px solid var(--border-default); }
+.cell { min-width: 0; display: flex; flex-direction: column; }
+.cellHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  font: 600 10.5px var(--font-mono);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: background-color var(--duration-base) linear, color var(--duration-base) linear;
+}
+.cellSq { width: 6px; height: 6px; background: currentColor; flex-shrink: 0; }
+.cellBody { padding: 14px; animation: xw-fade var(--duration-slow) linear both; }
+.cellHuman .cellHead { background: var(--human-solid); color: #fff; }
+.cellHuman .cellSq { transform: rotate(45deg); }
+.cellStruck .cellBody { opacity: 0.55; }
+.cellStruck .big { text-decoration: line-through; text-decoration-thickness: 1px; }
+.cellStruck .cellHead { color: var(--text-faint); }
+.big { font: 600 20px/1.25 var(--font-sans); letter-spacing: -0.025em; color: var(--text-strong); overflow-wrap: anywhere; }
+.context { margin-top: 8px; font: 400 13px/1.55 var(--font-sans); color: var(--text-muted); text-wrap: pretty; }
+.ids { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+.idLine { margin-top: 8px; }
+.facts { margin: 12px 0 0; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 12px; font: 400 13px/1.5 var(--font-sans); color: var(--text-body); }
+.facts dt { font: 500 10px/20px var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-faint); }
+.facts dd { margin: 0; text-wrap: pretty; }
+.pillSq { width: 6px; height: 6px; background: var(--status-review-dot); flex-shrink: 0; }
+.pillDiamond { width: 6px; height: 6px; background: currentColor; transform: rotate(45deg); flex-shrink: 0; }
+
+.evidence { border: 1px solid var(--border-default); background: var(--surface-panel); }
+.evidenceHead { display: flex; align-items: center; gap: 12px; padding: 6px 14px; border-bottom: 1px solid var(--border-default); background: var(--surface-subtle); flex-wrap: wrap; }
+.evidenceTitle { display: inline-flex; align-items: center; gap: 8px; font: 600 10.5px var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-strong); }
+.evidenceBody { padding: 14px; }
+.pickHint { font: 400 11.5px var(--font-sans); color: var(--text-faint); }
+
+/* The decision bar stays put; it shakes once when a save is refused. */
+.bar {
+  border-top: 1px solid var(--border-ink);
+  background: var(--surface-panel);
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.shake { animation: xw-shake 240ms linear; }
+.barStacked { padding: 10px 14px; gap: 8px; position: sticky; bottom: 0; z-index: 5; box-shadow: 0 -8px 20px rgba(26, 26, 23, 0.08); }
+.jobPick { max-width: 420px; }
+.pickerScroll { overflow-x: auto; }
+.pickerMin { min-width: 620px; }
+.fields { display: grid; grid-template-columns: 180px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+/* Line the button up with the inputs, under their labels, whatever the messages below them. */
+.fields > button { margin-top: 18px; }
+.fields[data-replace] { grid-template-columns: 200px 160px minmax(0, 1fr) auto; }
+.fields[data-stack] { grid-template-columns: 140px minmax(0, 1fr) auto; gap: 8px; }
+.fields[data-stack][data-replace] { grid-template-columns: 1fr 1fr; }
+.recorded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 10.5px var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--human-fg);
+  animation: xw-rise var(--duration-slow) var(--ease-out) both;
+}
+.recordedSq { width: 6px; height: 6px; background: var(--human-solid); transform: rotate(45deg); }
+.recordedText { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-strong);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.linkButton:hover { background: var(--surface-subtle); border-color: var(--text-muted); color: var(--text-strong); }
+.awaiting { font: 400 13px/1.5 var(--font-sans); color: var(--human-fg); padding: 6px 0; }

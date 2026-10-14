@@ -1,0 +1,57 @@
+/* xwalk workbench colour. Archival neutrals (85%), structural ink and hairlines (12%),
+   one signal orange (3%). Status is a 6px square plus the backend value in mono, never
+   colour alone. The human-review layer is ink blue so it never reads as model output. */
+:root{
+/* Neutrals: tinted archival greys */
+--gray-0:#FAF9F6;--gray-25:#F7F6F2;--gray-50:#F5F5F2;--gray-100:#EFECE6;--gray-150:#E5E1D8;--gray-200:#E2DFD7;--gray-300:#CFCBC0;--gray-400:#A9A59B;--gray-500:#85837C;--gray-600:#6A6862;--gray-700:#52514C;--gray-800:#2E2D29;--gray-900:#1A1A17;
+/* Signal orange */
+--orange-50:#FDF1EA;--orange-100:#FBDDCC;--orange-200:#F6BE9F;--orange-400:#F28A57;--orange-500:#EE6327;--orange-600:#D4501A;--orange-700:#A93B0E;
+/* Human-review layer: ink blue */
+--blue-50:#EDF1FA;--blue-100:#D9E2F6;--blue-200:#B3C4EC;--blue-500:#2F56C2;--blue-600:#2A4FB8;--blue-700:#213F93;
+--green-50:#EDF5F0;--green-200:#B6D8C4;--green-600:#1F7A4C;--green-700:#17603C;
+--amber-50:#FBF2E4;--amber-200:#EBCB97;--amber-600:#B86B11;--amber-700:#8F530C;
+--red-50:#FBEDEA;--red-200:#EFC0B9;--red-600:#C93B2B;--red-700:#9E2B1E;
+--slate-50:#F1F2F4;--slate-300:#B7BDC8;--slate-600:#4A5468;
+
+/* Surfaces */
+--surface-canvas:#F5F5F2;
+--surface-panel:#FAF9F6;
+--surface-subtle:#EFECE6;
+--surface-sunken:#E5E1D8;
+--surface-hover:#F2F0EB;
+--surface-selected:#F9EAE1;
+--surface-selected-soft:#FAF1EB;
+--surface-inverse:#1A1A17;
+/* Ink */
+--text-strong:#1A1A17;
+--text-body:#2E2D29;
+--text-muted:#52514C;
+--text-faint:#85837C;
+--text-inverse:#FAF9F6;
+--text-link:var(--orange-700);
+--text-link-hover:var(--orange-600);
+/* Hairlines */
+--border-subtle:#E2DFD7;
+--border-default:#CFCBC0;
+--border-strong:#A9A59B;
+--border-ink:rgba(26,26,23,0.22);
+--border-focus:var(--orange-500);
+/* Accent roles */
+--accent:#EE6327;
+--accent-strong:#D4501A;
+--accent-soft:rgba(238,99,39,0.10);
+--focus-ring:0 0 0 1px var(--surface-panel),0 0 0 3px var(--orange-500);
+/* Record status (model output) */
+--status-matched-fg:var(--green-700);--status-matched-bg:var(--green-50);--status-matched-border:var(--green-200);--status-matched-dot:var(--green-600);
+--status-review-fg:var(--amber-700);--status-review-bg:var(--amber-50);--status-review-border:var(--amber-200);--status-review-dot:var(--amber-600);
+--status-unmatched-fg:var(--gray-700);--status-unmatched-bg:var(--gray-100);--status-unmatched-border:var(--gray-300);--status-unmatched-dot:var(--gray-500);
+--status-failed-fg:var(--red-700);--status-failed-bg:var(--red-50);--status-failed-border:var(--red-200);--status-failed-dot:var(--red-600);
+--status-pending-fg:var(--slate-600);--status-pending-bg:transparent;--status-pending-border:var(--slate-300);--status-pending-dot:var(--slate-600);
+/* Human layer (reviewer decisions) */
+--human-fg:var(--blue-700);--human-bg:var(--blue-50);--human-border:var(--blue-200);--human-solid:var(--blue-600);
+/* Feedback */
+--danger:var(--red-600);--danger-bg:var(--red-50);--danger-border:var(--red-200);
+--warning:var(--amber-700);--warning-bg:var(--amber-50);--warning-border:var(--amber-200);
+--success:var(--green-700);--success-bg:var(--green-50);--success-border:var(--green-200);
+--info:var(--slate-600);--info-bg:var(--slate-50);--info-border:var(--slate-300);
+}

@@ -1,0 +1,19 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) linear, color var(--duration-fast) linear;
+}
+.sm { width: 22px; height: 22px; }
+.md { width: 26px; height: 26px; }
+.lg { width: 34px; height: 34px; }
+.secondary { background: var(--surface-panel); border-color: var(--border-default); }
+.button:hover:not(:disabled) { background: var(--surface-subtle); border-color: var(--border-subtle); color: var(--text-strong); }
+.active, .active:hover:not(:disabled) { background: var(--gray-900); border-color: var(--gray-900); color: var(--text-inverse); }
+.button:disabled { cursor: not-allowed; opacity: 0.4; }

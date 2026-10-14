@@ -1,0 +1,26 @@
+/* A hard-edged toggle: a square thumb that slides in a hairline track. */
+.wrap { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.disabled { cursor: not-allowed; opacity: 0.45; }
+.track {
+  position: relative;
+  width: 26px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: var(--surface-subtle);
+  cursor: inherit;
+  transition: background-color var(--duration-fast) linear, border-color var(--duration-fast) linear;
+}
+.on { background: var(--gray-900); border-color: var(--gray-900); }
+.thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  background: var(--text-faint);
+  transition: left var(--duration-base) var(--ease-out), background-color var(--duration-fast) linear;
+}
+.on .thumb { left: 14px; background: var(--accent); }
+.label { font: 500 10.5px var(--font-mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); cursor: inherit; }

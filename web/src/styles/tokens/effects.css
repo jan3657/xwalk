@@ -1,0 +1,18 @@
+:root{
+/* Sharp corners: 2px on everything that is not a dot. */
+--radius-xs:2px;--radius-sm:2px;--radius-md:2px;--radius-lg:2px;--radius-xl:2px;--radius-pill:999px;
+--border-width:1px;
+/* Hairlines over shadows. Only floating things get one. */
+--shadow-none:none;
+--shadow-xs:none;
+--shadow-sm:none;
+--shadow-popover:0 0 0 1px var(--border-ink),0 8px 24px rgba(26,26,23,0.10);
+--shadow-dialog:0 0 0 1px var(--border-ink),0 24px 64px rgba(26,26,23,0.18);
+--shadow-slideout:0 -1px 0 var(--border-ink);
+--overlay-scrim:rgba(26,26,23,0.36);
+--duration-fast:80ms; /* @kind other */
+--duration-base:150ms; /* @kind other */
+--duration-slow:240ms; /* @kind other */
+--ease-out:cubic-bezier(0.16,1,0.3,1); /* @kind other */
+--ease-in-out:cubic-bezier(0.4,0,0.2,1); /* @kind other */
+}

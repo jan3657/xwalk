@@ -1,0 +1,32 @@
+:root{color-scheme:light}
+html,body{margin:0;background:var(--surface-canvas);color:var(--text-body);font:var(--type-body);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+*,*::before,*::after{box-sizing:border-box}
+a{color:var(--text-link);text-decoration:underline;text-decoration-color:var(--orange-200);text-underline-offset:2px}
+a:hover{color:var(--text-link-hover);text-decoration-color:currentColor}
+:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+code,kbd,samp,pre{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1,"zero" 1}
+::selection{background:var(--orange-100)}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border-default)}
+::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
+
+/* Motion: short, mechanical, and only where something changed. */
+@keyframes xw-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes xw-spin{to{transform:rotate(360deg)}}
+/* A row arriving: it draws in from the left edge. */
+@keyframes xw-row-in{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+/* A wire drawing from source to target (paths use pathLength="1"). */
+@keyframes xw-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes xw-fade{from{opacity:0}to{opacity:1}}
+@keyframes xw-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* A refused save: the bar shakes once. */
+@keyframes xw-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+/* A result that changed under you: the cell strobes twice. */
+@keyframes xw-strobe{0%,100%{background-color:var(--status-failed-bg)}50%{background-color:rgba(201,59,43,0.24)}}
+@keyframes xw-strobe-amber{0%,100%{background-color:var(--warning-bg)}50%{background-color:rgba(184,107,17,0.22)}}
+/* A recorded decision: the queue row flashes blue once. */
+@keyframes xw-flash{from{background-color:var(--blue-100)}to{background-color:transparent}}
+/* Something running: the signal square blinks. */
+@keyframes xw-blink{0%,49%{opacity:1}50%,100%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
