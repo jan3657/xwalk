@@ -25,8 +25,8 @@ commit, because a commit that fails a gate is a commit nobody can bisect through
 
 ```bash
 python -m pytest -q -m "not integration"
-python -m ruff check src tests examples scripts
-python -m ruff format --check src tests examples scripts
+python -m ruff check src tests examples scripts benchmarks
+python -m ruff format --check src tests examples scripts benchmarks
 python -m mypy
 ```
 
