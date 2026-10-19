@@ -213,6 +213,21 @@ def test_assignment_files_round_trip_and_reject_duplicates(tmp_path):
         read_assignments(jsonl)
 
 
+def test_the_benchmark_scores_with_the_package_metric_code(tmp_path):
+    from xwalk.evaluate import clustering as package
+
+    assert evaluate_clustering is package.evaluate_clustering
+    assert partition_scores is package.partition_scores
+    # xwalk cluster exports name items `source_id` and have `pending` rows
+    path = tmp_path / "members.csv"
+    path.write_text("source_id,cluster_id,outcome\na,k,singleton\nb,,pending\n")
+    clusters, outcomes = read_assignments(path)
+    assert outcomes == {"a": "singleton", "b": "pending"}
+    result = evaluate_clustering(clusters, outcomes, {"a": "1", "b": "1"})
+    assert result["outcome_counts"]["pending"] == 1
+    assert result["as_singletons"]["pairwise_recall"] == 0.0
+
+
 def test_cluster_eval_cli_scores_files_and_carries_meta(tmp_path):
     gold, pred, meta, out = (tmp_path / n for n in ("g.csv", "p.csv", "m.json", "o.json"))
     write_assignments(gold, {"a": "1", "b": "1", "c": "2"})
