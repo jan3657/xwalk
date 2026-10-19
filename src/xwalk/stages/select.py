@@ -148,6 +148,21 @@ class Selector:
         confidence, invalid = parse_confidence(payload.get("confidence_score"))
         explanation = str(payload.get("explanation", ""))
 
+        # Only an explicit `"chosen_key": null` abstains. An absent field is malformed
+        # output: reading it as null would turn a broken answer into a confident no-match.
+        if "chosen_key" not in payload:
+            return SelectionOutcome(
+                choice=ResolvedChoice(None, Resolution.UNRESOLVED, None),
+                confidence=confidence,
+                explanation=explanation,
+                raw=response.text,
+                keyed=keyed,
+                truncated=dropped,
+                usage=response.usage,
+                error="chosen_key missing from the selector output",
+                finish_reason=response.finish_reason,
+            )
+
         choice = resolve_key(raw_key, keyed, legacy=self._legacy)
 
         # A choice we cannot score is a choice we cannot classify.

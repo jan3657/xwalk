@@ -142,6 +142,9 @@ def derive_status(signals: Signals, policy: DecisionPolicy) -> tuple[MatchStatus
         and (signals.p_choice or 0.0) >= policy.choose_at
         and signals.rubric is not None
         and signals.rubric_levels is not None
+        # Defence in depth behind parse_response: only a grade on the offered scale
+        # 0..levels-1 is evidence. NaN fails this comparison too.
+        and 0.0 <= signals.rubric <= signals.rubric_levels - 1
         and signals.rubric >= effective_rubric_floor(policy, signals.rubric_levels)
         and all(p >= policy.property_floor for p in signals.properties.values())
     )

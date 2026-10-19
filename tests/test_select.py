@@ -103,6 +103,20 @@ async def test_abstention_yields_no_record_id():
     assert outcome.choice.resolution is Resolution.ABSTAIN
 
 
+@pytest.mark.parametrize(
+    "body",
+    [{}, {"confidence_score": 0.9}, {"confidence_score": 0.0, "explanation": "none fit"}],
+)
+async def test_a_missing_chosen_key_is_unresolved_not_an_abstention(body):
+    # Only an explicit null abstains. An absent field is malformed output, and must not
+    # become a confident "no match".
+    llm = FakeLLM([json.dumps(body)])
+    outcome = await Selector(llm, PROMPTS, TEMPLATES).select(SOURCE, "", CANDIDATES)
+    assert outcome.choice.record_id is None
+    assert outcome.choice.resolution is Resolution.UNRESOLVED
+    assert outcome.error is not None and "chosen_key" in outcome.error
+
+
 async def test_a_hallucinated_id_does_not_resolve_to_a_record():
     llm = FakeLLM([reply(chosen_key="T1", confidence_score=0.99, explanation="sure")])
     outcome = await Selector(llm, PROMPTS, TEMPLATES).select(SOURCE, "", CANDIDATES)

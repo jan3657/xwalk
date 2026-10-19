@@ -81,11 +81,22 @@ class QueryRewriter:
                 error=str(exc),
             )
 
+        explanation = str(payload.get("explanation", ""))
+        queries = payload.get("queries")
+        # `queries` must be a list of strings. Anything else is malformed output: no
+        # proposals, error noted. A bare string is never iterated into one-letter queries.
+        if not isinstance(queries, list) or not all(isinstance(q, str) for q in queries):
+            return RewriteOutcome(
+                proposals=(),
+                explanation=explanation,
+                raw=response.text,
+                usage=response.usage,
+                error=f"queries must be a list of strings, got {queries!r}"[:200],
+            )
+
         seen = {normalise_query(q) for q in previous_queries}
         proposals: list[RetryProposal] = []
-        for value in payload.get("queries", []) or []:
-            if not isinstance(value, str):
-                continue
+        for value in queries:
             text = value.strip()
             normalised = normalise_query(text)
             if not text or normalised in seen:
@@ -97,7 +108,7 @@ class QueryRewriter:
 
         return RewriteOutcome(
             proposals=tuple(proposals),
-            explanation=str(payload.get("explanation", "")),
+            explanation=explanation,
             raw=response.text,
             usage=response.usage,
         )

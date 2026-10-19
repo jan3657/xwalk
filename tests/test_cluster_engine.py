@@ -841,3 +841,22 @@ async def test_a_stricter_mint_requirement_defers_instead(tmp_path):
     rows = member_rows(tmp_path / "run")
     assert rows["s9_0"]["outcome"] == "needs_review"
     assert rows["s9_0"]["reason"] == "expansion_incomplete:bounded"
+
+
+@pytest.mark.parametrize(
+    "payload, resolution",
+    [
+        ({"chosen_key": None, "confidence_score": 0.9}, "abstain"),
+        ({"confidence_score": 0.9}, "unresolved"),
+        ({}, "unresolved"),
+    ],
+)
+def test_only_an_explicit_null_chosen_key_abstains(payload, resolution):
+    from xwalk.cluster.stages import Reply, keyed_clusters, read_choice
+    from xwalk.records import Usage
+
+    reply = Reply("select", "u", json.dumps(payload), payload, 0.9, "", Usage.unreported())
+    choice = read_choice(reply, keyed_clusters(["k1"], ["[C01] a"]))
+    assert choice.cluster_id is None
+    assert choice.resolution == resolution
+    assert (choice.error is None) == (resolution == "abstain")

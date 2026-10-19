@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from xwalk.llm.fake import FakeLLM
 from xwalk.prompts.contract import PromptSet, PromptSlots
 from xwalk.records import Candidate, Record, RetrievalHit
@@ -73,6 +75,31 @@ async def test_malformed_output_yields_no_proposals_and_an_error():
     llm = FakeLLM(["nope"])
     outcome = await QueryRewriter(llm, PROMPTS, TEMPLATES).rewrite(SOURCE, "", ["ASA"], KEYED)
     assert outcome.proposals == () and outcome.error is not None
+
+
+@pytest.mark.parametrize(
+    "queries",
+    [123, "glucose", {"q": "glucose"}, None, [1, 2], ["ok", 3], ["ok", None]],
+)
+async def test_queries_that_are_not_a_list_of_strings_yield_an_error_and_no_proposals(queries):
+    # A string must never be iterated character by character into queries "g", "l".
+    llm = FakeLLM([json.dumps({"queries": queries, "explanation": ""})])
+    outcome = await QueryRewriter(llm, PROMPTS, TEMPLATES).rewrite(SOURCE, "", ["ASA"], KEYED)
+    assert outcome.proposals == ()
+    assert outcome.error is not None and "queries" in outcome.error
+
+
+async def test_missing_queries_yield_an_error_and_no_proposals():
+    llm = FakeLLM([json.dumps({"explanation": "nothing"})])
+    outcome = await QueryRewriter(llm, PROMPTS, TEMPLATES).rewrite(SOURCE, "", ["ASA"], KEYED)
+    assert outcome.proposals == ()
+    assert outcome.error is not None and "queries" in outcome.error
+
+
+async def test_an_empty_query_list_is_a_valid_answer_not_an_error():
+    llm = FakeLLM([json.dumps({"queries": [], "explanation": "no better idea"})])
+    outcome = await QueryRewriter(llm, PROMPTS, TEMPLATES).rewrite(SOURCE, "", ["ASA"], KEYED)
+    assert outcome.proposals == () and outcome.error is None
 
 
 async def test_works_when_there_were_no_candidates():

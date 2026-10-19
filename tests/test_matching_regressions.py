@@ -68,6 +68,35 @@ async def test_a_missing_scorer_confidence_is_never_accepted():
     assert result.confidence is None
 
 
+@pytest.mark.parametrize("body", [{}, {"confidence_score": 0.9}])
+async def test_a_missing_chosen_key_routes_to_review_with_an_error(body):
+    llm = FakeLLM([json.dumps(body)])
+    result = await build(llm, ScriptedRetriever({"glucose": ["T1"]}), policy=ONE_ATTEMPT).match(
+        SOURCE
+    )
+    assert result.status is MatchStatus.NEEDS_REVIEW
+    assert result.reason is DecisionReason.UNRESOLVED_OUTPUT
+    assert result.attempts[0].error is not None and "chosen_key" in result.attempts[0].error
+    assert len(llm.requests) == 1
+
+
+@pytest.mark.parametrize("queries", [123, "dextrose"])
+async def test_malformed_rewrite_queries_end_the_loop_without_raising(queries):
+    llm = FakeLLM(
+        [
+            select_reply("C01", 0.5),
+            score_reply(0.3),
+            json.dumps({"queries": queries, "explanation": ""}),
+        ]
+    )
+    retriever = ScriptedRetriever({"glucose": ["T2"], "d": ["T1"]})
+    result = await build(llm, retriever, policy=MatchPolicy(max_attempts=3)).match(SOURCE)
+    assert len(result.attempts) == 1
+    assert retriever.queries == ["glucose"]  # never "d", "e", "x"...
+    assert result.attempts[0].error is not None and "queries" in result.attempts[0].error
+    assert result.usage.calls == len(llm.requests) == 3
+
+
 @pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity", "1.7"])
 async def test_an_invalid_selector_confidence_is_unresolved_not_scored(token):
     reply = '{"chosen_key": "C01", "confidence_score": ' + token + ', "explanation": ""}'

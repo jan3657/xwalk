@@ -171,13 +171,20 @@ def question_to_dict(question: Question) -> dict[str, Any]:
     }
 
 
-def _unit(value: object, where: str) -> float:
+def _bounded(value: object, low: float, high: float, where: str) -> float:
+    """A number in [low, high], never clamped. NaN, infinities, booleans and integers
+    too large for a float are rejected before any conversion can raise."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise DecisionResponseError(f"{where}: expected a number, got {value!r}")
-    number = float(value)
-    if not 0.0 <= number <= 1.0:
-        raise DecisionResponseError(f"{where}: {number} is outside [0, 1]")
-    return number
+    # Compared before float(): a JSON integer can exceed the float range. NaN fails both
+    # comparisons, an infinity one of them.
+    if not low <= value <= high:
+        raise DecisionResponseError(f"{where}: {value!r} is outside [{low:g}, {high:g}]")
+    return float(value)
+
+
+def _unit(value: object, where: str) -> float:
+    return _bounded(value, 0.0, 1.0, where)
 
 
 def _distribution(value: object, where: str) -> dict[str, float]:
@@ -209,14 +216,15 @@ def _answer(question: Question, raw: object, name: str) -> Answer:
         )
     if kind != "score":
         raise DecisionResponseError(f"answer {name!r}: expected score, got {kind!r}")
-    score = raw.get("score")
-    if isinstance(score, bool) or not isinstance(score, (int, float)):
-        raise DecisionResponseError(f"answer {name!r}.score: expected a number, got {score!r}")
+    # The rubric offers levels 0..len(criteria)-1; a score outside them is not a grade.
+    score = _bounded(
+        raw.get("score"), 0.0, float(len(question.criteria) - 1), f"answer {name!r}.score"
+    )
     legend_raw = raw.get("legend") or {}
     if not isinstance(legend_raw, Mapping):
         raise DecisionResponseError(f"answer {name!r}.legend must be a mapping")
     return ScoreAnswer(
-        score=float(score),
+        score=score,
         probabilities=_distribution(raw.get("probabilities"), f"answer {name!r}"),
         confidence=_unit(raw.get("confidence"), f"answer {name!r}.confidence"),
         legend={str(k): str(v) for k, v in legend_raw.items()},

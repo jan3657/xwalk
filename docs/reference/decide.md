@@ -166,8 +166,9 @@ def parse_response(
 ```
 
 Every answer is typed against the question that was asked. A missing answer, an answer of
-the wrong kind, a probability outside `[0, 1]`, or a `ChoiceAnswer` naming an option that
-was never offered is a `DecisionResponseError` (a `DecisionFatalError` subclass) — a broken
+the wrong kind, a probability outside `[0, 1]`, a `ScoreAnswer.score` outside the offered
+levels `[0, len(criteria) - 1]` (never clamped; NaN, infinities and booleans included), or
+a `ChoiceAnswer` naming an option that was never offered is a `DecisionResponseError` (a `DecisionFatalError` subclass) — a broken
 contract, not data about your records. The client does not retry it; the matcher treats it
 as a per-record failure (see below). `usage` is read from the payload's `usage` object into a `Usage` with
 `prompt_tokens`, `calls=1`, and `cost_usd`; there are no completion tokens, because there

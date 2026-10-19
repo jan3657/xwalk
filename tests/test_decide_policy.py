@@ -100,6 +100,18 @@ def test_derive_status_table(overrides, status, reason):
     assert derive_status(_signals(**overrides), POLICY) == (status, reason)
 
 
+@pytest.mark.parametrize(
+    "rubric, levels",
+    [(99.0, 4), (3.5, 4), (float("inf"), 4), (float("nan"), 4), (-1.0, 4), (2.0, 0)],
+)
+def test_an_out_of_range_rubric_can_never_be_accepted(rubric, levels):
+    # Defence in depth behind parse_response: a stored or replayed signal outside the
+    # offered levels 0..levels-1 is not evidence, whatever the floor.
+    for policy in (POLICY, DecisionPolicy(rubric_floor=0.0)):
+        status, _ = derive_status(_signals(rubric=rubric, rubric_levels=levels), policy)
+        assert status is not MatchStatus.MATCHED
+
+
 def test_flat_round_trips():
     s = _signals()
     back = Signals.from_flat(

@@ -282,7 +282,7 @@ exported from `xwalk.prompts`. All four set `additionalProperties: false` and ar
 
 | Prompt | Property | Type | Required | Notes |
 |---|---|---|---|---|
-| select | `chosen_key` | `string \| null` | yes | `null` abstains |
+| select | `chosen_key` | `string \| null` | yes | an explicit `null` abstains; an absent field is unresolved output (review), never an abstention |
 | select | `confidence_score` | `number` | yes | `0 ≤ x ≤ 1` |
 | select | `explanation` | `string` | yes | |
 | score | `confidence_score` | `number` | yes | `0 ≤ x ≤ 1` |
@@ -293,7 +293,7 @@ exported from `xwalk.prompts`. All four set `additionalProperties: false` and ar
 | verify | `explanation` | `string` | yes | |
 | verify | `preferred_key` | `string \| null` | no | must be a key issued this attempt |
 | verify | `confidence_score` | `number` | no | `0 ≤ x ≤ 1` |
-| rewrite | `queries` | `array[string]` | yes | |
+| rewrite | `queries` | `array[string]` | yes | anything else (missing, a string, a non-string item) yields no queries and an error on the attempt |
 | rewrite | `explanation` | `string` | no | |
 
 ## validate_contract
