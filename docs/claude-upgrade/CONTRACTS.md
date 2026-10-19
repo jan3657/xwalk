@@ -207,6 +207,11 @@ Task 04 additions (details and reasons in `CLUSTERING_DECISIONS.md`):
 - 10.4, outcomes: a seed is exported `singleton` only while its cluster has one member;
   once a verified member joins (or a verified merge), it is `assigned`. Sources not
   reached by an aborted run are exported as `pending`.
+- 10.4, outcomes (October 2026, `cluster/bugs-and-eval`): a member left alone after every
+  other member, the seed included, moved out is exported `singleton` (reason
+  `sole_remaining_member`; not a verified equivalence). `members.csv` and `clusters.csv`
+  both decide by the exported cluster size, and `seed_id` is the cluster's first current
+  member.
 
 ## 11. File ownership and task order
 
