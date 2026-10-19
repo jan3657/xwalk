@@ -147,7 +147,9 @@ setting jobs up. It has three screens:
   candidate list, with the five decisions in a fixed bar (keys A, P, R, N, D; J/K to move;
   ⌘↵ to *Save and next*). Each decision is recorded through `ops.review_apply` against the
   exact result it was made on. A failed save says why and the queue does not advance; a
-  result that changed since the queue loaded is reported as a conflict to reload.
+  result that changed since the queue loaded is reported as a conflict to reload. Each
+  record is read from the run on its own (and the next one is fetched while you read),
+  so stepping and saving stay quick on runs of thousands of rows.
 
 Setting up jobs, uploads, the ontology library, evaluation and clustering stay on the
 classic explorer, which the workbench links to. A clustering run opened in the workbench

@@ -65,7 +65,7 @@ from xwalk.retrieval.base import Retriever, SearchRequest, component_differences
 from xwalk.retrieval.bm25 import BM25Retriever
 from xwalk.retrieval.dense import DenseRetriever, Encoder
 from xwalk.retrieval.fusion import reciprocal_rank_fusion
-from xwalk.review import adjudicated, review_history
+from xwalk.review import adjudicate_result, adjudicated, applied_review, review_history
 from xwalk.serde import result_to_dict
 from xwalk.stores.memory import MemoryStore
 from xwalk.templates import TemplateSet
@@ -1257,11 +1257,13 @@ def _attempt_summary(attempt: Any) -> dict[str, Any]:
 def explain(run_dir: str | Path, source_id: str, *, full: bool = False) -> OpResult:
     """Why one source got its answer: the decision, every attempt, the review overlay
     and the source's history. `full=True` adds the complete stored result."""
+    # Indexed reads of this source's rows only: explain is called once per record shown,
+    # so its cost must not grow with the run.
     view, ledger = _open_run(run_dir, "explain")
     try:
         fp = view.run_fingerprint
-        entry = next((e for e in ledger.iter_current(fp) if e.source_id == source_id), None)
-        history = [h for h in ledger.iter_history(fp) if h.result.source_id == source_id]
+        entry = ledger.current_entry(fp, source_id)
+        history = list(ledger.iter_source_history(fp, source_id))
         if entry is None and not history:
             raise OpError(
                 "explain",
@@ -1269,12 +1271,9 @@ def explain(run_dir: str | Path, source_id: str, *, full: bool = False) -> OpRes
                 f"source {source_id!r} is not in run {fp}",
                 exit_code=EXIT_USAGE,
             )
-        applied = {
-            str(h.review["result_key"]): h.review
-            for h in review_history(ledger, fp)
-            if h.state == "applied"
-        }
-        overlay = {row.result_key: row for row in adjudicated(ledger, fp)}
+        review = None
+        if entry is not None and entry.result is not None and entry.revision is not None:
+            review = applied_review(ledger, fp, entry.result.result_key, entry.revision)
     finally:
         ledger.close()
 
@@ -1320,9 +1319,8 @@ def explain(run_dir: str | Path, source_id: str, *, full: bool = False) -> OpRes
             "usage": usage_to_dict(current.usage),
         }
         data["attempts"] = [_attempt_summary(a) for a in current.attempts]
-        review = applied.get(current.result_key)
-        row = overlay.get(current.result_key)
-        if review is not None and row is not None:
+        if review is not None:
+            row = adjudicate_result(current, review)
             data["review"] = {
                 "decision": review["decision"],
                 "corrected_target_id": review.get("corrected_target_id"),
@@ -1583,6 +1581,24 @@ def review_export(run_dir: str | Path, out: str | Path) -> OpResult:
     result.artifacts["review"] = str(out)
     result.lines.append(f"exported {count} rows to {out}")
     return result
+
+
+def review_rows(run_dir: str | Path, result_keys: Sequence[str]) -> OpResult:
+    """The worksheet rows `review_export` would write for these result keys, read one
+    result at a time. A key that is not a current `needs_review` result is left out.
+    `data["rows"]` maps each found key to its row."""
+    from xwalk.review import reviewable, worksheet_row
+
+    view, ledger = _open_run(run_dir, "review export")
+    try:
+        rows: dict[str, dict[str, str]] = {}
+        for key in dict.fromkeys(result_keys):
+            result = reviewable(ledger, view.run_fingerprint, key)
+            if result is not None:
+                rows[key] = worksheet_row(result)
+    finally:
+        ledger.close()
+    return OpResult(operation="review export", counts={"rows": len(rows)}, data={"rows": rows})
 
 
 def review_apply(run_dir: str | Path, reviewed: str | Path, job: JobRef) -> OpResult:

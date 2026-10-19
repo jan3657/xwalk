@@ -95,7 +95,7 @@ importing Lucide elsewhere.
 | Inspector: decision, candidates, attempts, history | `GET /api/explain` (`ops.explain(full=True)`) | existing |
 | Shared target hint | manifest `duplicate_targets` via `GET /api/run` | existing (passed through) |
 | Review queue | `GET /api/review` (the worksheet's `needs_review` rows) | existing |
-| Save and next | `POST /api/review` with one decision (`ops.review_apply`, validated against the current result) | existing |
+| Save and next | `POST /api/review` with one decision (`ops.review_apply`, validated against the current result; the decided result is looked up alone); the next record's `GET /api/explain` is prefetched while the current one is read | existing |
 | Spot-check matched records | — | **proposed**: the worksheet holds `needs_review` rows only |
 | Worksheet | `GET /api/review-sheet` | existing |
 | Export dialog | `GET /api/export?view=raw\|reviewed\|history` | existing |

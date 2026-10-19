@@ -633,7 +633,7 @@ def reviews(ws: Workspace, params: Params) -> Response:
 
     def work() -> ops.OpResult:
         from xwalk.ledger import Ledger
-        from xwalk.review import adjudicated, review_history
+        from xwalk.review import adjudicated_reviewed, review_history
 
         fingerprint = str(manifest["run_fingerprint"])
         ledger = Ledger.open(run_dir / "ledger.sqlite")
@@ -648,8 +648,9 @@ def reviews(ws: Workspace, params: Params) -> Response:
                     "final_matched_id": row.final_target_id,
                     "final_status": row.final_status.value,
                 }
-                for row in adjudicated(ledger, fingerprint)
-                if row.reviewer is not None
+                # The reviewed results only, from summary columns: the page refetches
+                # this after every decision, so it must not decode the whole run.
+                for row in adjudicated_reviewed(ledger, fingerprint)
             }
         finally:
             ledger.close()

@@ -147,6 +147,19 @@ offline only (FakeDecider, no paid calls).
   matching or clustering run so the compiler checks the difference, and an error
   boundary (inside the shell, and around it) shows the error with links to the classic
   explorer and the runs list.
+- Reviewing a large run no longer waits seconds per record. `ops.explain` decoded every
+  current result, the whole history and the adjudicated view to answer for one source;
+  it now reads that source's rows through indexed lookups (`Ledger.current_entry`,
+  `Ledger.iter_source_history`, `Ledger.iter_reviews_for`, all read-only), and a test
+  pins it to the previous answers for reviewed, re-reviewed, stale, edited and removed
+  sources. Recording one decision in `xwalk ui` (`POST /api/review`) looks up the
+  decided result instead of exporting the whole worksheet (`ops.review_rows`), and
+  `GET /api/reviews` derives the reviewed answers from the ledger's summary columns
+  (`review.adjudicated_reviewed`) without decoding results. The Review screen fetches the
+  next record's explanation while the current one is read. On a generated 2,000-row run
+  (`scripts/bench_review_step.py`, FakeLLM, in-process) the medians went from 749 ms to
+  7 ms for explain, 382 ms to 28 ms for a decision and 379 ms to 25 ms for the overlay;
+  over HTTP on a 2,189-row run, 798 to 4 ms, 379 to 12 ms and 373 to 24 ms.
 
 ## [0.2.0rc1] — 2026-10-05
 

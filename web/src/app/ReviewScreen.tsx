@@ -8,6 +8,7 @@ import type { ExplainData, MappingPage, MappingRow, TargetRecord, WorksheetRow, 
 import { ClusterRunNotice } from './ClusterRunNotice';
 import { cli, fmt } from './format';
 import { isTyping, useLoad, useStored, useWidth } from './hooks';
+import { promiseCache } from './promiseCache';
 import { AttemptTree, CandidateList, HistoryList, candidatesOf, labelOf, reviewFor } from './RecordParts';
 import type { Route } from './router';
 import { PageHeader } from './Shell';
@@ -157,10 +158,17 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
     }
   }, [queueLoad.state, queue, sel, notInQueue, done, go, dir]);
 
-  const [explain, reloadExplain] = useLoad(
-    () => (current ? api.explain(dir, current.sheet.source_id).then((e) => e.data) : Promise.resolve(null as ExplainData | null)),
+  // Explanations by source id, so the next record's is already here when the reviewer
+  // moves on (it is prefetched below). A decision drops its record's entry.
+  const explains = useMemo(() => promiseCache((id: string) => api.explain(dir, id).then((e) => e.data)), [dir]);
+  const [explain, reloadExplainNow] = useLoad(
+    () => (current ? explains.get(current.sheet.source_id) : Promise.resolve(null as ExplainData | null)),
     [dir, current?.sheet.source_id],
   );
+  const reloadExplain = useCallback(() => {
+    if (current) explains.drop(current.sheet.source_id);
+    return reloadExplainNow();
+  }, [current, explains, reloadExplainNow]);
   const ex = explain.data ?? null;
 
   const pick = useCallback((sourceId: string) => {
@@ -174,6 +182,14 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
     const applied = history.find((h) => h.result_key === e.sheet.result_key && h.state === 'applied');
     return !applied || applied.decision === 'defer';
   };
+
+  // Once this record is on screen, fetch what "save and next" and j will show next.
+  useEffect(() => {
+    if (explain.state !== 'ready' || idx < 0) return;
+    const after = queue.slice(idx + 1);
+    for (const e of [after.find(isOpen), after[0]]) if (e) explains.prefetch(e.sheet.source_id);
+    // isOpen reads `saved` and `history`, both listed.
+  }, [explain.state, idx, queue, saved, history, explains]);
 
   const replaceError = decision === 'replace' && !replaceId.trim() ? 'Required for replace' : null;
   const canSave = !!current && !!decision && !!reviewer.trim() && !replaceError && !!job && save.s !== 'saving';
@@ -204,6 +220,7 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
       setRefusals((n) => n + 1);
       return;
     }
+    explains.drop(entry.sheet.source_id); // its review layer changed
     setSaved((m) => ({ ...m, [entry.sheet.result_key]: decision }));
     setRecorded((r) => ({
       id: entry.sheet.source_id,
