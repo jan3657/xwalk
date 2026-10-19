@@ -173,6 +173,8 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- `xwalk cluster explain` restores merge ancestry with the selected state during
+  failed-record resume, so discarded merges no longer appear in exported ancestry.
 - A malformed HTTP 200 from an OpenAI-compatible endpoint (an HTML error page, a JSON
   array, no or empty `choices`, list `content`, a string token count) raised
   `JSONDecodeError`, `AttributeError`, `TypeError` or `ValueError` out of

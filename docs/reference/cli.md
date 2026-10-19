@@ -367,7 +367,7 @@ aside.) `--json` data:
 | `status`, `exported` | the record's `members.csv` row: outcome, cluster, size, reason, proposal, confidence, decision id |
 | `cluster` | the exported cluster: revision, size, status, `seed_id`, mint provenance, and each member with its outcome, reason and admitting decision; `null` for a record outside every cluster |
 | `admission` | every decision of the step that produced the exported row: the select pages and the verification, the novelty check before a mint, or the merge selection and merge verdict. Each lists the clusters shown with the member ids the prompt listed (`members_shown`, at most `pool.member_evidence`), the parsed result, confidence, error and raw answer |
-| `merge_ancestry` | every applied merge, up to the export, that fed the record's cluster, recursively: winner, absorbed cluster, its members at the merge, iteration, decision |
+| `merge_ancestry` | every applied merge retained in the exported state's lineage that fed the record's cluster, recursively: winner, absorbed cluster, its members at the merge, iteration, decision; resume restores the selected revision's lineage, discarding merges set aside with later state |
 | `evidence_in` | decisions whose prompt listed this record as a member line of a shown cluster |
 | `later` | changes after the exported state revision to the record's assignment or to its exported cluster, each with its decision; `adverse` when it took the record out of the cluster or removed members from it |
 | `superseded_by_selection` | `true` when such changes exist because the exports hold an earlier revision than the last (warning `superseded_by_selection`) |

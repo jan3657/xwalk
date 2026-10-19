@@ -262,6 +262,45 @@ def test_explain_a_merged_member_shows_the_merge_ancestry(merged_run, capsys):
     assert other["data"]["merge_ancestry"] == data["merge_ancestry"]
 
 
+async def test_explain_merge_ancestry_follows_the_state_restored_on_resume(tmp_path, capsys):
+    table = {
+        "a": ("alpha", "g"),
+        "b": ("beta", "g"),
+        "c": ("alpha beta", "g"),
+        "q": ("quinoa", "q"),
+    }
+
+    def broken(name, request):
+        if sections(request.user).get("Record") == "quinoa":
+            return "not JSON"
+        return None
+
+    run = tmp_path / "restored"
+    config = settings(order="input", scan_below=0, max_refine_iterations=1)
+    first = await cluster(
+        records(table), run, Oracle(concepts(table), override=broken), settings=config
+    )
+    assert (first.selected_revision, first.last_revision) == (0, 1)
+    store = ClusterStore.open_readonly(run / "cluster.sqlite")
+    try:
+        (merge,) = [m for m in store.merges() if m["outcome"] == "applied"]
+    finally:
+        store.close()
+    before = member_rows(run)
+    assert before["q"]["outcome"] == "failed"
+    assert before["a"]["cluster_id"] != before["b"]["cluster_id"]
+    assert merge["winner_id"] in (before["a"]["cluster_id"], before["b"]["cluster_id"])
+
+    resumed = await cluster(records(table), run, Oracle(concepts(table)), settings=config)
+    assert resumed.exported_revision == 2
+    after = member_rows(run)
+    for sid in ("a", "b", "c"):
+        assert after[sid]["cluster_id"] == before[sid]["cluster_id"]
+        code, envelope = _cli(capsys, "cluster", "explain", sid, "--run", str(run))
+        assert code == 0
+        assert envelope["data"]["merge_ancestry"] == []
+
+
 def test_explain_shows_adverse_decisions_set_aside_by_revision_selection(rollback_run, capsys):
     _, envelope = _cli(capsys, "cluster", "explain", "s", "--run", str(rollback_run))
     data = envelope["data"]

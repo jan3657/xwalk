@@ -424,7 +424,7 @@ def _explain(run: ClusterRun, source_id: str, full: bool) -> dict[str, Any]:
         for h in history_rows
     ]
 
-    ancestry = _merge_ancestry(store, exported_cluster, cutoff, seq_of) if exported_cluster else []
+    ancestry = _merge_ancestry(store, exported_cluster, cutoff) if exported_cluster else []
     later = _later(store, source_id, exported_cluster, cutoff, history_rows, evidence, cache)
 
     evidence_in = []
@@ -487,16 +487,37 @@ def _explain(run: ClusterRun, source_id: str, full: bool) -> dict[str, Any]:
 
 
 def _merge_ancestry(
-    store: ClusterStore, cluster_id: str, cutoff: int | None, seq_of: Mapping[str, int]
+    store: ClusterStore, cluster_id: str, cutoff: int | None
 ) -> list[dict[str, Any]]:
     """Every applied merge that fed `cluster_id` up to the export, recursively: the
-    clusters it absorbed, and the clusters those had absorbed before."""
-    applied = [
-        m
-        for m in store.merges()
-        if m["outcome"] == "applied"
-        and (cutoff is None or seq_of.get(str(m["step_key"]), -1) <= cutoff)
-    ]
+    clusters it absorbed, and the clusters those had absorbed before. Restoring a
+    state revision also restores its merge lineage."""
+    by_step: dict[str, list[dict[str, Any]]] = {}
+    for merge in store.merges():
+        if merge["outcome"] == "applied":
+            by_step.setdefault(merge["step_key"], []).append(merge)
+    applied: list[dict[str, Any]] = []
+    snapshots: dict[int, list[dict[str, Any]]] = {}
+    for step in store.steps():
+        if cutoff is not None and step["seq"] > cutoff:
+            break
+        parts = step["step_key"].split("/")
+        if len(parts) == 3 and parts[0] == "resume" and parts[2] == "restore":
+            note = step["note"] or ""
+            if note.startswith("restored:"):
+                revision = int(note.removeprefix("restored:"))
+                if revision not in snapshots:
+                    raise ClusterInspectError(
+                        "store_inconsistent",
+                        f"{store.path}: missing restored state revision {revision}",
+                        EXIT_RUNTIME,
+                    )
+                applied = list(snapshots[revision])
+        applied.extend(by_step.get(step["step_key"], []))
+        if (len(parts) == 2 and parts[0] == "end") or (
+            len(parts) == 3 and parts[0] == "resume" and parts[2] == "end"
+        ):
+            snapshots[int(parts[1])] = list(applied)
     revisions: dict[str, list[dict[str, Any]]] = {}
     for rev in store.revision_log():
         revisions.setdefault(str(rev["cluster_id"]), []).append(rev)
