@@ -114,6 +114,15 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- A run against a failing provider says why. A call limit spent on retries against a
+  dead endpoint was reported only as `call_limit_reached` with the advice to raise
+  `--max-calls`; the message now names the provider's last error (`call limit of 5
+  reached while the provider was failing: ... ConnectError: ...`) and advises fixing
+  the endpoint instead. A run (and `inspect`) with `failed` rows lists their errors,
+  deduplicated with counts and most common first, as `provider_failure` /
+  `retriever_failure` errors in the envelope, on stderr and in the summary. A run
+  without `--max-calls` whose records fail adds the `uncapped_failures` warning, and
+  `xwalk match` warns once on stderr when three records in a row fail uncapped.
 - BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
   forms were `strip().lower()`, but the query's exact term was built from the
   *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat

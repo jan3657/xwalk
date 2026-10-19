@@ -75,7 +75,8 @@ errors; progress and logs stay on stderr, so `xwalk match ... --json | jq .` alw
 Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missing_field`,
 `invalid_value`, `missing_file`, `missing_extra`, `credential_missing`, `duplicate_id`,
 `index_mismatch`, `run_fingerprint_mismatch`, `out_not_a_run`, `run_not_found`,
-`source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
+`source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `provider_failure`,
+`retriever_failure`, `record_failure`, `exception`,
 `interrupted` and `usage`. The decider path adds `wrong_job_path` (`ablate`, `prompts` or
 `fit` given the wrong kind of job) and, from `fit`, `no_recommendation`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
 to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`, and the
@@ -199,6 +200,14 @@ is `aborted` with one error `call_limit_reached` (however many records it stoppe
 there. The limit is per invocation. Retries hidden inside LiteLLM (`num_retries`) cannot be
 observed or limited; set `num_retries=0` there. The reported `usage` counts calls that were
 in flight when the run stopped as calls with unknown usage, never as free.
+
+When the calls that spent the limit were failing (a wrong `base_url`, a dead proxy), the
+`call_limit_reached` message names the provider's last error instead of advising a higher
+limit. Records that end `failed` are summarised by distinct error with counts
+(`provider_failure` or `retriever_failure` errors, also in `inspect`); `xwalk explain`
+has each record's attempts. Without `--max-calls`, a run with failed records adds the
+`uncapped_failures` warning, and three failed records in a row print one warning on
+stderr while the run continues.
 
 Prints the number of current source records, the run state (`complete`, `partial`,
 `failed`, `aborted`, `interrupted`), a count per status sorted by status name (with

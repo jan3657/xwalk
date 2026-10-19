@@ -56,8 +56,8 @@ from xwalk.decide.budget import BudgetedDecider
 from xwalk.decide.cache import CachingDecider
 from xwalk.fingerprint import hash_value
 from xwalk.ledger import Ledger
-from xwalk.llm.base import LLMClient
-from xwalk.llm.budget import CALL_LIMIT_CODE, BudgetedLLM, CallBudget
+from xwalk.llm.base import LLMClient, LLMRequest, LLMResponse
+from xwalk.llm.budget import CALL_LIMIT_CODE, BudgetedLLM, CallBudget, CallLimitExceeded
 from xwalk.records import MatchResult, MatchStatus, Record, RetrievalHit, Usage
 from xwalk.retrieval import bm25 as bm25_index
 from xwalk.retrieval import dense as dense_index
@@ -876,6 +876,94 @@ def _open_run(run_dir: str | Path, operation: str) -> tuple[_RunView, Ledger]:
     )
 
 
+# The marker the LLM client and run_batch put before the error that spent a call limit.
+_LAST_ERROR = "; last provider error: "
+_FAILURE_CODES = frozenset({"provider_failure", "retriever_failure", "record_failure"})
+_FAILURE_GROUPS_SHOWN = 5
+
+
+def _failure_summary(ledger: Ledger, run_fingerprint: str) -> list[OpMessage]:
+    """One message per distinct error of the current `failed` rows, most common first.
+
+    The per-record cause otherwise shows only in `xwalk explain`; a run against a dead
+    endpoint must say why it failed in its own summary.
+    """
+    groups: dict[tuple[str, str], int] = {}
+    for row in ledger.iter_current_summaries(run_fingerprint):
+        if row["status"] != MatchStatus.FAILED.value:
+            continue
+        result = ledger.get_result(str(row["result_key"]))
+        if result is None:  # pragma: no cover - the row was just listed
+            continue
+        errors = [a.error for a in result.attempts if a.error]
+        error = errors[-1] if errors else (result.explanation or "no error recorded")
+        reason = result.reason.value
+        code = reason if reason in _FAILURE_CODES else "record_failure"
+        groups[(code, error)] = groups.get((code, error), 0) + 1
+    ranked = sorted(groups.items(), key=lambda item: (-item[1], item[0]))
+    messages = [
+        OpMessage(code, f"{n} record(s) failed: {error}")
+        for (code, error), n in ranked[:_FAILURE_GROUPS_SHOWN]
+    ]
+    rest = ranked[_FAILURE_GROUPS_SHOWN:]
+    if rest:
+        messages.append(
+            OpMessage(
+                "record_failure",
+                f"{sum(n for _, n in rest)} record(s) failed: {len(rest)} other distinct "
+                "error(s); see xwalk explain",
+            )
+        )
+    return messages
+
+
+def _failure_groups(failures: Sequence[OpMessage]) -> list[tuple[int, str]]:
+    """(count, error) back out of `_failure_summary` messages, in their order."""
+    groups = []
+    for message in failures:
+        head, _, error = message.message.partition(" record(s) failed: ")
+        if head.isdigit() and error:
+            groups.append((int(head), error))
+    return groups
+
+
+def _call_limit_message(limit: int | None, cause: str | None) -> str:
+    """The run-level stop. Raising the limit is the advice only when calls succeeded."""
+    if cause is None:
+        return (
+            f"call limit of {limit} reached; nothing more is dispatched in this invocation "
+            "(raise --max-calls and resume to continue)"
+        )
+    return (
+        f"call limit of {limit} reached while the provider was failing: {cause}. Fix the "
+        "endpoint, model or credentials before resuming; a higher --max-calls would only "
+        "spend more calls on retries"
+    )
+
+
+class _ObservedLLM(BudgetedLLM):
+    """A `BudgetedLLM` that remembers the last provider error it saw.
+
+    A run that hits its call limit while every call fails has nothing committed to
+    explain itself; this is where the cause is still known.
+    """
+
+    def __init__(self, inner: LLMClient, budget: CallBudget | None = None) -> None:
+        super().__init__(inner, budget)
+        self.last_error: str | None = None
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        try:
+            return await super().complete(request)
+        except CallLimitExceeded as exc:
+            if _LAST_ERROR in str(exc):
+                self.last_error = str(exc).split(_LAST_ERROR, 1)[1]
+            raise
+        except Exception as exc:
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            raise
+
+
 def _summarise_run(view: _RunView, ledger: Ledger, operation: str) -> OpResult:
     """The envelope fields every run-level operation shares, read from the ledger."""
     fp = view.run_fingerprint
@@ -904,6 +992,8 @@ def _summarise_run(view: _RunView, ledger: Ledger, operation: str) -> OpResult:
             OpMessage(str(e["code"]), str(e["message"]), e.get("source_id"))
             for e in invocation.get("errors") or []
         ]
+    if counts.get(MatchStatus.FAILED.value, 0):
+        result.errors += _failure_summary(ledger, fp)
     duplicates = ledger.duplicate_targets(fp)
     if duplicates:
         result.warnings.append(
@@ -962,7 +1052,7 @@ async def run_async(
     rewrite_llm: BudgetedLLM | None = None
     try:
         if spec.decider is None:
-            budgeted = BudgetedLLM(llm or spec.build_llm(), budget)
+            budgeted = _ObservedLLM(llm or spec.build_llm(), budget)
             meters.append(budgeted)
         else:
             client = decider or (decider_factory or JobSpec.build_decider)(spec)
@@ -971,7 +1061,7 @@ async def run_async(
             meters.append(budgeted_decider)
             if spec.decider.rewrite is not None:
                 inner = llm or (rewrite_llm_factory or JobSpec.build_rewrite_llm)(spec)
-                rewrite_llm = BudgetedLLM(inner, budget.share())
+                rewrite_llm = _ObservedLLM(inner, budget.share())
                 meters.append(rewrite_llm)
     except CredentialMissingError as exc:
         raise OpError(operation, "credential_missing", str(exc), exit_code=EXIT_USAGE) from None
@@ -1062,16 +1152,37 @@ async def run_async(
         usage = usage + Usage(cache_hits=caching.hits)
     result.usage = usage_to_dict(usage)
     result.usage["limit"] = max_calls
+    # The per-record failure summary _summarise_run read from the ledger stays; the
+    # invocation's own errors are rebuilt from the report.
+    failures = [e for e in result.errors if e.code in _FAILURE_CODES and e.source_id is None]
     result.errors = []
+    limit_causes: list[str] = []
+    limit_reached = False
     for e in report.errors:
         if budget.exhausted and "call limit of" in e.message:
             # One run-level stop, however many in-flight records the spent budget
             # refused (each is left unsettled and retried on resume).
-            if all(m.code != CALL_LIMIT_CODE for m in result.errors):
-                message = e.message[e.message.index("call limit of") :]
-                result.errors.append(OpMessage(CALL_LIMIT_CODE, message))
+            limit_reached = True
+            if _LAST_ERROR in e.message:
+                limit_causes.append(e.message.split(_LAST_ERROR, 1)[1])
         else:
             result.errors.append(OpMessage(e.code, e.message, e.source_id))
+    if limit_reached:
+        seen = [m.last_error for m in meters if isinstance(m, _ObservedLLM) and m.last_error]
+        causes = limit_causes or seen or [error for _, error in _failure_groups(failures)]
+        message = _call_limit_message(max_calls, causes[0] if causes else None)
+        result.errors.insert(0, OpMessage(CALL_LIMIT_CODE, message))
+    result.errors += failures
+    if max_calls is None and failures:
+        failed = sum(n for n, _ in _failure_groups(failures))
+        result.warnings.append(
+            OpMessage(
+                "uncapped_failures",
+                f"{failed} record(s) failed on provider or retriever errors in a run "
+                "without a call limit, each after spending its retries. Check the "
+                "endpoint, then set --max-calls to bound what a broken one can cost",
+            )
+        )
     result.artifacts["index"] = str(index_root)
     result.data = {"indexes": actions, "job": spec.name, "model": model, "path": path}
     result.lines += _run_lines(result, report.total)
@@ -1134,6 +1245,9 @@ def _run_lines(result: OpResult, total: int) -> list[str]:
             lines.append(f"  {status:<14}: {count}")
     if result.usage is not None:
         lines.append(f"  tokens        : {result.usage['tokens']} in {result.usage['calls']} calls")
+    for error in result.errors:
+        if error.code in _FAILURE_CODES and error.source_id is None:
+            lines.append(f"  {error.code}: {error.message}")
     return lines
 
 

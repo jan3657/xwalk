@@ -229,8 +229,12 @@ class OpenAICompatClient:
                 try:
                     self._call_budget.acquire()
                 except CallLimitExceeded as exc:
-                    # The requests already sent (and failed) are still real calls.
-                    raise CallLimitExceeded(str(exc), usage=Usage.unreported(dispatched)) from None
+                    # The requests already sent (and failed) are still real calls, and
+                    # their error is what spent the limit: say so.
+                    message = str(exc)
+                    if dispatched:
+                        message += f"; last provider error: {last_error}"
+                    raise CallLimitExceeded(message, usage=Usage.unreported(dispatched)) from None
             dispatched += 1
             try:
                 response = await self._post(body)

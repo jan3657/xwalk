@@ -350,6 +350,11 @@ class _FatalResult(Exception):
 def _fatal_error(result: MatchResult) -> BatchError:
     errors = [a.error for a in result.attempts if a.error]
     message = errors[-1] if errors else (result.explanation or "fatal provider failure")
+    if "call limit of" in message and "last provider error: " not in message:
+        # A limit spent on failing calls: the earlier attempt's error is the cause.
+        earlier = [e for e in errors[:-1] if "call limit of" not in e]
+        if earlier:
+            message += f"; last provider error: {earlier[-1]}"
     return BatchError(
         code=DecisionReason.FATAL_PROVIDER_FAILURE.value,
         message=message,

@@ -346,6 +346,31 @@ def _progress(result: Any) -> None:
     print(f"  {result.source_id}: {result.status.value}", file=sys.stderr)
 
 
+# Consecutive failed records after which an uncapped run warns (once) while it runs.
+_FAILING_STREAK = 3
+
+
+def _match_progress(max_calls: int | None) -> Callable[[Any], None]:
+    """Per-record progress, plus one warning when an uncapped run keeps failing."""
+    streak = 0
+    warned = False
+
+    def progress(result: Any) -> None:
+        nonlocal streak, warned
+        _progress(result)
+        streak = streak + 1 if result.status.value == "failed" else 0
+        if max_calls is None and streak >= _FAILING_STREAK and not warned:
+            warned = True
+            print(
+                f"warning: {streak} records in a row failed and no --max-calls is set; "
+                "every record spends its retries against a failing provider. Ctrl-C to "
+                "stop (the run resumes), then check the endpoint",
+                file=sys.stderr,
+            )
+
+    return progress
+
+
 def _cmd_match(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
@@ -357,7 +382,7 @@ def _cmd_match(args: argparse.Namespace) -> OpResult:
         limit=args.limit,
         max_calls=args.max_calls,
         rebuild_index=args.rebuild_index,
-        progress=_progress,
+        progress=_match_progress(args.max_calls),
         # Looked up at call time, so a test can swap in fakes without an API key.
         decider_factory=lambda job: _build_decider(job),
         rewrite_llm_factory=lambda job: _build_rewrite_llm(job),
