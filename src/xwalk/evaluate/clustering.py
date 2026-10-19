@@ -79,6 +79,10 @@ def read_assignments(path: str | Path) -> tuple[Assignment, dict[str, str]]:
         outcome = str(row.get("outcome") or "").strip()
         if outcome and outcome not in OUTCOMES:
             raise ValueError(f"{path}: row {n} has unknown outcome {outcome!r}")
+        if not clusters[item] and (not outcome or outcome in ACCEPTED):
+            # Blank ids would share one cluster "" and score as co-clustered. Only rows
+            # outside the accepted partition (needs_review, failed, pending) may omit it.
+            raise ValueError(f"{path}: row {n} has no cluster_id")
         outcomes[item] = outcome
     sizes = _sizes(clusters)
     for item, outcome in outcomes.items():

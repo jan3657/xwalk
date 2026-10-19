@@ -33,7 +33,8 @@ python -m benchmarks.run --real --max-calls 2000 --out benchmarks/results/real-Y
 
 Without the `XWALK_BENCH_*` overrides (also `XWALK_BENCH_PROFILE`,
 `XWALK_BENCH_LLM_KIND`) it uses each example job's own `llm` section. `--max-calls`
-caps every LLM-using method separately. A missing credential stops the run before
+caps every LLM-using method separately, `xwalk_clustering` included, so the paid
+calls of one invocation can reach several times the cap. A missing credential stops the run before
 anything executes (exit 2). The results record the model settings per variant, the
 code commit and dirty flag, the data digests and the usage of every method. A real
 result is publishable only with all of those, and only if it was produced without
