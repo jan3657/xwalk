@@ -56,6 +56,13 @@ offline only (FakeDecider, no paid calls).
   earlier state revision than the last). `ClusterReport.warnings` carries them.
   Thresholds are in the clustering guide. Decisions, ordering and retrieval defaults
   are unchanged.
+- Clustering documentation corrected (guide "Limits", the decision record): a join is
+  verified against a cluster's first `pool.member_evidence` members, not "all of
+  them"; "A-B, B-C cannot force A-C" holds within that bound; resume reproduces an
+  uninterrupted run only for identical model answers; `order: label` makes a run
+  independent of input permutation but processing order still changes results; plural
+  and suffix variants share no token with the lexical head (hyphen variants do); and
+  measurements made with scripted judges on generated data are labelled SYNTHETIC.
 - The benchmark's clustering track runs `xwalk cluster` itself (`xwalk_clustering`,
   default settings) beside the baselines and reports its scores, usage and gold-pair
   co-exposure. In `--smoke` the judge is the offline lexical stand-in and the numbers
