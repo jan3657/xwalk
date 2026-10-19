@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunView } from '../api/types';
 
@@ -17,12 +17,14 @@ const mock = vi.hoisted(() => ({
     init: vi.fn(),
     startTask: vi.fn(),
     cancelTask: vi.fn(),
+    target: vi.fn(),
   },
 }));
 vi.mock('../api/client', async (importOriginal) => ({ ...(await importOriginal<object>()), api: mock.api }));
 
 const { App } = await import('./App');
 const { ErrorBoundary } = await import('./ErrorBoundary');
+const { ApiError } = await import('../api/client');
 
 const CLUSTER_RUN: RunView = {
   kind: 'cluster',
@@ -154,4 +156,74 @@ describe('the review screen', () => {
     expect(proposal().textContent).toContain('definition of s1');
     expect(proposal().querySelector('[aria-busy="true"]')).toBeNull();
   });
+
+  it('opens on the first record still to decide', async () => {
+    reviewFixture({ applied: ['s1'] });
+    await open(`#/review?dir=${MATCH_DIR}`);
+    expect(window.location.hash).toContain('sel=s2');
+  });
+
+  it('keeps the active queue item in view as j and k move', async () => {
+    reviewFixture();
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) { scrolled.push(this.textContent ?? ''); });
+    await open(`#/review?dir=${MATCH_DIR}&sel=s1`);
+    scrolled.length = 0;
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'j' }); await tick(); });
+    expect(window.location.hash).toContain('sel=s2');
+    expect(scrolled.some((t) => t.includes('text s2'))).toBe(true);
+  });
+
+  it('Escape leaves a text field, and the decision keys work again', async () => {
+    reviewFixture();
+    await open(`#/review?dir=${MATCH_DIR}&sel=s1`);
+    const reviewer = screen.getByLabelText('Reviewer');
+    reviewer.focus();
+    fireEvent.keyDown(reviewer, { key: 'a' });
+    expect(screen.getByRole('radio', { name: /Accept/ }).getAttribute('aria-checked')).toBe('false');
+    fireEvent.keyDown(reviewer, { key: 'Escape' });
+    expect(document.activeElement).not.toBe(reviewer);
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'a' }); });
+    expect(screen.getByRole('radio', { name: /Accept/ }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('checks a typed replacement id against the reference before saving', async () => {
+    reviewFixture();
+    mock.api.target.mockImplementation(async (_dir: string, id: string) => {
+      if (id === 'T:known') return ok('targets', { record: { id, fields: { label: 'the known one' } } });
+      throw new ApiError(404, 'target_not_found', `'${id}' is not in this job's target collection`);
+    });
+    await open(`#/review?dir=${MATCH_DIR}&sel=s1`);
+    fireEvent.change(screen.getByLabelText('Reviewer'), { target: { value: 'jan' } });
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'p' }); });
+    const field = screen.getByLabelText('Corrected target id');
+    const save = () => screen.getByRole('button', { name: /Save and next/ }) as HTMLButtonElement;
+
+    await act(async () => { fireEvent.change(field, { target: { value: 'T:nope' } }); await wait(400); });
+    expect(screen.getByText(/not in this job's target collection/)).toBeTruthy();
+    expect(save().disabled).toBe(true);
+
+    await act(async () => { fireEvent.change(field, { target: { value: 'T:known' } }); await wait(400); });
+    expect(screen.queryByText(/not in this job's target collection/)).toBeNull();
+    expect(screen.getAllByText('the known one').length).toBeGreaterThan(0);
+    expect(save().disabled).toBe(false);
+    expect(mock.api.target).toHaveBeenCalledWith(MATCH_DIR, 'T:known', 'job.yaml');
+  });
+
+  it('accepts a candidate id without asking the server', async () => {
+    reviewFixture();
+    mock.api.explain.mockImplementation(async (_dir: string, id: string) => ({
+      ...explainOf(id),
+      data: { ...explainOf(id).data, result: { ...explainOf(id).data.result, candidates: [] } },
+    }));
+    await open(`#/review?dir=${MATCH_DIR}&sel=s1`);
+    fireEvent.change(screen.getByLabelText('Reviewer'), { target: { value: 'jan' } });
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'p' }); });
+    // The model's own proposal is a record the page already holds.
+    await act(async () => { fireEvent.change(screen.getByLabelText('Corrected target id'), { target: { value: 'T:s1' } }); await wait(400); });
+    expect(mock.api.target).not.toHaveBeenCalled();
+  });
 });
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -659,6 +659,29 @@ def reviews(ws: Workspace, params: Params) -> Response:
     return _envelope("reviews", work)
 
 
+def target(ws: Workspace, params: Params) -> Response:
+    """One record of a run's target collection by its exact id, so the Review screen can
+    check a typed corrected target id before saving it. The job is the run's own (or
+    `job`); an id the collection does not have is a 404 `target_not_found`."""
+    run_dir, _ = ws._run_dir(params)
+    target_id = _str(params, "id")
+    job_param = _str(params, "job", required=False)
+    job_rel = job_param or ws._run_jobs().get(ws.rel(run_dir))
+    if not job_rel:
+        raise ApiError(400, "missing_parameter", "this run has no recorded job; pass job")
+    job = ws.path(job_rel, must_exist=True)
+    found = _envelope("targets", lambda: ops.find_targets(job, [target_id]))
+    if found["status"] == "error":
+        return found
+    record = found["data"]["records"].get(target_id)
+    if record is None:
+        raise ApiError(
+            404, "target_not_found", f"{target_id!r} is not in this job's target collection"
+        )
+    found["data"] = {"record": record}
+    return found
+
+
 def review_sheet(ws: Workspace, params: Params) -> Response:
     """Download the review worksheet to fill in a spreadsheet."""
     run_dir = ws.path(_str(params, "dir"), must_exist=True)
@@ -832,6 +855,7 @@ ROUTES: dict[tuple[str, str], Handler] = {
     ("GET", "/api/job-file"): job_file,
     ("GET", "/api/review-sheet"): review_sheet,
     ("GET", "/api/reviews"): reviews,
+    ("GET", "/api/target"): target,
     ("POST", "/api/review-upload"): review_upload,
     ("GET", "/api/presets"): presets,
     ("GET", "/api/credentials"): credentials,

@@ -27,6 +27,13 @@ type Save =
   | { s: 'error'; msg: string }
   | { s: 'conflict'; msg: string };
 
+/** Where the check of a typed corrected target id stands. */
+type IdCheck =
+  | { id: string; s: 'checking' }
+  | { id: string; s: 'ok'; record: TargetRecord }
+  | { id: string; s: 'unknown'; msg: string }
+  | { id: string; s: 'error'; msg: string };
+
 /** Every needs_review mapping row (text, labels, score) for the queue, page by page. */
 async function reviewRows(dir: string, pageSize: number): Promise<MappingRow[]> {
   const out: MappingRow[] = [];
@@ -42,8 +49,12 @@ async function reviewRows(dir: string, pageSize: number): Promise<MappingRow[]> 
 function QueueItem({ e, active, saved, history, onClick }: {
   e: QueueEntry; active: boolean; saved: ReviewDecision | undefined; history: ReturnType<typeof reviewFor>; onClick: () => void;
 }) {
+  // The queue follows j/k: the active item scrolls into the list's view.
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (active) ref.current?.scrollIntoView?.({ block: 'nearest' }); }, [active]);
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       aria-current={active || undefined}
@@ -144,6 +155,8 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
   const [saved, setSaved] = useState<Record<string, ReviewDecision>>({});
   const [decision, setDecision] = useState<ReviewDecision | null>(null);
   const [replaceId, setReplaceId] = useState('');
+  // A typed corrected id is checked against the job's targets before it can be saved.
+  const [check, setCheck] = useState<IdCheck | null>(null);
   const [reviewer, setReviewer] = useStored('xw-reviewer', '');
   const [note, setNote] = useState('');
   const [save, setSave] = useState<Save>({ s: 'idle' });
@@ -166,12 +179,15 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
   const idx = queue.findIndex((e) => e.sheet.source_id === sel);
   const current = idx >= 0 ? queue[idx]! : null;
   const notInQueue = !!sel && queueLoad.state === 'ready' && idx < 0;
-  // Open the first record when none (or one no longer in the queue) is named.
+  // Open the first record still to decide when none (or one no longer in the queue) is
+  // named; wait for the review overlay, which says what is decided.
+  const overlayKnown = reviews.state !== 'loading' || reviews.data !== undefined;
   useEffect(() => {
-    if (queueLoad.state === 'ready' && queue.length && (!sel || notInQueue) && !done) {
-      go({ screen: 'review', dir, sel: queue[0]!.sheet.source_id }, { replace: true });
+    if (queueLoad.state === 'ready' && overlayKnown && queue.length && (!sel || notInQueue) && !done) {
+      const first = queue.find(isOpen) ?? queue[0]!;
+      go({ screen: 'review', dir, sel: first.sheet.source_id }, { replace: true });
     }
-  }, [queueLoad.state, queue, sel, notInQueue, done, go, dir]);
+  }, [queueLoad.state, overlayKnown, queue, sel, notInQueue, done, go, dir]);
 
   // Explanations by source id, so the next record's is already here when the reviewer
   // moves on (it is prefetched below). A decision drops its record's entry.
@@ -206,8 +222,16 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
     // isOpen reads `saved` and `history`, both listed.
   }, [explain.state, idx, queue, saved, history, explains]);
 
-  const replaceError = decision === 'replace' && !replaceId.trim() ? 'Required for replace' : null;
-  const canSave = !!current && !!decision && !!reviewer.trim() && !replaceError && !!job && save.s !== 'saving';
+  const typed = decision === 'replace' ? replaceId.trim() : '';
+  const checked = check && check.id === typed ? check : null;
+  const replaceError = decision === 'replace' && !typed ? 'Required for replace'
+    : checked?.s === 'unknown' ? checked.msg : null;
+  const replaceHint = checked?.s === 'ok' ? `In the reference: ${labelOf(checked.record) ?? checked.record.id}`
+    : checked?.s === 'error' ? `Could not check the id (${checked.msg}); the server checks it on save.`
+      : typed ? 'Checking the reference…' : undefined;
+  // Saving waits for the check; if the check itself failed, the server's check decides.
+  const replaceReady = decision !== 'replace' || checked?.s === 'ok' || checked?.s === 'error';
+  const canSave = !!current && !!decision && !!reviewer.trim() && !replaceError && replaceReady && !!job && save.s !== 'saving';
 
   const doSave = async () => {
     if (!canSave || !current || !decision) return;
@@ -269,9 +293,33 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
 
   const records = useMemo(() => {
     const m: Record<string, TargetRecord> = {};
+    const proposedRecord = ex?.result?.matched_record;
+    if (proposedRecord) m[proposedRecord.id] = proposedRecord;
     if (ex) for (const { candidate } of candidatesOf(ex)) m[candidate.record.id] = candidate.record;
     return m;
   }, [ex]);
+
+  // Check a typed replacement: a record the page holds (a candidate, the proposal) is
+  // known; anything else is looked up by its exact id, a moment after typing stops.
+  useEffect(() => {
+    if (!typed) { setCheck(null); return; }
+    const held = records[typed];
+    if (held) { setCheck({ id: typed, s: 'ok', record: held }); return; }
+    setCheck({ id: typed, s: 'checking' });
+    let live = true;
+    const timer = window.setTimeout(() => {
+      api.target(dir, typed, job || undefined).then(
+        (e) => { if (live) setCheck({ id: typed, s: 'ok', record: e.data.record }); },
+        (err: Error) => {
+          if (!live) return;
+          setCheck(err instanceof ApiError && err.code === 'target_not_found'
+            ? { id: typed, s: 'unknown', msg: `${typed} is not in this job's target collection. Pick a candidate or check the id.` }
+            : { id: typed, s: 'error', msg: err.message });
+        },
+      );
+    }, 250);
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [typed, records, dir, job]);
 
   const matchRun = run.data?.kind === 'match' ? run.data : null;
   const counts = matchRun?.inspect.counts ?? {};
@@ -415,7 +463,7 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
                   <Wire key={`${decision ?? 'none'}-${replacement ?? ''}`} kind={strand.kind} label={strand.label} focused={false} />
                 </div>
                 {replacement ? (
-                  <Cell kind="Your replacement" tone="human"><TargetFacts id={replacement} record={records[replacement] ?? null} /></Cell>
+                  <Cell kind="Your replacement" tone="human"><TargetFacts id={replacement} record={records[replacement] ?? (checked?.s === 'ok' ? checked.record : null)} loading={checked === null || checked.s === 'checking'} /></Cell>
                 ) : decision === 'replace' ? (
                   <Cell kind="Your replacement" tone="human">
                     <div className={v.awaiting}>Pick a candidate below, or type the corrected target id.</div>
@@ -477,7 +525,7 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
               </div>
               <div className={v.fields} data-replace={decision === 'replace' || undefined} data-stack={stack || undefined}>
                 {decision === 'replace' ? (
-                  <Input size="sm" label="Corrected target id" mono value={replaceId} onChange={(e) => setReplaceId(e.target.value)} placeholder="target id" error={replaceError} />
+                  <Input size="sm" label="Corrected target id" mono value={replaceId} onChange={(e) => setReplaceId(e.target.value)} placeholder="target id" error={replaceError} hint={replaceHint} />
                 ) : null}
                 <Input size="sm" label="Reviewer" value={reviewer} onChange={(e) => setReviewer(e.target.value)} placeholder="your name" error={decision && !reviewer.trim() ? 'Required' : null} />
                 <Input size="sm" label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why, for anyone reading this later" />

@@ -97,6 +97,7 @@ importing Lucide elsewhere.
 | Review queue | `GET /api/review` (the worksheet's `needs_review` rows) | existing |
 | Save and next | `POST /api/review` with one decision (`ops.review_apply`, validated against the current result; the decided result is looked up alone); the next record's `GET /api/explain` is prefetched while the current one is read | existing |
 | Spot-check matched records | — | **proposed**: the worksheet holds `needs_review` rows only |
+| Corrected target id check | `GET /api/target` (`ops.find_targets`, exact id); `POST /api/review` refuses a `replace` to an unknown id (422 `unknown_target`) | **new read route** |
 | Worksheet | `GET /api/review-sheet` | existing |
 | Export dialog | `GET /api/export?view=raw\|reviewed\|history` | existing |
 | Summary, Evaluate tabs | the classic explorer's run page | existing, not redesigned yet |

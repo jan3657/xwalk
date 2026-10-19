@@ -164,6 +164,16 @@ offline only (FakeDecider, no paid calls).
   queue already has and a placeholder for the rest, instead of "Label not available",
   "None recorded" and "Not in the reference collection", which read as facts about the
   reference.
+- Review keyboard and queue fixes in `/app`: the queue opens on the first record still to
+  decide instead of the first record, and scrolls to follow J/K; Escape leaves a text
+  field (it used to stay in the Reviewer or Note field, where A P R N D were typed as
+  text); J/K and ↵ work on Runs and Results from a fresh page, not only after tabbing
+  into the table.
+- A corrected target id typed in the Review screen is checked against the job's target
+  collection before it can be saved: new read route `GET /api/target` (exact id,
+  `ops.find_targets`), and `POST /api/review` refuses a `replace` to an id the
+  collection does not have (422 `unknown_target`) instead of recording an answer that
+  names no record. `xwalk review apply` and `review.apply_review` are unchanged.
 
 ## [0.2.0rc1] — 2026-10-05
 

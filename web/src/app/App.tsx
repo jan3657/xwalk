@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { Info, RunView, TaskView } from '../api/types';
 import { ErrorBoundary } from './ErrorBoundary';
-import { useInterval, useLoad } from './hooks';
+import { useEscapeLeavesField, useInterval, useLoad } from './hooks';
 import { format, useRoute } from './router';
 import { ResultsScreen } from './ResultsScreen';
 import { ReviewScreen } from './ReviewScreen';
@@ -11,6 +11,7 @@ import { Shell } from './Shell';
 
 export function App() {
   const [route, go] = useRoute();
+  useEscapeLeavesField();
   const [info, setInfo] = useState<Info | null>(null);
   const [workspace, reloadWorkspace] = useLoad(() => api.workspace(), []);
   const [tasks, setTasks] = useState<TaskView[]>([]);

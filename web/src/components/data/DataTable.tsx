@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { cx } from '../../lib/cx';
 import s from './DataTable.module.css';
 
@@ -29,6 +29,11 @@ export interface DataTableProps<R> {
   empty?: ReactNode;
   stickyHeader?: boolean;
   keyboard?: boolean;
+  /**
+   * The table is the page's main list: j, k and Enter also work while nothing has
+   * focus (a fresh page, or after Escape), not only once the grid is focused.
+   */
+  pageKeys?: boolean;
   /** Accessible name of the grid. */
   label?: string;
 }
@@ -41,7 +46,7 @@ const track = (w: number | string | undefined) => (w == null ? 'minmax(0,1fr)' :
  */
 export function DataTable<R>({
   columns, rows, rowKey, selectedKey, onSelect, onActivate, density = 'default', loading = false,
-  empty, stickyHeader = true, keyboard = true, label,
+  empty, stickyHeader = true, keyboard = true, pageKeys = false, label,
 }: DataTableProps<R>) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -53,7 +58,7 @@ export function DataTable<R>({
   const height = density === 'compact' ? 32 : 36;
   const at = rows.findIndex((r) => rowKey(r) === selectedKey);
 
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (e: { key: string; preventDefault: () => void }) => {
     if (!keyboard || !rows.length) return;
     if (e.key === 'Enter' && onActivate && at >= 0) {
       e.preventDefault();
@@ -68,6 +73,22 @@ export function DataTable<R>({
       onSelect(rowKey(rows[down ? Math.min(rows.length - 1, at + 1) : Math.max(0, at - 1)]!));
     }
   };
+
+  const latest = useRef(onKeyDown);
+  latest.current = onKeyDown;
+  useEffect(() => {
+    if (!pageKeys) return;
+    const onPageKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== 'j' && e.key !== 'k' && e.key !== 'Enter') return; // arrows keep scrolling the page
+      // Only while nothing has focus: a focused field, button or the grid itself owns its keys.
+      const focused = document.activeElement;
+      if (focused && focused !== document.body && focused !== document.documentElement) return;
+      latest.current(e);
+    };
+    window.addEventListener('keydown', onPageKey);
+    return () => window.removeEventListener('keydown', onPageKey);
+  }, [pageKeys]);
 
   const cellClass = (c: Column<R>) => cx(s.cell, c.align === 'right' && s.right, c.flush && s.flush);
 

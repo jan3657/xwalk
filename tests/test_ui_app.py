@@ -134,6 +134,44 @@ def test_reviews_route_reports_history_states_and_final_answers(
     }
 
 
+def test_target_route_reads_a_reference_record_by_exact_id(
+    ws: Workspace, demo: str, review_run: str
+) -> None:
+    found = dispatch(ws, "GET", "/api/target", {"dir": review_run, "id": "CHEBI:17992"})
+    assert found["status"] == "ok"
+    assert found["data"]["record"]["id"] == "CHEBI:17992"
+    assert found["data"]["record"]["fields"]["label"] == "sucrose"
+    # Exact ids only: no case folding, trimming or label lookup.
+    for wrong in ("chebi:17992", "sucrose", "CHEBI:99999"):
+        with pytest.raises(ApiError) as caught:
+            dispatch(ws, "GET", "/api/target", {"dir": review_run, "id": wrong})
+        assert caught.value.status == 404 and caught.value.code == "target_not_found"
+
+
+def test_a_replacement_outside_the_reference_is_refused_and_nothing_recorded(
+    ws: Workspace, demo: str, review_run: str
+) -> None:
+    rows = {r["source_id"]: r for r in ws.review_rows({"dir": review_run})["data"]["rows"]}
+    with pytest.raises(ApiError) as caught:
+        ws.review_apply(
+            {
+                "dir": review_run,
+                "job": demo,
+                "reviewer": "jan",
+                "decisions": [
+                    {
+                        "result_key": rows["s2"]["result_key"],
+                        "decision": "replace",
+                        "corrected_target_id": "CHEBI:99999",
+                    }
+                ],
+            }
+        )
+    assert caught.value.status == 422 and caught.value.code == "unknown_target"
+    assert "CHEBI:99999" in caught.value.message
+    assert dispatch(ws, "GET", "/api/reviews", {"dir": review_run})["data"]["history"] == []
+
+
 def test_reviews_route_refuses_a_directory_that_is_not_a_run(ws: Workspace, demo: str) -> None:
     with pytest.raises(ApiError) as caught:
         dispatch(ws, "GET", "/api/reviews", {"dir": "demo"})

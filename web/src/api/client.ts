@@ -1,5 +1,5 @@
 import type {
-  Envelope, ExplainData, Info, MappingPage, ReviewsData, RunView, TaskView, WorksheetRow, WorkspaceListing,
+  Envelope, ExplainData, Info, MappingPage, ReviewsData, RunView, TargetRecord, TaskView, WorksheetRow, WorkspaceListing,
 } from './types';
 import type { RecordStatus, ReviewDecision } from '../components';
 
@@ -84,6 +84,9 @@ export const api = {
   explain: (dir: string, sourceId: string) =>
     request<Envelope<ExplainData>>('GET', '/api/explain', { dir, source_id: sourceId }).then(ok),
   reviews: (dir: string) => request<Envelope<ReviewsData>>('GET', '/api/reviews', { dir }).then(ok),
+  /** One target record by its exact id; a 404 `target_not_found` when the job has none. */
+  target: (dir: string, id: string, job?: string) =>
+    request<Envelope<{ record: TargetRecord }>>('GET', '/api/target', { dir, id, job }).then(ok),
   worksheet: (dir: string) =>
     request<Envelope<{ rows: WorksheetRow[]; decisions: ReviewDecision[] }>>('GET', '/api/review', { dir }).then(ok),
   /** One decision through `ops.review_apply`: validated against the current result. */

@@ -926,6 +926,22 @@ class Workspace:
                         "reviewed_at": stamp,
                     }
                 )
+            # A typed replacement must name a record of the reference: the review library
+            # only checks that one is given, and an unknown id would become the final
+            # answer. Exact ids, as everywhere else.
+            corrected = [r["corrected_target_id"] for r in filled if r["decision"] == "replace"]
+            if any(corrected):
+                known = _envelope("targets", lambda: ops.find_targets(job, corrected))
+                if known["status"] == "error":
+                    return known
+                missing = known["data"]["missing"]
+                if missing:
+                    raise ApiError(
+                        422,
+                        "unknown_target",
+                        f"{', '.join(repr(m) for m in missing)} is not in this job's target "
+                        "collection; pick a candidate or check the id",
+                    )
             reviewed = Path(scratch) / "reviewed.csv"
             with reviewed.open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=list(REVIEW_COLUMNS))

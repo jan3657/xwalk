@@ -149,7 +149,14 @@ setting jobs up. It has three screens:
   exact result it was made on. A failed save says why and the queue does not advance; a
   result that changed since the queue loaded is reported as a conflict to reload. Each
   record is read from the run on its own (and the next one is fetched while you read),
-  so stepping and saving stay quick on runs of thousands of rows.
+  so stepping and saving stay quick on runs of thousands of rows. The queue opens on the
+  first record still to decide and scrolls with J/K. A corrected target id you type is
+  looked up in the job's target collection before it can be saved; an id the collection
+  does not have is refused, by the page and again by the server.
+
+Keys work without clicking into a list first: J/K and ↵ on Runs and Results as soon as
+the page opens, and Escape leaves a text field (Reviewer, Note, a filter) so the
+single-key shortcuts work again.
 
 Setting up jobs, uploads, the ontology library, evaluation and clustering stay on the
 classic explorer, which the workbench links to. A clustering run opened in the workbench
@@ -236,6 +243,7 @@ failed; misuse of the API raises `ApiError` with an HTTP status. Routes:
 | POST | `/api/quickmap` | pasted terms: `candidates` (retrieval only) or a run (`offline`, `endpoint`) |
 | GET | `/api/mapping`, `/api/mapping.csv` | a run's results with source texts, contexts and target labels; the same as CSV |
 | GET | `/api/reviews` | a run's review overlay: every decision with its state (`applied`, `superseded`, `stale`) and the adjudicated answer of each reviewed result |
+| GET | `/api/target` | one record of a run's target collection by its exact id (`dir`, `id`, optional `job`); 404 `target_not_found` otherwise |
 | GET | `/api/job-file`, `/api/review-sheet` | download a job file; download the review worksheet |
 | POST | `/api/review-upload` | apply a filled-in worksheet from the workspace |
 | GET, POST | `/api/presets`, `/api/credentials` | model presets; session API keys (state only, never values) |

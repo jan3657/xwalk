@@ -312,6 +312,7 @@ export function ResultsScreen({ go, dir, sel, info, jobs, onRunLoaded, onTaskSta
             <div className={r.tableMin}>
               <DataTable
                 label="Results"
+                pageKeys
                 rowKey={(x) => x.source_id}
                 rows={shown}
                 selectedKey={sel ?? null}

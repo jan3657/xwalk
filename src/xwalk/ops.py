@@ -1601,6 +1601,24 @@ def review_rows(run_dir: str | Path, result_keys: Sequence[str]) -> OpResult:
     return OpResult(operation="review export", counts={"rows": len(rows)}, data={"rows": rows})
 
 
+def find_targets(job: JobRef, ids: Sequence[str]) -> OpResult:
+    """The job's target records with exactly these ids (no normalisation, no label
+    lookup). `data["records"]` maps each found id to `{id, fields}`; `data["missing"]`
+    lists the ids the target collection does not have."""
+    spec = load_valid_job(job, operation="targets")
+    wanted = set(ids)
+    records: dict[str, dict[str, Any]] = {}
+    for record in spec.build_target_records():
+        if record.id in wanted and record.id not in records:
+            records[record.id] = {"id": record.id, "fields": dict(record.fields)}
+    missing = [i for i in dict.fromkeys(ids) if i not in records]
+    return OpResult(
+        operation="targets",
+        counts={"found": len(records), "missing": len(missing)},
+        data={"records": records, "missing": missing},
+    )
+
+
 def review_apply(run_dir: str | Path, reviewed: str | Path, job: JobRef) -> OpResult:
     """Record reviewer decisions. Rejected rows make the exit code 1."""
     from xwalk.review import apply_review, read_review

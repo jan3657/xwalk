@@ -83,4 +83,25 @@ describe('DataTable', () => {
     act(() => { fireEvent.keyDown(grid, { key: 'k' }); });
     expect(onSelect.mock.calls.map((c) => c[0])).toEqual(['c', 'a']);
   });
+
+  it('with pageKeys, j and Enter work from a fresh page, not from inside a field', () => {
+    const onSelect = vi.fn();
+    const onActivate = vi.fn();
+    const rows = [{ id: 'a' }, { id: 'b' }];
+    const { rerender } = render(<><input aria-label="filter" /><DataTable label="t" pageKeys rows={rows} rowKey={(r) => r.id} selectedKey={null} onSelect={onSelect} onActivate={onActivate} columns={[{ key: 'id', header: 'Id' }]} /></>);
+    fireEvent.keyDown(document.body, { key: 'j' });
+    expect(onSelect).toHaveBeenLastCalledWith('a');
+    rerender(<><input aria-label="filter" /><DataTable label="t" pageKeys rows={rows} rowKey={(r) => r.id} selectedKey="a" onSelect={onSelect} onActivate={onActivate} columns={[{ key: 'id', header: 'Id' }]} /></>);
+    fireEvent.keyDown(document.body, { key: 'Enter' });
+    expect(onActivate).toHaveBeenCalledWith('a');
+    const field = screen.getByLabelText('filter');
+    field.focus();
+    fireEvent.keyDown(field, { key: 'j' });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    // Keys pressed in the grid are handled once, by the grid.
+    const grid = screen.getByRole('grid');
+    grid.focus();
+    fireEvent.keyDown(grid, { key: 'j' });
+    expect(onSelect).toHaveBeenCalledTimes(2);
+  });
 });
