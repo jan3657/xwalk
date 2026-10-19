@@ -192,8 +192,9 @@ offline only (FakeDecider, no paid calls).
   empty first search was reported as `unmatched / selector_abstained`; one retriever
   down and the other returning nothing was `unmatched / no_candidates`; an abstention
   followed by a provider failure was a settled abstention. Now, on both matchers:
-  no surviving hits with any retriever failed is `failed / retriever_failure` (and the
-  same query is retried); a negative outcome with any provider failure or failed
+  no surviving hits with any retriever failed is `failed / retriever_failure` (`Matcher`
+  retries the same query within `max_attempts`; failed results on either path retry on
+  resume); a negative outcome with any provider failure or failed
   retriever search anywhere in the result is `failed` with the latest blocking reason
   (provider before retriever within one attempt), which a resumed run retries; a match
   or a review on the surviving evidence still stands. Optional rewriter and
