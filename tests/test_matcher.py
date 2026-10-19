@@ -499,7 +499,9 @@ async def test_finish_reason_is_carried_from_the_provider():
 
 
 async def test_initial_multi_query_has_two_rrf_votes_and_trace_invariance():
-    templates = dataclasses.replace(TEMPLATES, queries=("{{ mention }}", "{{ context_left }}"))
+    templates = dataclasses.replace(
+        TEMPLATES, _compiled={}, queries=("{{ mention }}", "{{ context_left }}")
+    )
     runs = []
     for trace in (True, False):
         retriever = ScriptedRetriever({"glucose": ["T2", "T1"], "blood": ["T1", "T3"]})
@@ -521,7 +523,7 @@ async def test_initial_multi_query_has_two_rrf_votes_and_trace_invariance():
 
 @pytest.mark.parametrize("failure", ["provider", "retriever"])
 async def test_multi_query_failure_retries_real_queries_not_the_display_string(failure):
-    templates = dataclasses.replace(TEMPLATES, queries=("glucose | alias", "blood"))
+    templates = dataclasses.replace(TEMPLATES, _compiled={}, queries=("glucose | alias", "blood"))
     retriever = ScriptedRetriever(
         {"glucose | alias": ["T1"], "blood": ["T1"]}, fail=failure == "retriever"
     )
@@ -534,7 +536,9 @@ async def test_multi_query_failure_retries_real_queries_not_the_display_string(f
 
 
 async def test_multi_query_dedup_and_rewriter_use_each_original_query():
-    templates = dataclasses.replace(TEMPLATES, queries=("{{ mention }}", "{{ context_left }}"))
+    templates = dataclasses.replace(
+        TEMPLATES, _compiled={}, queries=("{{ mention }}", "{{ context_left }}")
+    )
     retriever = ScriptedRetriever({"glucose": ["T1"], "blood": ["T1"], "fresh": ["T2"]})
     llm = FakeLLM(
         [
@@ -556,7 +560,7 @@ async def test_multi_query_dedup_and_rewriter_use_each_original_query():
 async def test_single_query_requests_and_fused_order_stay_identical():
     runs = []
     for queries in ((), ("{{ mention }}",), ("alternate",)):
-        templates = dataclasses.replace(TEMPLATES, queries=queries)
+        templates = dataclasses.replace(TEMPLATES, _compiled={}, queries=queries)
         retriever = ScriptedRetriever({"glucose": ["T2", "T1"]})
         llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
         result = await build(llm, retriever, templates=templates).match(SOURCE)
@@ -591,10 +595,61 @@ async def test_single_query_http_bodies_are_byte_identical():
         try:
             retriever = ScriptedRetriever({"glucose": ["T2", "T1"]})
             result = await build(
-                llm, retriever, templates=dataclasses.replace(TEMPLATES, queries=queries)
+                llm,
+                retriever,
+                templates=dataclasses.replace(TEMPLATES, _compiled={}, queries=queries),
             ).match(SOURCE)
             runs.append((bodies, result.candidates))
         finally:
             await llm.aclose()
     assert len(runs[0][0]) == 2
     assert runs[0] == runs[1] == runs[2]
+
+
+@pytest.mark.parametrize("trace", [True, False])
+async def test_oversized_first_candidate_is_review_without_any_model_call(trace):
+    templates = dataclasses.replace(TEMPLATES, _compiled={}, candidate="{{ label * 10000 }}")
+    llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
+    result = await build(
+        llm, ScriptedRetriever({"glucose": ["T1", "T2"]}), templates=templates, trace=trace
+    ).match(SOURCE)
+    assert result.status is MatchStatus.NEEDS_REVIEW
+    assert result.reason.value == "candidate_budget_exceeded"
+    assert llm.requests == []
+    assert result.usage.calls == 0
+    assert result.matched_id is None
+    assert len(result.attempts) == 1
+    assert result.attempts[0].candidate_count == 2
+    assert result.attempts[0].candidates_truncated == 2
+    assert result.attempts[0].issued_keys == {}
+    from xwalk.evaluate.replay import replay_result
+    from xwalk.serde import result_from_dict, result_to_dict
+
+    restored = result_from_dict(result_to_dict(result))
+    assert restored == result
+    replayed = replay_result(restored, MatchPolicy())
+    assert (replayed.status, replayed.reason) == (result.status, result.reason)
+
+
+def test_rendered_budget_is_versioned_in_stage_and_run_identity():
+    from tests.test_effective_identity import default_stages
+    from xwalk.batch import run_fingerprint_components
+    from xwalk.fingerprint import hash_value
+    from xwalk.stages.select import SelectorPolicy
+
+    llm = FakeLLM([])
+    components = run_fingerprint_components(
+        templates=TEMPLATES,
+        prompts=PROMPTS,
+        store=STORE,
+        retrievers=[ScriptedRetriever({})],
+        llm=llm,
+        policy=MatchPolicy(),
+        selector_policy=SelectorPolicy(),
+        **default_stages(llm),
+    )
+    assert components["selector_policy"].get("budget_version") == 2
+    assert Selector(llm, PROMPTS, TEMPLATES).identity.get("budget_version") == 2
+    old = {**components, "selector_policy": dict(components["selector_policy"])}
+    old["selector_policy"].pop("budget_version")
+    assert hash_value(old) != hash_value(components)

@@ -16,6 +16,12 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- Selector budgets count rendered keyed blocks and separators, retaining a ranked prefix
+  without slicing text. An oversized first block becomes `needs_review` with reason
+  `candidate_budget_exceeded` and zero model calls. Rendered-budget version 2 deliberately
+  invalidates old LLM run identities. `apply_budget` now takes `templates` and returns
+  `(KeyedCandidates, dropped_count)` so rendering is reused.
+
 - LLM jobs accept multi-query retrieval: initial queries receive separate RRF votes;
   retries keep the real list and new proposals search one query each. Existing single-query
   requests and the legacy `query` plus one alternate behavior are preserved.

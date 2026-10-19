@@ -169,6 +169,13 @@ them on the first attempt, then searches each new proposed query separately. An
 infrastructure retry repeats the actual query list, never its joined trace display. A job giving only `query` gets `queries = ()` and retrieval falls
 back to that one query — the single-query path, byte-identical to what it always was.
 
+The LLM selector budgets the rendered candidate blocks at four characters per estimated
+token (`selector.max_candidate_tokens`), including opaque key prefixes and blank-line
+separators. Unused target fields cost nothing; template expansion counts in full. It
+keeps a ranked prefix without slicing text. If the first block cannot fit, the record
+is `needs_review / candidate_budget_exceeded`, with no selector call. Rendered-budget
+version 2 changes LLM run identity; use a new run directory for old configurations.
+
 ## `target` and `source`
 
 Both take the same shape. Several fields apply only to some `kind` values.

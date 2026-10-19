@@ -296,6 +296,7 @@ class Matcher:
                         raw=selection_raw,
                         explanation=selection_explanation,
                         error=selection.error,
+                        reason=selection.reason,
                     )
                 )
             # Bound to a narrowed local so `chosen_key` is `str`, not `str | None`, in
@@ -462,6 +463,8 @@ class Matcher:
 
             if attempt.reason is DecisionReason.FATAL_PROVIDER_FAILURE:
                 break  # a bad key or unknown model will not fix itself
+            if attempt.reason is DecisionReason.CANDIDATE_BUDGET_EXCEEDED:
+                break  # a different query cannot repair the candidate presentation budget
             if self._is_acceptable(attempt):
                 break
             if index + 1 >= self._policy.max_attempts:

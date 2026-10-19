@@ -52,7 +52,7 @@ from xwalk.stages.gate import Scorer, Verifier
 from xwalk.stages.property_gate import PropertyGate
 from xwalk.stages.rewrite import QueryRewriter
 from xwalk.stages.screen import Screener
-from xwalk.stages.select import Selector, SelectorPolicy
+from xwalk.stages.select import CANDIDATE_BUDGET_VERSION, Selector, SelectorPolicy
 from xwalk.stores.base import TargetStore
 from xwalk.templates import TemplateSet
 
@@ -207,6 +207,7 @@ def run_fingerprint_components(
             "status_semantics": STATUS_SEMANTICS_VERSION,
         },
         "selector_policy": {
+            "budget_version": CANDIDATE_BUDGET_VERSION,
             "max_candidates": selector_policy.max_candidates,
             "max_candidate_tokens": selector_policy.max_candidate_tokens,
         },

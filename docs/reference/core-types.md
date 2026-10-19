@@ -147,6 +147,7 @@ Why a result carries the status it does. Every `MatchResult` and (optionally) ev
 | `BELOW_ACCEPT_THRESHOLD` | `"below_accept_threshold"` | best score in `[review_floor, accept_at)` → `NEEDS_REVIEW` |
 | `BELOW_REVIEW_FLOOR` | `"below_review_floor"` | best score < `review_floor` → `UNMATCHED` |
 | `SELECTOR_ABSTAINED` | `"selector_abstained"` | candidates were shown, the model declined every one → `UNMATCHED` |
+| `CANDIDATE_BUDGET_EXCEEDED` | `"candidate_budget_exceeded"` | first rendered candidate block cannot fit; no selector call → `NEEDS_REVIEW` |
 | `NO_CANDIDATES` | `"no_candidates"` | no attempt ever retrieved a candidate → `UNMATCHED` |
 | `UNRESOLVED_OUTPUT` | `"unresolved_output"` | model output could not be resolved to an issued key, or the best attempt used an inexact (legacy) resolution → `NEEDS_REVIEW` |
 | `RETRIEVER_FAILURE` | `"retriever_failure"` | on an attempt: no surviving hits and at least one retriever failed or timed out. On a result: all attempts failed with it last, or an otherwise negative result whose latest blocking failure is a retriever failure or a degraded search → `FAILED` |
@@ -306,6 +307,7 @@ recoverable rewriter or audit-verifier error is only noted; it does not block.
 | any `FATAL_PROVIDER_FAILURE` | `FAILED` / `FATAL_PROVIDER_FAILURE` | `None` |
 | some attempt is acceptable | `MATCHED` / `ACCEPT_THRESHOLD` | the acceptable attempt (highest score, then earliest) |
 | every attempt failed | `FAILED` / the last attempt's reason | `None` |
+| any attempt exceeded the candidate budget | `NEEDS_REVIEW` / `CANDIDATE_BUDGET_EXCEEDED` | last budget-exceeded attempt |
 | the fallback ranking below gives a review | `NEEDS_REVIEW` / its reason | as ranked |
 | the fallback is negative and any attempt is blocking | `FAILED` / the latest blocking reason (`PROVIDER_FAILURE` when one attempt has both) | `None` |
 | clean scored negative | `UNMATCHED` / `BELOW_REVIEW_FLOOR` | as ranked |

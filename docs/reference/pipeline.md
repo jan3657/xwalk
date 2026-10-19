@@ -50,7 +50,7 @@ match(source)
     attempt:
       1. retrieve   all retrievers concurrently, RRF-fused   (no LLM; skipped
                     when re-examining a candidate)
-      2. select     budget -> assign keys -> one key or null  (LLM; skipped when
+      2. select     render keyed blocks -> budget -> key/null  (LLM; skipped when
                     re-examining a candidate — the key is forced)
       3. score      chosen record vs the full source record   (LLM; always runs
                     on a resolved choice)
@@ -58,6 +58,7 @@ match(source)
                     an audit draw above it
       5. route      scorer proposals -> candidate keys + new queries
     fatal LLM error          -> record a failed attempt, STOP
+    candidate budget exceeded -> needs_review, STOP (no model call)
     acceptable match         -> STOP (early accept)
     attempts exhausted       -> STOP
     infrastructure failure   -> re-queue the same query at the front, continue
@@ -283,15 +284,25 @@ governs how much of it reaches the model.
 
 ```python
 def apply_budget(
-    candidates: Sequence[Candidate], policy: SelectorPolicy
-) -> tuple[list[Candidate], int]
+    candidates: Sequence[Candidate], policy: SelectorPolicy, templates: TemplateSet
+) -> tuple[KeyedCandidates, int]
 ```
 
 Deterministic trim: sort by `(-fused_score, id)`, keep the first `max_candidates`,
 then walk a character budget of `max_candidate_tokens * 4` (a deliberately crude
-chars-per-token estimate — a guard rail, not a meter) using a cheap size proxy over the
-record's field values. The first candidate is always kept, even over budget. Returns
-`(kept, dropped_count)`.
+chars-per-token estimate — a guard rail, not a meter). Render each count-capped
+candidate once, including its `[C01] ` prefix, and count the `\n\n` separators between
+blocks. Keep a ranked prefix of whole blocks; never slice text or skip a large block
+to admit a later smaller one. Key width is fixed by the count-capped slate, including
+three-digit keys for 100 or more candidates. Returns `(keyed, dropped_count)` so the
+selector reuses those exact renders.
+
+If the first block alone exceeds the budget, the attempt and result become
+`needs_review / candidate_budget_exceeded`. The loop stops without a selector,
+scorer, verifier or rewriter call. Retrieval counts and truncation remain in the trace,
+with no issued keys. This is distinct from an empty retrieval. Budget semantics
+version 2 is included in the selector identity and the run's `selector_policy`
+component; existing LLM runs require a new run directory.
 
 ```python
 class Selector:
@@ -329,9 +340,10 @@ class Selector:
 | `usage` | `Usage` | tokens and calls |
 | `error` | `str \| None` | default `None` |
 | `finish_reason` | `str \| None` | default `None` |
+| `reason` | `DecisionReason \| None` | `CANDIDATE_BUDGET_EXCEEDED` when no retrieved block fits; otherwise `None` |
 
-Fail-safes: an empty budgeted list returns an `ABSTAIN` outcome without calling the
-LLM. A `ParseError` returns `UNRESOLVED` with the raw text as `choice.raw` and the
+Fail-safes: no retrieved candidates returns `ABSTAIN` without calling the LLM.
+An oversized first block returns `UNRESOLVED` with `CANDIDATE_BUDGET_EXCEEDED`. A `ParseError` returns `UNRESOLVED` with the raw text as `choice.raw` and the
 parse error in `error`. A non-string `chosen_key` is coerced with `str()` before
 resolution. An `EXACT_KEY` choice whose `confidence_score` is invalid (see
 "Confidence values" below) is *demoted to* `UNRESOLVED` — a choice we cannot score is a
@@ -748,7 +760,7 @@ Everything whose change should invalidate prior results, hashed into one digest.
 - `llm.fingerprint`;
 - policy classification and loop shape: `max_attempts`, `accept_at`, `review_floor`,
   `verify_band`, `audit_rate`, `legacy_id_resolution`;
-- selector budget: `max_candidates`, `max_candidate_tokens`;
+- selector budget: `max_candidates`, `max_candidate_tokens`, `budget_version`;
 - `encoders` (only when a retriever exposes `encoder_identity`, as `DenseRetriever`
   does): the live encoder's name, dimension and `settings` — for
   `SentenceTransformerEncoder` the revision (`"unknown"` unless pinned), `normalize`,
@@ -815,8 +827,8 @@ produced at another retrieval depth.
 - **A retriever down is recorded structurally.** `Attempt.retrieval_failures` lists each
   failed search, with or without the candidate trace. With no surviving hits the
   attempt is `retriever_failure` and the same query is retried.
-- **`apply_budget` always keeps at least one candidate**, even when that single
-  candidate exceeds the character budget.
+- **An oversized first candidate routes to review**, with reason
+  `candidate_budget_exceeded` and no selector call.
 - **`matched_record` can be `None` while `matched_id` is set.** The store lookup
   tolerates a missing id rather than failing the result.
 - **`BatchReport.total` and `BatchReport.usage` measure different things** — the
