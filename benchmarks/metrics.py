@@ -96,7 +96,9 @@ def matching_metrics(
         "no_match_precision": _ratio(
             sum(1 for p in predicted_nomatch if not gold.get(p.source_id)), len(predicted_nomatch)
         ),
-        "no_match_recall": _ratio(sum(1 for p in no_gold if predicts_no_match(p.status)), len(no_gold)),
+        "no_match_recall": _ratio(
+            sum(1 for p in no_gold if predicts_no_match(p.status)), len(no_gold)
+        ),
         "false_accept_on_no_match": sum(1 for p in no_gold if p.status == "matched"),
     }
 

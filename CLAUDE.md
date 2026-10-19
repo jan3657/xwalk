@@ -1,8 +1,8 @@
 # Guidance for Claude sessions in xwalk
 
 - Contributor rules live in `CONTRIBUTING.md`; follow its four gates before every commit:
-  `python -m pytest -q -m "not integration"`, `ruff check src tests examples scripts`,
-  `ruff format --check src tests examples scripts`, `mypy`.
+  `python -m pytest -q -m "not integration"`, `ruff check src tests examples scripts benchmarks`,
+  `ruff format --check src tests examples scripts benchmarks`, `mypy`.
 - The 0.2 upgrade is planned in `docs/claude-upgrade/`. Read `START_HERE.md`, your task
   file, and `CONTRACTS.md` (the binding decisions). Do not load `docs/superpowers/plans/`
   wholesale; they are historical and partly contradicted by `CONTRACTS.md`.
