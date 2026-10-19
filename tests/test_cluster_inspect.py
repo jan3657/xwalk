@@ -386,6 +386,49 @@ def test_corrupt_runs_exit_3(tmp_path, chocolate_run, capsys):
             assert code == 3 and envelope["errors"][0]["code"] == expected, (run, argv)
 
 
+@pytest.mark.parametrize("full", [False, True])
+def test_missing_historical_evidence_exits_3(chocolate_run, capsys, full):
+    from xwalk.cluster.exports import exported_state
+
+    store = ClusterStore.open_readonly(chocolate_run / "cluster.sqlite")
+    try:
+        state = exported_state(store)
+        decision = next(d for d in store.decisions() if d["subject_id"] == "c3" and d["shown"])
+        entry = decision["shown"][0]
+        cid, revision = entry["cluster_id"], entry["revision"]
+        assert state.view.clusters[cid] != revision  # leave the exported partition intact
+        assert store.revision(cid, revision)["members"]
+    finally:
+        store.close()
+    conn = sqlite3.connect(chocolate_run / "cluster.sqlite")
+    try:
+        conn.execute(
+            "DELETE FROM cluster_revisions WHERE cluster_id = ? AND revision = ?", (cid, revision)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    store = ClusterStore.open_readonly(chocolate_run / "cluster.sqlite")
+    try:
+        assert exported_state(store).rows == state.rows
+    finally:
+        store.close()
+
+    code, envelope = _cli(
+        capsys,
+        "cluster",
+        "explain",
+        "c3",
+        "--run",
+        str(chocolate_run),
+        *(["--full"] if full else []),
+    )
+    assert code == 3
+    error = envelope["errors"][0]
+    assert error["code"] == "store_inconsistent"
+    assert cid in error["message"] and f"revision {revision}" in error["message"]
+
+
 async def test_a_store_of_another_run_is_refused(tmp_path, chocolate_run, capsys):
     other = tmp_path / "other"
     await cluster(records(ROLLBACK), other, Oracle(concepts(ROLLBACK)))

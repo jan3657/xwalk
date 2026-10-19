@@ -168,7 +168,11 @@ def _shown_members(
         try:
             cache[key] = list(store.revision(*key)["members"])
         except KeyError:
-            cache[key] = []
+            raise ClusterInspectError(
+                "store_inconsistent",
+                f"{store.path}: missing evidence for cluster {key[0]} revision {key[1]}",
+                EXIT_RUNTIME,
+            ) from None
     visible = [m for m in cache[key] if m != entry.get("exclude")]
     return visible if member_evidence is None else visible[:member_evidence]
 

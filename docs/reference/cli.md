@@ -376,7 +376,8 @@ aside.) `--json` data:
 | `note` | what the outcome means; a `pending` record was not reached (resuming continues), a `failed` one is retried in every round and on resume |
 
 Exit codes: `0`; `2` for an unknown source (`source_not_found`) or directory; `3` as for
-`cluster inspect`. Python: `ops.cluster_explain(run_dir, source_id, full=False)`.
+`cluster inspect`, or for missing historical revisions needed to reconstruct member
+evidence (`store_inconsistent`). Python: `ops.cluster_explain(run_dir, source_id, full=False)`.
 
 ## `cluster eval`
 
