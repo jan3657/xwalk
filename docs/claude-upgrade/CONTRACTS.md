@@ -12,6 +12,15 @@ contract only in a reviewed commit that edits this file and says why.
   scripted responses, trace on/off must give identical status, matched id, confidence,
   attempts (ignoring the `candidates` field) and identical outgoing LLM requests.
 
+Batch 6 routing addition: each candidate operation retains its originating live key
+map and proposal provenance. `deduplicate_candidates`, `alternate_queues` and
+`chase_verifier_leads` are independent, default-off policy experiments and enter run
+identity only when enabled. Deduplication keys record identity plus scoring context,
+marks completion only after valid scoring/verification, and never suppresses an
+infrastructure retry. Eligible verifier disagreements may enqueue another issued key
+once per preferred record ID; scoring and required verification still gate acceptance.
+All operations remain bounded by `max_attempts`.
+
 ## 2. Current snapshot versus history
 
 - **Source snapshot**: each `run_batch` invocation reads the full source collection and

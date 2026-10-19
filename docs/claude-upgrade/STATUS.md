@@ -368,6 +368,8 @@ Balances come from the actual promotional credit display, not a model estimate. 
 |---|---|---|---|
 | Forced candidate retry | complete | P4 failed first on re-selection; 53 focused tests pass. Full offline non-integration gate: 2,194 passed, 40 skipped, 4 deselected; 8 failures and 40 setup errors are sandbox socket-bind denials. Ruff check/format pass (228 files); mypy passes (128 files). | unreported |
 
+| Opt-in bounded routing | complete | 29 new tests failed before implementation; 87 routing/matcher tests pass. Full offline non-integration gate: 2,228 passed, 40 skipped, 4 deselected; 8 failures and 40 setup errors are sandbox socket-bind denials. Ruff check/format pass (228 files); mypy passes (128 files). Captured base HTTP bytes and identities match with flags off. | unreported |
+
 No paid calls. An initial full-suite invocation was interrupted during an optional
 Hugging Face lookup; the completed gate uses `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`.
 Worktree Git index writes are denied; commits are assembled in

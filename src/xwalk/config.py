@@ -349,6 +349,9 @@ class PolicySpec(_Spec):
     verify_band: tuple[float, float] | None = (0.6, 0.8)
     audit_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     concurrency: int = Field(default=32, ge=1)
+    deduplicate_candidates: bool = False
+    alternate_queues: bool = False
+    chase_verifier_leads: bool = False
     legacy_id_resolution: bool = False
     retriever_timeout: float = Field(default=60.0, gt=0.0)
 

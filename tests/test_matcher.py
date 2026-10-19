@@ -354,19 +354,22 @@ async def test_verifier_disagreement_forces_review():
     assert result.reason is DecisionReason.VERIFIER_DISAGREEMENT
 
 
-async def test_the_verifiers_preferred_key_is_recorded_but_not_chased():
-    """Re-entering selection on the verifier's preference would make termination depend
-    on two models negotiating. Bounded loop, honest flag, human decides."""
+@pytest.mark.parametrize("chase", [False, True])
+async def test_the_verifiers_preferred_key_is_recorded_but_only_chased_opt_in(chase):
+    """Default stays not chased; opting in buys scoring and required verification."""
     llm = FakeLLM(
         [select_reply("C01"), score_reply(0.7), verify_reply("disagree", preferred_key="C02")]
+        + ([score_reply(0.7), verify_reply()] if chase else [rewrite_reply()])
     )
     result = await build(
         llm,
         ScriptedRetriever({"glucose": ["T1", "T2"]}),
-        policy=MatchPolicy(verify_band=(0.6, 0.8), max_attempts=1),
+        policy=MatchPolicy(verify_band=(0.6, 0.8), max_attempts=2, chase_verifier_leads=chase),
     ).match(SOURCE)
     assert result.attempts[0].verifier_preferred_id == "T2"
-    assert result.matched_id == "T1"  # unchanged
+    assert result.matched_id == ("T2" if chase else "T1")
+    assert result.status is (MatchStatus.MATCHED if chase else MatchStatus.NEEDS_REVIEW)
+    assert len(result.attempts) == (2 if chase else 1)
 
 
 async def test_an_audit_verdict_is_honoured_not_merely_counted():

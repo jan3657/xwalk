@@ -114,7 +114,7 @@ A lead for the next attempt in the matching loop.
 |---|---|---|---|
 | `kind` | `Literal["candidate", "query"]` | — | what kind of lead this is |
 | `value` | `str` | — | a candidate key, or new query text |
-| `source` | `Literal["scorer", "rewriter"]` | — | which stage proposed it |
+| `source` | `Literal["scorer", "rewriter", "verifier"]` | — | which stage proposed it |
 
 No validation. The `kind` distinction is load-bearing: `"candidate"` means "look
 again at a record we already retrieved" — no new search — while `"query"` means "run
@@ -238,6 +238,9 @@ budget in one frozen dataclass.
 | `concurrency` | `int` | `32` | batch-run concurrency |
 | `legacy_id_resolution` | `bool` | `False` | re-enable heuristic ID resolution for reproducing prior work |
 | `retriever_timeout` | `float` | `60.0` | per-retriever search timeout, seconds |
+| `deduplicate_candidates` | `bool` | `False` | skip pending/completed work for the same record and scoring context; opt-in |
+| `alternate_queues` | `bool` | `False` | alternate candidate and query work so queued searches run; opt-in |
+| `chase_verifier_leads` | `bool` | `False` | score well-formed verifier preferences once per record ID; opt-in |
 
 Validation in `__post_init__` — each violation raises `ValueError`:
 

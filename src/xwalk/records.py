@@ -128,7 +128,7 @@ class RetryProposal:
 
     kind: Literal["candidate", "query"]
     value: str
-    source: Literal["scorer", "rewriter"]
+    source: Literal["scorer", "rewriter", "verifier"]
 
 
 class MatchStatus(Enum):
