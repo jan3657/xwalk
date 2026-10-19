@@ -32,6 +32,6 @@
   padding: 2px;
   display: inline-flex;
 }
-.copy:hover { color: var(--accent); }
+.copy:hover { color: var(--accent-ink); }
 .wrap:hover .copy, .copy:focus-visible, .copied { opacity: 1; }
 .copied, .copied:hover { color: var(--success); }

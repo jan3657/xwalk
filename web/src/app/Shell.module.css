@@ -48,7 +48,7 @@
 .navItem:hover:not(:disabled) { color: var(--text-strong); border-color: var(--border-default); background: var(--surface-panel); }
 .navItem:disabled { cursor: default; opacity: 0.45; }
 .navOn, .navOn:hover:not(:disabled) { background: var(--gray-900); border-color: var(--gray-900); color: var(--text-inverse); }
-.count { font: 600 10px/1 var(--font-mono); padding: 2px 4px; background: var(--accent); color: var(--text-inverse); }
+.count { font: 600 10px/1 var(--font-mono); padding: 2px 4px; background: var(--accent); color: var(--text-on-accent); }
 .ext {
   display: inline-flex;
   align-items: center;
@@ -59,7 +59,7 @@
   color: var(--text-muted);
   text-decoration: none;
 }
-.ext:hover { color: var(--accent); }
+.ext:hover { color: var(--accent-ink); }
 
 .main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -107,7 +107,7 @@
 .sq { width: 6px; height: 6px; background: var(--accent); }
 .crumbSep { color: var(--border-strong); }
 .crumbLink { border: 0; background: none; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--text-muted); cursor: pointer; }
-.crumbLink:hover { color: var(--accent); }
+.crumbLink:hover { color: var(--accent-ink); }
 .mono { text-transform: none; letter-spacing: 0; }
 .titleRow { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 12px; }
 .titleBlock { min-width: 0; flex: 1 1 380px; }

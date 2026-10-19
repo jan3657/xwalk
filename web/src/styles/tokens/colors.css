@@ -26,7 +26,9 @@
 --text-strong:#1A1A17;
 --text-body:#2E2D29;
 --text-muted:#52514C;
---text-faint:#85837C;
+/* Faint ink is still text: #66645E keeps 4.5:1 (WCAG AA) down to the sunken surface.
+   The old #85837C (3.2-3.6:1) stays as --gray-500 for marks and rules. */
+--text-faint:#66645E;
 --text-inverse:#FAF9F6;
 --text-link:var(--orange-700);
 --text-link-hover:var(--orange-600);
@@ -38,6 +40,10 @@
 --border-focus:var(--orange-500);
 /* Accent roles */
 --accent:#EE6327;
+/* Signal orange is for marks, rules and fills. Orange text uses --accent-ink (5:1 or
+   more on every surface); text on an orange fill is ink, not white (3.1:1). */
+--accent-ink:var(--orange-700);
+--text-on-accent:var(--gray-900);
 --accent-strong:#D4501A;
 --accent-soft:rgba(238,99,39,0.10);
 --focus-ring:0 0 0 1px var(--surface-panel),0 0 0 3px var(--orange-500);

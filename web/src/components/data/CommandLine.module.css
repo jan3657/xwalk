@@ -21,7 +21,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.prompt { margin-right: 8px; color: var(--accent); font-weight: 600; }
+.prompt { margin-right: 8px; color: var(--accent-ink); font-weight: 600; }
 .copy {
   flex-shrink: 0;
   align-self: stretch;

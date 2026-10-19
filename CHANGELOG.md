@@ -174,6 +174,12 @@ offline only (FakeDecider, no paid calls).
   `ops.find_targets`), and `POST /api/review` refuses a `replace` to an id the
   collection does not have (422 `unknown_target`) instead of recording an answer that
   names no record. `xwalk review apply` and `review.apply_review` are unchanged.
+- Workbench text meets WCAG AA contrast. Faint ink (`#85837C`, 3.2 to 3.6:1 on the
+  workbench surfaces) is now `#66645E`, orange text uses `--orange-700`, and the review
+  count and *Save and next* put ink rather than white on signal orange. axe-core's
+  `color-contrast` rule found 272 failing text elements across Runs, Results and Review
+  before, and none after. The design language (archival neutrals, one signal orange for
+  marks) is unchanged; there is still no dark theme.
 
 ## [0.2.0rc1] — 2026-10-05
 

@@ -40,4 +40,4 @@
   color: var(--text-muted);
   cursor: pointer;
 }
-.clear:hover { color: var(--accent); }
+.clear:hover { color: var(--accent-ink); }
