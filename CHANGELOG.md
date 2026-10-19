@@ -14,6 +14,11 @@ Merged after 0.2.0rc1 was cut: the decider path, developed on the `jev-decider` 
 before the merge; nothing was re-measured for this entry, and the merged tree was tested
 offline only (FakeDecider, no paid calls).
 
+### Fixed
+
+- MCP directory confinement follows allowed directory symlinks and checks their
+  descendants, using directory identities to terminate cycles.
+
 ### Added
 
 - Attempts store validated `selector_confidence`, including abstentions, separately
