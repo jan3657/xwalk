@@ -210,6 +210,31 @@ describe('the review screen', () => {
     expect(mock.api.target).toHaveBeenCalledWith(MATCH_DIR, 'T:known', 'job.yaml');
   });
 
+  it('after a conflict reload, no record shows an explanation fetched before it', async () => {
+    reviewFixture();
+    await open(`#/review?dir=${MATCH_DIR}&sel=s1`);
+    // Visit s2 and come back, so its explanation is cached.
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'j' }); await wait(20); });
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'k' }); await wait(20); });
+    expect(window.location.hash).toContain('sel=s1');
+    expect(mock.api.explain.mock.calls.map((c) => c[1])).toContain('s2');
+
+    mock.api.applyReview.mockRejectedValue(new ApiError(409, 'not_reviewable', 'k-s1 is not a current needs_review result'));
+    fireEvent.change(screen.getByLabelText('Reviewer'), { target: { value: 'jan' } });
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'a' }); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Save and next/ })); await tick(); });
+
+    // The run changed underneath: every record now explains differently.
+    mock.api.explain.mockImplementation(async (_dir: string, id: string) => {
+      const e = explainOf(id);
+      return { ...e, data: { ...e.data, result: { ...e.data.result, matched_record: { id: `T:${id}`, fields: { label: `label ${id}`, definition: `recomputed ${id}`, synonyms: [] } } } } };
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Reload record/ })); await tick(); });
+    await act(async () => { fireEvent.keyDown(document.body, { key: 'j' }); await tick(); });
+    expect(window.location.hash).toContain('sel=s2');
+    expect(proposal().textContent).toContain('recomputed s2');
+  });
+
   it('accepts a candidate id without asking the server', async () => {
     reviewFixture();
     mock.api.explain.mockImplementation(async (_dir: string, id: string) => ({

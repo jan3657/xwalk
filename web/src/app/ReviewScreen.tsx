@@ -509,7 +509,7 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
                 <Banner tone="danger" title="Decision not saved" actions={<Button size="sm" onClick={doSave}>Retry</Button>}>{save.msg}</Banner>
               ) : null}
               {save.s === 'conflict' ? (
-                <Banner tone="stale" title="This result changed" actions={<Button size="sm" onClick={() => { setSave({ s: 'idle' }); void reloadQueue(); void reloadExplain(); void reloadReviews(); }}>Reload record</Button>}>{save.msg}</Banner>
+                <Banner tone="stale" title="This result changed" actions={<Button size="sm" onClick={() => { setSave({ s: 'idle' }); explains.clear(); void reloadQueue(); void reloadExplain(); void reloadReviews(); }}>Reload record</Button>}>{save.msg}</Banner>
               ) : null}
               {!runJob ? (
                 <div className={v.jobPick}>
