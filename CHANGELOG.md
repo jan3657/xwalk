@@ -173,6 +173,8 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- `xwalk cluster explain --full` includes stored prompts, retrieval and usage for
+  later decisions as well as admission decisions, in both human and JSON output.
 - `xwalk cluster explain` reports missing historical cluster revisions as
   `store_inconsistent` (exit `3`), instead of silently showing empty member evidence.
 - `xwalk cluster explain` restores merge ancestry with the selected state during

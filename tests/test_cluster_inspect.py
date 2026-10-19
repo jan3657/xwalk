@@ -248,6 +248,48 @@ def test_explain_full_includes_the_stored_prompts(chocolate_run, capsys):
     assert decision["prompt"].startswith("Task: ") and decision["raw"]
 
 
+def test_explain_full_includes_later_adverse_decision_details(rollback_run, capsys):
+    _, brief = _cli(capsys, "cluster", "explain", "s", "--run", str(rollback_run))
+    _, full = _cli(capsys, "cluster", "explain", "s", "--run", str(rollback_run), "--full")
+    store = ClusterStore.open_readonly(rollback_run / "cluster.sqlite")
+    try:
+        stored = {d["decision_id"]: d for d in store.decisions()}
+    finally:
+        store.close()
+    adverse = [e for e in full["data"]["later"] if e["adverse"] and e["decision"]]
+    assert adverse
+    for entry in adverse:
+        decision = entry["decision"]
+        for field in ("system", "prompt", "retrieved", "usage"):
+            assert decision[field] == stored[decision["decision_id"]][field]
+    for entry in brief["data"]["later"]:
+        if entry["decision"]:
+            assert "prompt" not in entry["decision"]
+
+
+@pytest.mark.parametrize("run_fixture, source_id", [("chocolate_run", "c3"), ("rollback_run", "s")])
+def test_explain_full_human_output_includes_decision_details(
+    request, capsys, run_fixture, source_id
+):
+    run = request.getfixturevalue(run_fixture)
+    argv = ["cluster", "explain", source_id, "--run", str(run)]
+    assert main(argv) == 0
+    brief = capsys.readouterr().out
+    assert main([*argv, "--full"]) == 0
+    full = capsys.readouterr().out
+    assert full != brief
+    data = ops.cluster_explain(run, source_id, full=True).data
+    decisions = data["admission"] + [e["decision"] for e in data["later"] if e["decision"]]
+    assert decisions
+    for decision in decisions:
+        assert f"decision #{decision['decision_id']}" in full
+        for field in ("system", "prompt"):
+            for line in (decision[field] or "").splitlines():
+                assert line in full
+        for field in ("retrieved", "usage"):
+            assert f"{field}: {json.dumps(decision[field], ensure_ascii=False)}" in full
+
+
 def test_explain_a_merged_member_shows_the_merge_ancestry(merged_run, capsys):
     _, envelope = _cli(capsys, "cluster", "explain", "b", "--run", str(merged_run))
     data = envelope["data"]

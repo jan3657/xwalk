@@ -620,6 +620,18 @@ def _explain_lines(data: dict[str, Any], fp: Any) -> list[str]:
             f"({current['reason']})"
         )
     lines.append(f"  note          : {data['note']}")
+    decisions = [*data["admission"], *(e["decision"] for e in data["later"] if e["decision"])]
+    shown: set[int] = set()
+    for decision in decisions:
+        if "prompt" not in decision or decision["decision_id"] in shown:
+            continue
+        shown.add(decision["decision_id"])
+        lines.append(f"  decision {_decision_line(decision)}:")
+        for field in ("system", "prompt"):
+            lines.append(f"    {field}:")
+            lines.extend(f"      {line}" for line in (decision[field] or "-").splitlines())
+        for field in ("retrieved", "usage"):
+            lines.append(f"    {field}: {json.dumps(decision[field], ensure_ascii=False)}")
     return lines
 
 

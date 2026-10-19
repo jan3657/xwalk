@@ -429,7 +429,9 @@ def _explain(run: ClusterRun, source_id: str, full: bool) -> dict[str, Any]:
     ]
 
     ancestry = _merge_ancestry(store, exported_cluster, cutoff) if exported_cluster else []
-    later = _later(store, source_id, exported_cluster, cutoff, history_rows, evidence, cache)
+    later = _later(
+        store, source_id, exported_cluster, cutoff, history_rows, evidence, cache, full=full
+    )
 
     evidence_in = []
     for decision in store.decisions():
@@ -570,6 +572,8 @@ def _later(
     history: Sequence[Mapping[str, Any]],
     evidence: int | None,
     cache: dict[tuple[str, int], list[str]],
+    *,
+    full: bool = False,
 ) -> list[dict[str, Any]]:
     """Changes after the export to this source's assignment and to its exported cluster,
     each with the decision behind it. `adverse`: the change took the source out of its
@@ -628,7 +632,9 @@ def _later(
         did = entry["decision_id"]
         decision = decisions.get(int(did)) if did is not None else None
         entry["decision"] = (
-            None if decision is None else summarise_decision(store, decision, evidence, cache)
+            None
+            if decision is None
+            else summarise_decision(store, decision, evidence, cache, full=full)
         )
     return sorted(entries, key=lambda e: (e["step_seq"], e["type"]))
 

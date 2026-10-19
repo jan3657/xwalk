@@ -345,7 +345,7 @@ like `cluster inspect`.
 |---|---|---|---|
 | `SOURCE_ID` | yes | — | the record's id |
 | `--run` | yes | — | clustering run directory |
-| `--full` | no | off | also print each decision's stored system and user prompt, retrieved clusters and usage |
+| `--full` | no | off | also print admission and later decisions' stored system and user prompts, retrieved clusters and usage, in human and JSON output |
 
 ```console
 $ xwalk cluster explain s --run runs/rollback
