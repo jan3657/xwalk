@@ -79,8 +79,18 @@ class ChatGPTClient:
             "store": False,
             "stream": True,
         }
-        if self._call_budget is not None:
-            self._call_budget.acquire()
+        index = None if self._call_budget is None else self._call_budget.acquire()
+        try:
+            response = await self._dispatch(token, body)
+        except BaseException as exc:
+            if index is not None and self._call_budget is not None:
+                self._call_budget.settle(index, f"{type(exc).__name__}: {exc}")
+            raise
+        if index is not None and self._call_budget is not None:
+            self._call_budget.settle(index, None)
+        return response
+
+    async def _dispatch(self, token: str, body: dict[str, Any]) -> LLMResponse:
         try:
             async with httpx.AsyncClient(timeout=120, transport=self._transport) as client:  # noqa: SIM117
                 async with client.stream(

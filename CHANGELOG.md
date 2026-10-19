@@ -16,6 +16,10 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- Jev and ChatGPT settle each budget dispatch once after interpreting its outcome,
+  including malformed responses and transport failures. Call-limit diagnostics name
+  the latest provider failure; a later successful dispatch clears it.
+
 - Decider traces retain the rewritten retrieval union before the second screen,
   including when that screen fails. Serialized traces preserve retrieval evidence
   without claiming that failed screening produced a presentation map.
