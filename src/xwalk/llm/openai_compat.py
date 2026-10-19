@@ -285,18 +285,26 @@ class OpenAICompatClient:
                 last_error = f"{type(exc).__name__}: {exc}"
                 self._settle(index, last_error)
             else:
-                status = response.status_code
-                self._settle(
-                    index, None if status == 200 else f"HTTP {status}: {_error_message(response)}"
-                )
+                if response.status_code != 200:
+                    self._settle(index, f"HTTP {response.status_code}: {_error_message(response)}")
                 if response.status_code == 200:
-                    payload = _json_payload(response, dispatched)
-                    body_error = _body_error(payload)
+                    # Settled only once the body is understood: a 200 carrying an error,
+                    # or one that does not parse, is a failing provider too.
+                    try:
+                        payload = _json_payload(response, dispatched)
+                        body_error = _body_error(payload)
+                        if body_error is None:
+                            parsed = self._parse(
+                                payload, structured=structured, failed_before=dispatched - 1
+                            )
+                    except Exception as exc:
+                        self._settle(index, f"HTTP 200, {type(exc).__name__}: {exc}")
+                        raise
                     if body_error is None:
-                        return self._parse(
-                            payload, structured=structured, failed_before=dispatched - 1
-                        )
+                        self._settle(index, None)
+                        return parsed
                     code, message = body_error
+                    self._settle(index, f"HTTP 200 with error {code}: {message}")
                     if code in FATAL_BODY_CODES:
                         raise LLMFatalError(
                             f"HTTP 200 with error {code}: {message}",
