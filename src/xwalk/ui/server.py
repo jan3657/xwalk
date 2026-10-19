@@ -405,11 +405,14 @@ def make_server(
     dense_device: str | None = None,
     trust_proxy: bool = False,
     sessions_per_ip: int = DEFAULT_NEW_PER_CLIENT,
+    allow_local_downloads: bool = False,
 ) -> UIServer:
     from xwalk.ui.retrieval import heads
 
     if trust_proxy and not public:
         raise ValueError("--trust-proxy only applies with --public")
+    if allow_local_downloads and public:
+        raise ValueError("--allow-local-downloads cannot be combined with --public")
     retrieval_heads = heads(dense=dense, device=dense_device)
     if dense:
         from xwalk._extras import require
@@ -440,6 +443,7 @@ def make_server(
         max_upload_mb=max_upload_mb,
         shared_library=shared,
         retrieval_heads=retrieval_heads,
+        allow_local_downloads=allow_local_downloads,
     )
     if not public:
         server = UIServer((host, port), workspace, token=token, quiet=quiet)
@@ -529,6 +533,7 @@ def serve(
     dense_device: str | None = None,
     trust_proxy: bool = False,
     sessions_per_ip: int = DEFAULT_NEW_PER_CLIENT,
+    allow_local_downloads: bool = False,
 ) -> None:
     """Serve until interrupted (`xwalk ui`). Status lines go to stderr."""
     server = make_server(
@@ -550,6 +555,7 @@ def serve(
         dense_device=dense_device,
         trust_proxy=trust_proxy,
         sessions_per_ip=sessions_per_ip,
+        allow_local_downloads=allow_local_downloads,
     )
     print(f"xwalk ui: serving {server.workspace.root}", file=sys.stderr)
     print(f"xwalk ui: open {server.url}  (Ctrl-C to stop)", file=sys.stderr)

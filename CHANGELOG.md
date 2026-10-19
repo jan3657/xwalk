@@ -133,6 +133,15 @@ offline only (FakeDecider, no paid calls).
   client follows no redirects, and proxy variables in the server's environment are
   ignored for these requests. `OpenAICompatClient` gains a `trust_env` argument
   (default `True`, unchanged).
+- `xwalk ui` (local mode) ontology downloads are `https` only, to hosts that resolve to
+  public addresses, connected at the checked addresses, with at most 5 redirects, each
+  checked again. Before, any `http(s)` URL was fetched and redirects were followed
+  freely, so the server could be pointed at its own network or a cloud metadata
+  address. `--allow-local-downloads` (refused with `--public`) restores `http` and
+  private addresses for an intranet mirror; `scripts/build_ontology_library.py` has
+  `--allow-local-urls` for the same. The catalog now names its OBO PURLs by `https`
+  (`https://purl.obolibrary.org/obo/...`). `library.download` gains `allow_local` and
+  `max_redirects`.
 
 ## [0.2.0rc1] — 2026-10-05
 

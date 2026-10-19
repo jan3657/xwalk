@@ -1,5 +1,6 @@
 """`xwalk.ui.egress`: connections pinned to checked addresses keep the URL's host for
-TLS (SNI, certificate) and the `Host` header. Local servers only."""
+TLS (SNI, certificate) and the `Host` header; library downloads check every redirect.
+Local servers only: names resolve through a fake resolver, sockets go to 127.0.0.1."""
 
 from __future__ import annotations
 
@@ -11,12 +12,16 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import httpcore
 import httpx
 import pytest
 
 from xwalk.ui.egress import PinnedTransport, is_public, wire_host
+from xwalk.ui.files import FileProblem
+from xwalk.ui.library import download
 
 NAME = "pinned.test"
+TOY_OBO = b"format-version: 1.2\n\n[Term]\nid: TOY:0001\nname: Seizure\n"
 
 
 @pytest.fixture
@@ -57,7 +62,20 @@ def tls_server(tmp_path: Path) -> Iterator[tuple[int, Path, dict[str, Any]]]:
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             seen["host"] = self.headers.get("Host")
-            body = b"ok"
+            port = self.server.server_address[1]
+            redirects = {
+                "/hop-private": f"https://metadata.test:{port}/latest.obo",
+                "/hop-http": f"http://{NAME}:{port}/toy.obo",
+                "/hop-ok": "/toy.obo",
+                "/loop": "/loop",
+            }
+            if self.path in redirects:
+                self.send_response(302)
+                self.send_header("Location", redirects[self.path])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            body = TOY_OBO if self.path == "/toy.obo" else b"ok"
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -131,3 +149,61 @@ def test_wire_host() -> None:
     assert wire_host("https://API.Example.com:8443/v1") == "api.example.com"
     assert wire_host("https://bücher.example/v1") == "xn--bcher-kva.example"
     assert wire_host("https:///nohost") == ""
+
+
+# --- library downloads ------------------------------------------------------------------
+
+
+@pytest.fixture
+def mirror(
+    tls_server: tuple[int, Path, dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> tuple[int, list[str], list[str]]:
+    """NAME resolves to a public address and metadata.test to the metadata address;
+    every socket actually goes to the local TLS server, which the client trusts."""
+    import socket
+
+    port, cert_file, _ = tls_server
+    answers = {NAME: "93.184.215.14", "metadata.test": "169.254.169.254"}
+    lookups: list[str] = []
+    connects: list[str] = []
+    real = socket.getaddrinfo
+
+    def resolve(host: str, *args: Any, **kwargs: Any) -> list[Any]:
+        if host not in answers:  # the socket to 127.0.0.1 itself
+            return real(host, *args, **kwargs)
+        lookups.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (answers[host], port))]
+
+    original = httpcore.SyncBackend.connect_tcp
+
+    def to_local(self: Any, host: str, port: int, *args: Any, **kwargs: Any) -> Any:
+        connects.append(host)
+        return original(self, "127.0.0.1", port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", to_local)
+    monkeypatch.setenv("SSL_CERT_FILE", str(cert_file))
+    return port, lookups, connects
+
+
+def test_a_download_goes_to_the_checked_address(
+    mirror: tuple[int, list[str], list[str]], tmp_path: Path
+) -> None:
+    port, lookups, connects = mirror
+    path = download(f"https://{NAME}:{port}/hop-ok", tmp_path / "toy.obo")
+    assert path.read_bytes() == TOY_OBO
+    assert set(connects) == {"93.184.215.14"} and set(lookups) == {NAME}
+
+
+def test_each_redirect_is_checked_again(
+    mirror: tuple[int, list[str], list[str]], tmp_path: Path
+) -> None:
+    port, lookups, connects = mirror
+    with pytest.raises(FileProblem, match="non-public"):
+        download(f"https://{NAME}:{port}/hop-private", tmp_path / "a.obo")
+    assert "metadata.test" in lookups and set(connects) == {"93.184.215.14"}
+    with pytest.raises(FileProblem, match="https"):
+        download(f"https://{NAME}:{port}/hop-http", tmp_path / "b.obo")
+    with pytest.raises(FileProblem, match="redirects"):
+        download(f"https://{NAME}:{port}/loop", tmp_path / "c.obo")
+    assert not list(tmp_path.glob("*.obo*"))

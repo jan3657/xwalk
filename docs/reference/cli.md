@@ -401,6 +401,7 @@ library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
 | `--max-tasks` | no | `4` | public mode: runs at once across visitors |
 | `--frame-ancestors` | no | — | origins allowed to embed the page in a frame |
 | `--sessions-per-ip` | no | `20` | public mode: new visitor sessions one address may open per 10 minutes (`0`: no limit) |
+| `--allow-local-downloads` | no | — | let ontology downloads use `http` and private addresses; not with `--public` |
 | `--trust-proxy` | no | — | public mode: believe `X-Forwarded-Proto` and `X-Forwarded-For` from the HTTPS proxy in front ([hosting](../guide/hosting.md)) |
 | `--verbose` | no | — | log every request to stderr |
 

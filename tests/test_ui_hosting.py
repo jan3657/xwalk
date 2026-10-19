@@ -81,7 +81,16 @@ def library_dir(tmp_path: Path, served: str) -> tuple[Path, Path]:
     """A pre-built library (and its index cache), as the image build makes it."""
     out, cache = tmp_path / "library", tmp_path / "cache"
     code = _build_script().main(
-        ["--out", str(out), "--cache", str(cache), "--only", "--url", f"toy={served}/toy.obo"]
+        [
+            "--out",
+            str(out),
+            "--cache",
+            str(cache),
+            "--allow-local-urls",
+            "--only",
+            "--url",
+            f"toy={served}/toy.obo",
+        ]
     )
     assert code == 0
     return out, cache
@@ -100,9 +109,13 @@ def test_the_build_script_parses_indexes_and_keeps(
     assert list(cache.glob("*/projects/*/index/bm25"))
     capsys.readouterr()
     build = _build_script()
-    assert build.main(["--out", str(out), "--only", "--url", f"toy={served}/toy.obo"]) == 0
+    local = ["--out", str(out), "--allow-local-urls", "--only", "--url"]
+    assert build.main([*local, f"toy={served}/toy.obo"]) == 0
     assert "kept" in capsys.readouterr().out
-    assert build.main(["--out", str(out), "--only", "--url", f"gone={served}/gone.obo"]) == 1
+    assert build.main([*local, f"gone={served}/gone.obo"]) == 1
+    # Without the opt-in, a local http URL is refused (and reported, exit 1).
+    assert build.main(["--out", str(out), "--only", "--url", f"other={served}/toy.obo"]) == 1
+    assert "https" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         build.main(["--out", str(out), "--only", "nope"])
 
@@ -630,3 +643,13 @@ def test_secure_cookies_follow_the_operator_not_the_client(
 def test_trust_proxy_is_for_public_mode(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="--public"):
         make_server(str(tmp_path), port=0, trust_proxy=True)
+
+
+def test_local_downloads_cannot_be_allowed_in_public_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="--public"):
+        make_server(str(tmp_path), port=0, public=True, allow_local_downloads=True)
+    server = make_server(str(tmp_path), port=0, allow_local_downloads=True)
+    try:
+        assert server.workspace.allow_local_downloads is True
+    finally:
+        server.server_close()

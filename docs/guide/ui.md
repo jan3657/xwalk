@@ -27,6 +27,7 @@ xwalk ui --offline-only --no-browser      # never call a job's endpoint; print t
 | `--max-calls-cap` | `500` | the largest call limit a run against the job's endpoint may request |
 | `--offline-only` | — | refuse runs against the job's endpoint; only the offline stand-in |
 | `--max-upload-mb` | `512` | the largest file the page may upload |
+| `--allow-local-downloads` | — | let ontology downloads use `http` and private addresses (an intranet mirror); not with `--public` |
 | `--verbose` | — | log every request to stderr |
 
 Ctrl-C stops the server and exits `0`. A root that is not a directory, or a cap below 1,
@@ -70,8 +71,13 @@ retrievable at all. It is not a decision; the first candidate is the best text m
   JSONL file, parsed once into `<root>/.xwalk-ui/library/<name>/terms.jsonl`.
 - *Downloaded*: any OBO Foundry ontology from the catalog (HPO, Mondo, DOID, GO, ChEBI,
   Uberon, CL, PATO, UO, ENVO by their permanent `purl.obolibrary.org` URLs), or any
-  `http(s)` URL ending in `.obo`, `.owl`, `.csv`, `.tsv` or `.jsonl` (gzip is
-  unpacked). The download runs as a background task with progress.
+  `https` URL ending in `.obo`, `.owl`, `.csv`, `.tsv` or `.jsonl` (gzip is
+  unpacked). The download runs as a background task with progress. The host must
+  resolve to public addresses only (no localhost, private ranges or the cloud metadata
+  address), the connection goes to the addresses that were checked, and at most 5
+  redirects are followed, each checked the same way (an `https` page cannot redirect
+  to `http`). To download from a mirror on your own network, or over plain `http`,
+  start with `--allow-local-downloads`.
 
 Mapping onto several entries at once combines their terms, each tagged with its
 `ontology`, which the model sees in the candidate text. An id two entries share keeps
@@ -189,6 +195,8 @@ jobs' endpoints. The defences are aimed at other web pages open in the same brow
   which defeats DNS rebinding.
 - Every path a request names is resolved, symlinks included, and refused (`403`) when it
   lies outside the root.
+- Ontology downloads go only to public `https` hosts unless `--allow-local-downloads`
+  is set, so the server cannot be pointed at services on its own network.
 - Both pages set a Content Security Policy that allows only their own scripts and
   styles, and render record text and model output as text, never as HTML. The
   workbench's assets are served only by their flat, content-hashed names.

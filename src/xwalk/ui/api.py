@@ -332,6 +332,7 @@ class Workspace:
         lookup_cache: Path | None = None,
         task_gate: Callable[[], None] | None = None,
         retrieval_heads: Sequence[Mapping[str, Any]] = (),
+        allow_local_downloads: bool = False,
     ) -> None:
         self.root = Path(root).resolve()
         if not self.root.is_dir():
@@ -351,6 +352,9 @@ class Workspace:
         self.lookup_cache = lookup_cache
         self.task_gate = task_gate
         self.retrieval_heads = tuple(dict(r) for r in retrieval_heads)
+        # Library downloads over http or from private addresses (an intranet mirror).
+        # Local mode only; public mode downloads nothing a visitor names.
+        self.allow_local_downloads = allow_local_downloads and not public
         # A visitor's model keys, by variable name: memory only, never os.environ.
         self.session_keys: dict[str, str] = {}
         from xwalk.ui.chatgpt import ChatGPTAuth

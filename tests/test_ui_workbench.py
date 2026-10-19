@@ -249,7 +249,7 @@ def test_combined_terms_tag_their_ontology_and_report_overlaps(tmp_path: Path) -
 
 def test_the_catalog_names_obo_purls() -> None:
     assert len({c["id"] for c in CATALOG}) == len(CATALOG)
-    assert all(c["url"].startswith("http://purl.obolibrary.org/obo/") for c in CATALOG)
+    assert all(c["url"].startswith("https://purl.obolibrary.org/obo/") for c in CATALOG)
 
 
 @pytest.fixture
@@ -278,17 +278,47 @@ def served(tmp_path: Path) -> Iterator[str]:
 
 def test_download_plain_and_gzipped(served: str, tmp_path: Path) -> None:
     seen: list[int] = []
-    plain = download(f"{served}/toy.obo", tmp_path / "a.obo", progress=lambda n, _: seen.append(n))
+    plain = download(
+        f"{served}/toy.obo",
+        tmp_path / "a.obo",
+        progress=lambda n, _: seen.append(n),
+        allow_local=True,
+    )
     assert plain.read_text(encoding="utf-8") == TOY_OBO and seen[-1] == len(TOY_OBO)
-    unzipped = download(f"{served}/toy-gz.obo", tmp_path / "b.obo")
+    unzipped = download(f"{served}/toy-gz.obo", tmp_path / "b.obo", allow_local=True)
     assert unzipped.read_text(encoding="utf-8") == TOY_OBO
     with pytest.raises(files.FileProblem, match="404"):
-        download(f"{served}/missing.obo", tmp_path / "c.obo")
+        download(f"{served}/missing.obo", tmp_path / "c.obo", allow_local=True)
     with pytest.raises(files.FileProblem, match="download limit"):
-        download(f"{served}/toy.obo", tmp_path / "d.obo", max_bytes=10)
+        download(f"{served}/toy.obo", tmp_path / "d.obo", max_bytes=10, allow_local=True)
     assert not (tmp_path / "d.obo").exists() and not (tmp_path / "d.obo.download").exists()
     with pytest.raises(files.FileProblem, match="http"):
-        download("file:///etc/passwd", tmp_path / "e.obo")
+        download("file:///etc/passwd", tmp_path / "e.obo", allow_local=True)
+
+
+@pytest.mark.parametrize(
+    ("url", "reason"),
+    [
+        ("http://example.com/hp.obo", "https"),
+        ("https://127.0.0.1/hp.obo", "non-public"),
+        ("https://169.254.169.254/latest/meta-data", "non-public"),
+        ("https://10.0.0.5/hp.obo", "non-public"),
+        ("https://[::1]/hp.obo", "non-public"),
+        ("file:///etc/passwd", "https"),
+    ],
+)
+def test_downloads_need_https_and_a_public_host(url: str, reason: str, tmp_path: Path) -> None:
+    with pytest.raises(files.FileProblem, match=reason):
+        download(url, tmp_path / "x.obo")
+    assert not list(tmp_path.iterdir())
+
+
+def test_local_downloads_need_the_opt_in(served: str, tmp_path: Path) -> None:
+    with pytest.raises(files.FileProblem, match="https"):
+        download(f"{served}/toy.obo", tmp_path / "a.obo")
+    local = served.replace("http://", "https://")
+    with pytest.raises(files.FileProblem, match="non-public"):
+        download(f"{local}/toy.obo", tmp_path / "b.obo")
 
 
 # --- projects -----------------------------------------------------------------------------
@@ -441,6 +471,12 @@ def test_library_endpoints(ws: Workspace) -> None:
 
 
 def test_library_download_runs_as_a_task(ws: Workspace, served: str) -> None:
+    refused = _call(ws, "POST", "/api/library/download", {"url": f"{served}/toy.obo"})
+    result = ws.tasks.wait(refused["id"]).result
+    assert result is not None and result["errors"][0]["code"] == "download_failed"
+    assert "https" in result["errors"][0]["message"]  # a local server needs the opt-in
+
+    ws.allow_local_downloads = True  # `xwalk ui --allow-local-downloads`
     view = _call(
         ws, "POST", "/api/library/download", {"url": f"{served}/toy-gz.obo", "name": "Toy remote"}
     )

@@ -291,6 +291,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=20,
         help="public mode: new visitor sessions one address may open per 10 minutes (0: no limit)",
     )
+    ui.add_argument(
+        "--allow-local-downloads",
+        action="store_true",
+        help="let library downloads use http and private addresses (an intranet mirror); "
+        "not with --public",
+    )
     ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
     ui.add_argument(
         "--chatgpt-login",
@@ -836,6 +842,7 @@ def _serve_ui(args: argparse.Namespace) -> int:
             dense_device=args.dense_device,
             trust_proxy=args.trust_proxy,
             sessions_per_ip=args.sessions_per_ip,
+            allow_local_downloads=args.allow_local_downloads,
         )
     except KeyboardInterrupt:
         return EXIT_OK

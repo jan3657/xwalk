@@ -9,7 +9,9 @@ only at import time.
   examples carry (200 terms each), clearly labelled as samples.
 - **Imported** entries live in the workspace (`.xwalk-ui/library/<slug>/`): an OBO, OWL,
   CSV, TSV or JSONL file the user uploaded, or an ontology downloaded from a URL (the
-  catalog lists OBO Foundry ontologies by their permanent URLs).
+  catalog lists OBO Foundry ontologies by their permanent URLs). Downloads are https
+  only, to hosts that resolve to public addresses, with each redirect checked again;
+  `allow_local` (`xwalk ui --allow-local-downloads`) lifts both for intranet mirrors.
 """
 
 from __future__ import annotations
@@ -31,70 +33,71 @@ from xwalk.ui.files import FileProblem, read_jsonl, write_jsonl
 TERMS_FILE = "terms.jsonl"
 META_FILE = "meta.json"
 DEFAULT_MAX_DOWNLOAD = 2 * 1024**3
+MAX_REDIRECTS = 5
 _SLUG = re.compile(r"[^a-z0-9]+")
 
-# OBO Foundry ontologies by permanent URL (http://purl.obolibrary.org/obo/<id>.obo). Sizes
+# OBO Foundry ontologies by permanent URL (https://purl.obolibrary.org/obo/<id>.obo). Sizes
 # change with every release; the UI does not quote them.
 CATALOG: list[dict[str, str]] = [
     {
         "id": "hp",
         "name": "Human Phenotype Ontology (HPO)",
         "domain": "phenotypes, clinical signs",
-        "url": "http://purl.obolibrary.org/obo/hp.obo",
+        "url": "https://purl.obolibrary.org/obo/hp.obo",
     },
     {
         "id": "mondo",
         "name": "Mondo Disease Ontology",
         "domain": "diseases",
-        "url": "http://purl.obolibrary.org/obo/mondo.obo",
+        "url": "https://purl.obolibrary.org/obo/mondo.obo",
     },
     {
         "id": "doid",
         "name": "Human Disease Ontology (DOID)",
         "domain": "diseases",
-        "url": "http://purl.obolibrary.org/obo/doid.obo",
+        "url": "https://purl.obolibrary.org/obo/doid.obo",
     },
     {
         "id": "go-basic",
         "name": "Gene Ontology (basic)",
         "domain": "biological processes, functions, cellular components",
-        "url": "http://purl.obolibrary.org/obo/go/go-basic.obo",
+        "url": "https://purl.obolibrary.org/obo/go/go-basic.obo",
     },
     {
         "id": "chebi",
         "name": "ChEBI",
         "domain": "chemical entities (large: hundreds of MB)",
-        "url": "http://purl.obolibrary.org/obo/chebi.obo",
+        "url": "https://purl.obolibrary.org/obo/chebi.obo",
     },
     {
         "id": "uberon",
         "name": "Uberon anatomy",
         "domain": "anatomy across species",
-        "url": "http://purl.obolibrary.org/obo/uberon.obo",
+        "url": "https://purl.obolibrary.org/obo/uberon.obo",
     },
     {
         "id": "cl",
         "name": "Cell Ontology (CL)",
         "domain": "cell types",
-        "url": "http://purl.obolibrary.org/obo/cl.obo",
+        "url": "https://purl.obolibrary.org/obo/cl.obo",
     },
     {
         "id": "pato",
         "name": "Phenotype And Trait Ontology (PATO)",
         "domain": "qualities and traits",
-        "url": "http://purl.obolibrary.org/obo/pato.obo",
+        "url": "https://purl.obolibrary.org/obo/pato.obo",
     },
     {
         "id": "uo",
         "name": "Units of Measurement Ontology (UO)",
         "domain": "units",
-        "url": "http://purl.obolibrary.org/obo/uo.obo",
+        "url": "https://purl.obolibrary.org/obo/uo.obo",
     },
     {
         "id": "envo",
         "name": "Environment Ontology (ENVO)",
         "domain": "environments, habitats, materials",
-        "url": "http://purl.obolibrary.org/obo/envo.obo",
+        "url": "https://purl.obolibrary.org/obo/envo.obo",
     },
 ]
 
@@ -307,6 +310,48 @@ def combined_terms(library: Library, slugs: list[str]) -> tuple[list[Record], li
 Progress = Callable[[int, int | None], None]
 
 
+def _download_client(url: str, timeout: float, allow_local: bool) -> Any:
+    """An httpx client for one hop of a download, after checking where `url` points.
+
+    Without `allow_local`: https only, every address the host resolves to must be
+    public, and the connection goes to those addresses (no second lookup, so DNS
+    rebinding cannot swap in a private one). With it: http or https, anywhere."""
+    from urllib.parse import urlsplit
+
+    import httpx
+
+    from xwalk.ui import egress
+
+    scheme = urlsplit(url).scheme.lower()
+    if allow_local:
+        if scheme not in ("http", "https"):
+            raise FileProblem(f"{url}: only http:// and https:// URLs can be downloaded")
+        return httpx.Client(timeout=timeout, follow_redirects=False)
+    if scheme != "https":
+        raise FileProblem(
+            f"{url}: only https:// URLs can be downloaded (start `xwalk ui` with "
+            "--allow-local-downloads for http or a local mirror)"
+        )
+    host = egress.wire_host(url)
+    if not host:
+        raise FileProblem(f"{url}: no host to download from")
+    try:
+        addresses = egress.resolve(host, urlsplit(url).port or 443)
+    except (OSError, ValueError):
+        raise FileProblem(f"{url}: cannot resolve {host}") from None
+    if not addresses or not all(egress.is_public(a) for a in addresses):
+        raise FileProblem(
+            f"{url}: {host} resolves to a non-public address (start `xwalk ui` with "
+            "--allow-local-downloads to fetch from your own network)"
+        )
+    return httpx.Client(
+        timeout=timeout,
+        follow_redirects=False,
+        trust_env=False,
+        transport=egress.PinnedTransport(host, addresses),
+    )
+
+
 def download(
     url: str,
     dest: Path,
@@ -314,34 +359,50 @@ def download(
     max_bytes: int = DEFAULT_MAX_DOWNLOAD,
     progress: Progress | None = None,
     timeout: float = 60.0,
+    allow_local: bool = False,
+    max_redirects: int = MAX_REDIRECTS,
 ) -> Path:
     """Stream `url` to `dest` (decompressing a `.gz` body into `dest`); returns `dest`.
 
-    Only http(s); redirects are followed; more than `max_bytes` is refused.
+    Only https to hosts that resolve to public addresses, unless `allow_local` (then
+    http and any address too). At most `max_redirects` redirects, each target checked
+    like the first URL; more than `max_bytes` is refused.
     """
     import httpx
 
-    if not url.lower().startswith(("http://", "https://")):
-        raise FileProblem("only http:// and https:// URLs can be downloaded")
     dest.parent.mkdir(parents=True, exist_ok=True)
     raw = dest.with_name(dest.name + ".download")
     received = 0
     try:
-        with httpx.stream("GET", url, follow_redirects=True, timeout=timeout) as response:
-            if response.status_code >= 400:
-                raise FileProblem(f"{url}: the server answered HTTP {response.status_code}")
-            total = response.headers.get("content-length")
-            expected = int(total) if total and total.isdigit() else None
-            with raw.open("wb") as handle:
-                for chunk in response.iter_bytes():
-                    received += len(chunk)
-                    if received > max_bytes:
-                        raise FileProblem(
-                            f"{url}: larger than the {max_bytes // 1024**2} MB download limit"
-                        )
-                    handle.write(chunk)
-                    if progress is not None:
-                        progress(received, expected)
+        current = url
+        for _ in range(max_redirects + 1):
+            with (
+                _download_client(current, timeout, allow_local) as client,
+                client.stream("GET", current) as response,
+            ):
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise FileProblem(f"{current}: a redirect without a Location")
+                    current = str(response.url.join(location))
+                    continue
+                if response.status_code >= 400:
+                    raise FileProblem(f"{url}: the server answered HTTP {response.status_code}")
+                total = response.headers.get("content-length")
+                expected = int(total) if total and total.isdigit() else None
+                with raw.open("wb") as handle:
+                    for chunk in response.iter_bytes():
+                        received += len(chunk)
+                        if received > max_bytes:
+                            raise FileProblem(
+                                f"{url}: larger than the {max_bytes // 1024**2} MB download limit"
+                            )
+                        handle.write(chunk)
+                        if progress is not None:
+                            progress(received, expected)
+                break
+        else:
+            raise FileProblem(f"{url}: more than {max_redirects} redirects")
         with raw.open("rb") as handle:
             gzipped = handle.read(2) == b"\x1f\x8b"
         if gzipped:
