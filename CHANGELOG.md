@@ -16,6 +16,10 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- Clustering read-only views resolve database symlinks before finding WAL sidecars,
+  include committed log updates, and never assume an immutable database. Clean
+  writable stores use query-only connections; active stores retain consistent snapshots.
+
 - Jev adapter identity version 2 hashes the redacted full endpoint (scheme, host,
   path and non-secret query parameters, including blank values), excluding userinfo
   and credentials. This deliberately invalidates prior Jev cache/run identities;

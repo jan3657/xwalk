@@ -333,3 +333,53 @@ def test_matching_commands_point_a_cluster_run_to_the_cluster_commands(
     assert f"xwalk cluster inspect --run {chocolate_run}" in error["message"]
     assert f"xwalk cluster explain --run {chocolate_run} <source_id>" in error["message"]
     assert _files(chocolate_run) == before  # no ledger.sqlite created
+
+
+def test_readonly_symlink_sees_committed_wal_revision(tmp_path):
+    from xwalk.cluster.store import ClusterStore
+
+    path = tmp_path / "real.sqlite"
+    writer = ClusterStore.open(path)
+    try:
+        writer.set_meta("selected_revision", 0)
+        writer._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        writer.set_meta("selected_revision", 1)
+        link = tmp_path / "alias.sqlite"
+        link.symlink_to(path)
+        before = _data_files(tmp_path)
+        reader = ClusterStore.open_readonly(link)
+        try:
+            assert reader.get_meta("selected_revision") == 1
+        finally:
+            reader.close()
+        assert _data_files(tmp_path) == before
+    finally:
+        writer.close()
+
+
+@pytest.mark.parametrize("sidecar", [None, "-wal", "-shm"])
+def test_readonly_store_never_assumes_database_is_immutable(tmp_path, monkeypatch, sidecar):
+    import sqlite3
+
+    from xwalk.cluster.store import ClusterStore
+
+    path = tmp_path / "store.sqlite"
+    ClusterStore.open(path).close()
+    if sidecar:
+        path.with_name(path.name + sidecar).touch()
+    connect = sqlite3.connect
+    opened = []
+
+    def capture(database, *args, **kwargs):
+        opened.append(str(database))
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", capture)
+    reader = ClusterStore.open_readonly(path)
+    try:
+        assert reader.get_meta("schema_version") == 1
+        assert not any("immutable=" in uri for uri in opened)
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            reader.set_meta("forbidden", True)
+    finally:
+        reader.close()
