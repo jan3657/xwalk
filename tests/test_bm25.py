@@ -402,6 +402,14 @@ async def test_case_folds_but_accents_do_not(tmp_path):
     assert not await _exact_fires(tmp_path / "ascii", "Gruyère", "Gruyere")
 
 
+async def test_case_folding_is_full_casefold_not_lower(tmp_path):
+    from xwalk.retrieval.bm25 import exact_form
+
+    assert exact_form("Straße") == "strasse"
+    assert await _exact_fires(tmp_path / "sharp", "Straße", "STRASSE")
+    assert await _exact_fires(tmp_path / "plain", "STRASSE", "Straße")
+
+
 async def test_nfc_and_nfd_are_the_same_exact_form(tmp_path):
     nfc, nfd = "Gruy\u00e8re", "Gruye\u0300re"
     assert await _exact_fires(tmp_path / "nfd", nfd, nfc)
