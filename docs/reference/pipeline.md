@@ -635,7 +635,7 @@ ledger (version 1, no such table) is upgraded when a writing command opens it (`
 `ledger.sqlite.v1-backup`, then the upgrade adds tables and defaulted columns in one
 transaction. Nothing existing is rewritten or dropped. All 0.1.1 rows become history,
 and the current view is inferred as the latest row per source id. Read-only commands
-(`inspect`, `export`, `eval` and the like) read an upgraded copy in memory and leave
+(`inspect`, `export`, `eval` and the like) read an upgraded temporary copy and leave
 the file as it is. A ledger with a newer
 schema version, an SQLite file that is not a ledger, or a file that is not SQLite raises
 `UnsupportedLedgerError` and is not modified.

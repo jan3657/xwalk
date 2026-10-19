@@ -150,7 +150,8 @@ offline only (FakeDecider, no paid calls).
   ledger for writing, so pointing one at a 0.1.1 run upgraded `ledger.sqlite` in place
   and left a `ledger.sqlite.v1-backup` beside it. They now open it read-only
   (`Ledger.open(path, read_only=True)`): a 0.1.1 ledger is read through an upgraded copy
-  in memory and the directory stays byte-identical. `match` and `review apply` still
+  on disk (a temporary file, removed afterwards) and the directory stays
+  byte-identical; a reader's memory does not grow with the ledger. `match` and `review apply` still
   migrate (after the backup), and the new `xwalk upgrade --run DIR` (`ops.upgrade`)
   does it explicitly. `ledger.sqlite.v1-backup*` is now gitignored.
 - A run against a failing provider says why. A call limit spent on retries against a

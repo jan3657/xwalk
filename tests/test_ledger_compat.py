@@ -284,6 +284,52 @@ def test_a_read_only_open_of_a_current_ledger_leaves_the_directory_alone(tmp_pat
     assert tree(path.parent) == before  # no -wal/-shm left behind
 
 
+def _spy_connections(monkeypatch) -> list[str]:
+    import sqlite3
+
+    import xwalk.ledger as ledger_module
+
+    opened: list[str] = []
+    real = sqlite3.connect
+
+    def connect(database, *args, **kwargs):
+        opened.append(str(database))
+        return real(database, *args, **kwargs)
+
+    monkeypatch.setattr(ledger_module.sqlite3, "connect", connect)
+    return opened
+
+
+def test_read_only_opens_never_copy_a_ledger_into_memory(tmp_path, run_dir, monkeypatch):
+    """Memory must not grow with the ledger: a 240 MiB run cost 312 MiB of RSS per
+    reader when every read-only open copied it into RAM (review dx2 #1)."""
+    current = _current_ledger(tmp_path / "current")
+    writer = Ledger.open(tmp_path / "live" / "ledger.sqlite")
+    writer.put_manifest("fp", {"job": "live"})
+    opened = _spy_connections(monkeypatch)
+    try:
+        for path in (current, tmp_path / "live" / "ledger.sqlite", run_dir / "ledger.sqlite"):
+            ledger = Ledger.open(path, read_only=True)
+            try:
+                assert ledger.get_manifest("fp") or ledger.get_manifest("v011fp")
+            finally:
+                ledger.close()
+    finally:
+        writer.close()
+    assert opened and not any(":memory:" in target for target in opened), opened
+
+
+def test_an_old_ledger_is_read_through_a_temporary_file_removed_on_close(run_dir):
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
+    snapshot = ledger.snapshot_path
+    try:
+        assert snapshot is not None and snapshot.is_file()
+        assert not snapshot.is_relative_to(run_dir)
+    finally:
+        ledger.close()
+    assert not snapshot.exists()
+
+
 def test_a_read_only_open_works_on_read_only_files_and_directories(tmp_path):
     import os
     import stat

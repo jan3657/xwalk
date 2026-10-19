@@ -14,16 +14,18 @@ Two views of a run are kept apart (docs/claude-upgrade/CONTRACTS.md section 2):
 
 Schema versions: version 1 is the 0.1.1 layout (no ``ledger_meta`` table). Opening a
 version 1 ledger for writing copies the file aside first and then upgrades it
-additively; opening it read-only reads an upgraded copy in memory and leaves the file
-alone. A newer version than this code knows is refused without being touched.
+additively; opening it read-only reads an upgraded temporary copy on disk and leaves the
+file alone. A newer version than this code knows is refused without being touched.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -180,13 +182,28 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
     }
 
 
-def _file_stamp(path: Path) -> tuple[int, int]:
-    stat = path.stat()
-    return stat.st_size, stat.st_mtime_ns
-
-
 def _connect_uri(uri: str) -> sqlite3.Connection:
     return sqlite3.connect(uri, uri=True, check_same_thread=False, isolation_level=None)
+
+
+def _temporary_ledger_path() -> Path:
+    """A fresh ``ledger.sqlite`` path in a new private temporary directory."""
+    return Path(tempfile.mkdtemp(prefix="xwalk-ledger-")) / "ledger.sqlite"
+
+
+def _copy_with_log(path: Path) -> Path:
+    """Copy a ledger and its write-ahead log aside, for a directory SQLite cannot use."""
+    target = _temporary_ledger_path()
+    try:
+        shutil.copy2(path, target)
+        for suffix in ("-wal", "-shm"):
+            side = path.with_name(path.name + suffix)
+            if side.exists():
+                shutil.copy2(side, target.with_name(target.name + suffix))
+    except BaseException:
+        shutil.rmtree(target.parent, ignore_errors=True)
+        raise
+    return target
 
 
 def _free_backup_path(path: Path) -> Path:
@@ -213,6 +230,7 @@ class Ledger:
         migrated_from: int | None = None,
         backup_path: Path | None = None,
         read_only: bool = False,
+        snapshot_path: Path | None = None,
     ) -> None:
         self._conn = connection
         self._write_lock = asyncio.Lock()
@@ -220,6 +238,9 @@ class Ledger:
         self.migrated_from = migrated_from
         self.backup_path = backup_path
         self.read_only = read_only
+        # A temporary copy this read-only ledger reads instead of the file; removed,
+        # with its directory, on close.
+        self.snapshot_path = snapshot_path
 
     @classmethod
     def open(cls, path: str | Path, *, read_only: bool = False) -> Ledger:
@@ -232,8 +253,8 @@ class Ledger:
         ``read_only=True`` is for commands that only read (inspect, explain, export,
         eval, the UI's views): the file must exist, it is never created, upgraded or
         written, and every write raises `ReadOnlyLedgerError`. A 0.1.1 ledger is then
-        read through an upgraded copy in memory (`migrated_from` is 1, there is no
-        backup); `xwalk upgrade` or the next `match` migrates the file itself.
+        read through an upgraded temporary copy on disk (`migrated_from` is 1, there is
+        no backup); `xwalk upgrade` or the next `match` migrates the file itself.
         """
         path = Path(path)
         if read_only:
@@ -263,14 +284,28 @@ class Ledger:
 
     @classmethod
     def _open_read_only(cls, path: Path) -> Ledger:
-        """See `open`. Writes nothing beside the file unless a writer is active.
+        """See `open`. Memory stays bounded: nothing is copied into RAM.
 
-        A quiescent ledger (no pending write-ahead log) is copied into memory through an
-        immutable connection, which creates no -wal/-shm files and needs no write
-        permission; the copy is kept only if the main file did not change while it was
-        taken (a checkpoint by a writer that started meanwhile), otherwise it is taken
-        again. A ledger with an active writer is opened with ``mode=ro`` so the log is
-        read too; SQLite then keeps its own -shm beside the file, as the writer does.
+        How the file is read, and what that guarantees:
+
+        - **A pending write-ahead log** (a run is writing, or one stopped without a
+          checkpoint): ``mode=ro``, which reads the log too and is safe against a
+          concurrent writer. SQLite keeps its -shm beside the file, as the writer does.
+          If the directory does not allow that, the file and its log are copied to a
+          temporary directory and read there.
+        - **No pending log, and this process may write the file and its directory**: a
+          normal connection with ``PRAGMA query_only``. It is safe against a writer
+          that starts meanwhile (ordinary WAL locking), never changes the database,
+          and as the last connection to close it removes the -wal/-shm files it
+          created, so the directory is left as it was.
+        - **No pending log, and this process may not write the file or its
+          directory**: ``immutable=1``, which needs no lock files. SQLite requires an
+          immutable file not to change while it is open; a writer needs write access
+          to the file and its directory, so no writer running with this process's
+          permissions can exist. A writer under another account that does have write
+          access is not detected.
+        - **An older schema** (0.1.1, or an empty file): ``backup()`` into a temporary
+          file, upgraded there; the temporary directory is removed on `close`.
         """
         # The write-ahead log lives beside the real file, not beside a symlink to it.
         path = path.resolve()
@@ -278,48 +313,55 @@ class Ledger:
             raise FileNotFoundError(f"no ledger at {path}")
         uri = path.as_uri()
         wal = path.with_name(path.name + "-wal")
-        for _ in range(3):
-            if wal.exists() and wal.stat().st_size > 0:
-                break
-            stamp = _file_stamp(path)
-            memory, version = cls._snapshot(f"{uri}?mode=ro&immutable=1", path)
-            if _file_stamp(path) == stamp:
-                return cls._from_copy(memory, version)
-            memory.close()
-        live = _connect_uri(f"{uri}?mode=ro")
+        pending_log = wal.exists() and wal.stat().st_size > 0
+        writable = os.access(path, os.W_OK) and os.access(path.parent, os.W_OK)
+        snapshot: Path | None = None
         try:
-            version = cls._detect_version(live, path)
+            if pending_log:
+                try:
+                    conn = _connect_uri(f"{uri}?mode=ro")
+                    version = cls._detect_version(conn, path)
+                except sqlite3.OperationalError:
+                    snapshot = _copy_with_log(path)
+                    conn = _connect_uri(snapshot.as_uri())
+                    version = cls._detect_version(conn, path)
+            elif writable:
+                conn = _connect_uri(f"{uri}?mode=rw")
+                conn.execute("PRAGMA query_only = ON")
+                version = cls._detect_version(conn, path)
+            else:
+                conn = _connect_uri(f"{uri}?mode=ro&immutable=1")
+                version = cls._detect_version(conn, path)
         except BaseException:
-            live.close()
+            if snapshot is not None:
+                shutil.rmtree(snapshot.parent, ignore_errors=True)
             raise
-        if version == LEDGER_SCHEMA_VERSION:
-            live.row_factory = sqlite3.Row
-            return cls(live, read_only=True)
-        live.close()
-        # An old ledger with a pending log (a writer mid-migration): copy what it reads.
-        memory, version = cls._snapshot(f"{uri}?mode=ro", path)
-        return cls._from_copy(memory, version)
-
-    @classmethod
-    def _snapshot(cls, uri: str, path: Path) -> tuple[sqlite3.Connection, int]:
-        source = _connect_uri(uri)
-        try:
-            version = cls._detect_version(source, path)
-            memory = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
-            source.backup(memory)
-        finally:
-            source.close()
-        return memory, version
-
-    @classmethod
-    def _from_copy(cls, memory: sqlite3.Connection, version: int) -> Ledger:
-        """A read-only ledger over an in-memory copy, brought to the current schema."""
-        memory.row_factory = sqlite3.Row
-        if version == 0:
-            cls._create(memory)
-        elif version == 1:
-            cls._upgrade_from_v1(memory)
-        return cls(memory, migrated_from=1 if version == 1 else None, read_only=True)
+        if version != LEDGER_SCHEMA_VERSION:
+            # An older (or empty) file is read through an upgraded copy on disk.
+            source = conn
+            target = _temporary_ledger_path() if snapshot is None else snapshot
+            try:
+                if snapshot is None:
+                    conn = _connect_uri(target.as_uri())
+                    source.backup(conn)
+                    source.close()
+                if version == 0:
+                    cls._create(conn)
+                else:
+                    cls._upgrade_from_v1(conn)
+            except BaseException:
+                conn.close()
+                source.close()
+                shutil.rmtree(target.parent, ignore_errors=True)
+                raise
+            snapshot = target
+        conn.row_factory = sqlite3.Row
+        return cls(
+            conn,
+            migrated_from=1 if version == 1 else None,
+            read_only=True,
+            snapshot_path=snapshot,
+        )
 
     @staticmethod
     def _detect_version(conn: sqlite3.Connection, path: Path) -> int:
@@ -425,6 +467,8 @@ class Ledger:
         if not self._closed:
             self._closed = True
             self._conn.close()
+            if self.snapshot_path is not None:
+                shutil.rmtree(self.snapshot_path.parent, ignore_errors=True)
 
     # --- results -------------------------------------------------------------------
 
