@@ -249,3 +249,26 @@ async def test_a_delayed_retry_after_later_successes_does_not_blame_the_provider
     assert isinstance(a, CallLimitExceeded)
     assert "raise --max-calls" in str(a) and "provider was failing" not in str(a)
     assert "ConnectError" not in str(a)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"error": {"code": 503, "message": "upstream unavailable"}}, {"choices": []}],
+    ids=["error-body", "unparseable"],
+)
+async def test_a_200_that_is_not_an_answer_counts_as_a_provider_failure(body):
+    """The status line said OK; the body did not (review dx3 #3)."""
+    from xwalk.llm.base import LLMError, LLMRequest
+    from xwalk.llm.budget import BudgetedLLM, CallBudget
+
+    client = OpenAICompatClient(
+        base_url="http://127.0.0.1:9/v1",
+        model="m",
+        backoff_base=0.0,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body)),
+    )
+    budget = CallBudget(1)
+    with pytest.raises(LLMError):  # a fatal body error, or the spent limit on its retry
+        await BudgetedLLM(client, budget).complete(LLMRequest(system="", user="u"))
+    assert budget.provider_error is not None
+    assert "raise --max-calls" not in budget.limit_message()
