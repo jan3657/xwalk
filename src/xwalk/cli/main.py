@@ -173,7 +173,7 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="explain one record of a clustering run (read-only, no model calls)",
     )
-    cluster_explain.add_argument("source_id")
+    cluster_explain.add_argument("source_id", help="the source record id to explain")
     cluster_explain.add_argument("--run", required=True, help="clustering run directory")
     cluster_explain.add_argument(
         "--full", action="store_true", help="include the stored prompts and retrieved clusters"
