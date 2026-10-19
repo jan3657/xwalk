@@ -47,7 +47,7 @@ contract only in a reviewed commit that edits this file and says why.
 
 | Error | Where | Outcome |
 |---|---|---|
-| Recoverable (`LLMRetryableError` after client retries, timeout, unparseable output, retriever failure) | selector, scorer | attempt `reason=provider_failure` / `retriever_failure`; same query retried within `max_attempts` (existing) |
+| Recoverable (`LLMRetryableError` after client retries, timeout, unparseable output, retriever failure) | selector, scorer | attempt `reason=provider_failure` / `retriever_failure`; same operation retried within `max_attempts` (query search, or forced candidate with its live state and provenance) |
 | Recoverable | gating verifier (score in `verify_band`) | attempt keeps its score, `verifier_decision="error"`, `reason=provider_failure`; retried like above; an unverified in-band score can never become `matched` (best possible status `needs_review`) |
 | Recoverable | audit verifier (score outside band) | decision unchanged; error noted on the attempt |
 | Recoverable | rewriter | loop ends with no new query; status derived from existing attempts; error noted on the last attempt |

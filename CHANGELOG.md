@@ -16,6 +16,9 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- Forced candidate proposals now retry provider failures with their original live
+  candidate state and provenance, skipping retrieval and selection on the retry.
+
 - FoodOn LLM example jobs retain a `[0.6, 0.8]` verify band and audit 10% of
   above-band scores, so confident pilot errors can receive a second opinion.
 

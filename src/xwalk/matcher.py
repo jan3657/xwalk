@@ -5,7 +5,8 @@ Stage-failure policy (CONTRACTS.md section 3). Every stage call goes through
 
 - recoverable (`LLMError` other than fatal, or a timeout) in the selector, scorer or
   gating verifier: the attempt gets `reason=provider_failure` and the same query is
-  retried within `max_attempts`. A gating-verifier failure keeps the score with
+  retried within `max_attempts` (forced keys retain their live candidate state).
+  A gating-verifier failure keeps the score with
   `verifier_decision="error"`, so that score can never become `matched`.
 - recoverable in the audit verifier: the decision is unchanged; the error is noted.
 - recoverable in the rewriter: the loop ends; status comes from the attempts so far.
@@ -89,6 +90,17 @@ async def _call_stage(stage: str, call: Awaitable[_T]) -> _T | _StageFailure:
         return _StageFailure(stage, exc, failure_usage(exc), fatal=True)
     except _RECOVERABLE_ERRORS as exc:
         return _StageFailure(stage, exc, failure_usage(exc), fatal=False)
+
+
+@dataclass(frozen=True)
+class _CandidateWork:
+    """A forced operation owns its original key map, query and provenance."""
+
+    key: str
+    keyed: KeyedCandidates
+    candidates: tuple[Candidate, ...]
+    queries: list[str]
+    proposal: RetryProposal
 
 
 @dataclass(frozen=True)
@@ -424,26 +436,25 @@ class Matcher:
         queue: list[tuple[list[str], RetryProposal | None]] = [(first_queries, None)]
         seen_queries = {normalise_query(query) for query in first_queries}
         tried_queries: list[str] = []  # original casing, for the rewriter's prompt
-        candidate_queue: list[str] = []
+        candidate_queue: list[_CandidateWork] = []
         attempts: list[Attempt] = []
         all_candidates: tuple[Candidate, ...] = ()
         last_keyed: KeyedCandidates | None = None
-        last_candidates: tuple[Candidate, ...] = ()
-        last_queries = first_queries
 
         for index in range(self._policy.max_attempts):
             reuse: tuple[KeyedCandidates, tuple[Candidate, ...]] | None = None
             forced_key: str | None = None
             proposal: RetryProposal | None = None
 
-            if candidate_queue and last_keyed is not None:
-                forced_key = candidate_queue.pop(0)
-                proposal = RetryProposal(kind="candidate", value=forced_key, source="scorer")
-                reuse = (last_keyed, last_candidates)
-                queries = last_queries
+            work: _CandidateWork | None = None
+            if candidate_queue:
+                work = candidate_queue.pop(0)
+                forced_key = work.key
+                proposal = work.proposal
+                reuse = (work.keyed, work.candidates)
+                queries = work.queries
             elif queue:
                 queries, proposal = queue.pop(0)
-                last_queries = queries
                 for query in queries:
                     if query not in tried_queries:
                         tried_queries.append(query)
@@ -459,7 +470,6 @@ class Matcher:
                 all_candidates = outcome.candidates
             if outcome.keyed is not None and outcome.keyed.order:
                 last_keyed = outcome.keyed
-                last_candidates = outcome.candidates
 
             if attempt.reason is DecisionReason.FATAL_PROVIDER_FAILURE:
                 break  # a bad key or unknown model will not fix itself
@@ -471,12 +481,25 @@ class Matcher:
                 break
 
             if attempt.reason in _RETRY_SAME_QUERY:
-                # Not evidence about this record. Retry the same query rather than
-                # asking the rewriter to invent a new one for a provider outage.
-                queue.insert(0, (queries, proposal))
+                # An outage is not evidence about this record. Forced operations
+                # keep their live state and provenance; query operations search again.
+                if work is not None:
+                    candidate_queue.insert(0, work)
+                else:
+                    queue.insert(0, (queries, proposal))
                 continue
 
-            candidate_queue.extend(outcome.routed.candidate_keys)
+            if outcome.keyed is not None:
+                candidate_queue.extend(
+                    _CandidateWork(
+                        key,
+                        outcome.keyed,
+                        outcome.candidates,
+                        queries,
+                        RetryProposal(kind="candidate", value=key, source="scorer"),
+                    )
+                    for key in outcome.routed.candidate_keys
+                )
             for text in outcome.routed.queries:
                 seen_queries.add(normalise_query(text))
                 queue.append(([text], RetryProposal(kind="query", value=text, source="scorer")))

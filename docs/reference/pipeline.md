@@ -21,9 +21,10 @@ from `TemplateSet.render_queries` (see the [single-entry compatibility rule](job
 - **query queue** — `(queries, proposal)` pairs waiting for a fresh retrieval. Starts
   with the initial list. New proposals contain one query each. FIFO, except that an
   infrastructure failure re-inserts its actual query list at the front.
-- **candidate queue** — candidate keys (e.g. `C03`) proposed by the scorer, waiting to
+- **candidate queue** — candidate operations (e.g. `C03`) proposed by the scorer, waiting to
   be re-examined. These records are already in hand; consuming one runs **no retrieval
-  and no selector call** — the loop goes straight to scoring.
+  and no selector call** — the loop goes straight to scoring. Each entry owns its
+  originating live key map, candidates, query list and proposal provenance.
 
 The candidate queue always drains first. Re-examining a record you already retrieved is
 strictly cheaper than a new search, and the paper repo's mistake — pushing candidate
@@ -61,7 +62,7 @@ match(source)
     candidate budget exceeded -> needs_review, STOP (no model call)
     acceptable match         -> STOP (early accept)
     attempts exhausted       -> STOP
-    infrastructure failure   -> re-queue the same query at the front, continue
+    infrastructure failure   -> re-queue the same operation at the front, continue
     push candidate keys onto candidate queue, new queries onto query queue
     both queues empty        -> rewrite (LLM); nothing new -> STOP
   derive_status(attempts) -> MatchResult
@@ -118,7 +119,9 @@ After each attempt the loop stops early if the attempt is *acceptable*: a primar
 reason, whose verifier decision (if any) is `"support"`. Otherwise, if attempts remain:
 
 - An infrastructure failure (`RETRIEVER_FAILURE`, `PROVIDER_FAILURE`) re-inserts the
-  *same* query at the front of the query queue. An outage is not evidence about this
+  *same* operation: a forced candidate retries scoring with its retained key map and
+  provenance, without retrieval or selection; a query returns to the query queue.
+  An outage is not evidence about this
   record, and the rewriter is not asked to invent a new query for one.
 - Routed candidate keys extend the candidate queue; routed queries are appended to the
   query queue (and their normalised forms to `seen_queries`).
