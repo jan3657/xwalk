@@ -135,6 +135,11 @@ async def test_litellm_auth_model_and_request_errors_are_fatal(monkeypatch, clas
         await _raise_named(monkeypatch, class_name, "rejected; not a timeout")
 
 
+async def test_a_transient_class_name_wins_over_a_fatal_sounding_message(monkeypatch):
+    with pytest.raises(LLMRetryableError):
+        await _raise_named(monkeypatch, "RateLimitError", "model not found; invalid request")
+
+
 async def test_an_unrecognised_error_is_fatal_not_retried_forever(monkeypatch):
     """Retrying an error we do not understand burns budget on a permanent failure."""
     client = LiteLLMClient("fake/model")
