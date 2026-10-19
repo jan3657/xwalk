@@ -158,7 +158,7 @@ setting jobs up. It has three screens:
 
 Setting up jobs, uploads, the ontology library, evaluation and clustering stay on the
 classic explorer, which the workbench links to. The source and its design notes are in
-[`web/`](../../web/README.md).
+[`web/`](https://github.com/jan3657/xwalk/blob/main/web/README.md) in the repository (not in the sdist).
 
 ## Which model answers
 

@@ -167,8 +167,13 @@ class OpenAICompatClient:
         self._call_budget: CallBudget | None = None
 
     def attach_call_budget(self, budget: CallBudget) -> None:
-        """Reserve from `budget` before every HTTP request, retries included."""
+        """Reserve from `budget` before every HTTP request, retries included, and
+        report how each ended (`CallBudget.settle`)."""
         self._call_budget = budget
+
+    def _settle(self, index: int | None, error: str | None) -> None:
+        if index is not None and self._call_budget is not None:
+            self._call_budget.settle(index, error)
 
     @property
     def model(self) -> str:
@@ -266,9 +271,10 @@ class OpenAICompatClient:
         last_retry_after: float | None = None
         for attempt in range(self._max_retries + 1):
             body = self._body(request, structured=structured)
+            index: int | None = None
             if self._call_budget is not None:
                 try:
-                    self._call_budget.acquire()
+                    index = self._call_budget.acquire()
                 except CallLimitExceeded as exc:
                     # The requests already sent (and failed) are still real calls.
                     raise CallLimitExceeded(str(exc), usage=Usage.unreported(dispatched)) from None
@@ -277,7 +283,12 @@ class OpenAICompatClient:
                 response = await self._post(body)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
+                self._settle(index, last_error)
             else:
+                status = response.status_code
+                self._settle(
+                    index, None if status == 200 else f"HTTP {status}: {_error_message(response)}"
+                )
                 if response.status_code == 200:
                     payload = _json_payload(response, dispatched)
                     body_error = _body_error(payload)

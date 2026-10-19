@@ -75,7 +75,8 @@ errors; progress and logs stay on stderr, so `xwalk match ... --json | jq .` alw
 Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missing_field`,
 `invalid_value`, `missing_file`, `missing_extra`, `credential_missing`, `duplicate_id`,
 `index_mismatch`, `run_fingerprint_mismatch`, `out_not_a_run`, `run_not_found`,
-`source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
+`source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `provider_failure`,
+`retriever_failure`, `record_failure`, `exception`,
 `interrupted` and `usage`. The decider path adds `wrong_job_path` (`ablate`, `prompts` or
 `fit` given the wrong kind of job) and, from `fit`, `no_recommendation`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
 to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`,
@@ -120,18 +121,24 @@ do not apply to the `kind`, duplicate retriever names); that the templates compi
 prompt slots satisfy the contract; that referenced files exist; that optional extras the
 job needs are installed; that the credential variable is *set* — reported as `set` or
 `missing`, its value is never read into the output; and, unless `--no-scan`, that both
-collections load, are non-empty and have unique ids (empty rendered texts are warnings).
+collections load, are non-empty and have unique ids (empty rendered texts are warnings),
+and that every field a template names exists in some record of its collection (a
+`template_unknown_field` warning names the template, the field, the file and the fields
+there are, since a misspelt field renders empty and the job would match nothing).
 
 ```console
 $ xwalk validate --job job.yaml
-job 'quickstart' is invalid
+job 'quickstart' is valid; the environment is not ready: OPENAI_API_KEY is not set (use --no-credentials to check the file alone)
   targets : 5 records
   sources : 4 records
   OPENAI_API_KEY: missing
 error: credential_missing: environment variable OPENAI_API_KEY (llm.api_key_env) is not set
 ```
 
-Returns `0` when valid, `2` otherwise.
+Returns `0` when valid, `2` otherwise. A job whose only problems are a missing
+credential variable or optional extra is reported as a valid job in an environment that
+is not ready (still exit `2`, since `match` would fail); any other error makes it
+`invalid`.
 
 ## `index`
 
@@ -202,6 +209,14 @@ is `aborted` with one error `call_limit_reached` (however many records it stoppe
 there. The limit is per invocation. Retries hidden inside LiteLLM (`num_retries`) cannot be
 observed or limited; set `num_retries=0` there. The reported `usage` counts calls that were
 in flight when the run stopped as calls with unknown usage, never as free.
+
+When the calls that spent the limit were failing (a wrong `base_url`, a dead proxy), the
+`call_limit_reached` message names the provider's last error instead of advising a higher
+limit. Records that end `failed` are summarised by distinct error with counts
+(`provider_failure` or `retriever_failure` errors, also in `inspect`); `xwalk explain`
+has each record's attempts. Without `--max-calls`, a run with failed records adds the
+`uncapped_failures` warning, and three failed records in a row print one warning on
+stderr while the run continues.
 
 Prints the number of current source records, the run state (`complete`, `partial`,
 `failed`, `aborted`, `interrupted`), a count per status sorted by status name (with
@@ -463,8 +478,25 @@ library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
 | `--allow-local-downloads` | no | — | let ontology downloads use `http` and private addresses; not with `--public` |
 | `--trust-proxy` | no | — | public mode: believe `X-Forwarded-Proto` and `X-Forwarded-For` from the HTTPS proxy in front ([hosting](../guide/hosting.md)) |
 | `--verbose` | no | — | log every request to stderr |
+| `--chatgpt-login` | no | — | enable local Sign in with ChatGPT (needs `xwalk[chatgpt]` and `--host 127.0.0.1`) |
+| `--dense` | no | — | enable general and biomedical dense retrieval alongside BM25 (needs `xwalk[dense]`) |
+| `--dense-device` | no | automatic | dense encoder device, e.g. `cpu` or `mps` |
 
 A root that is not a directory or a cap below 1 exits `2`.
+
+## `upgrade`
+
+Migrates a run's ledger to the current schema in place. A 0.1.1 ledger is first copied
+to `ledger.sqlite.v1-backup` (the path is printed and returned as the `backup`
+artifact); a current ledger is left as it is (exit `0` either way). Read-only commands
+(`inspect`, `explain`, `results`, `export`, `eval`, `fit`, `compare`, `review export`
+and the UI's views) never migrate: they read an old ledger through an upgraded copy in
+memory. `match` and `review apply` migrate as they open it, so `upgrade` is only needed
+to convert a run you will not write to again.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | run directory |
 
 ## `export`
 

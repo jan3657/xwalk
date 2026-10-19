@@ -396,6 +396,7 @@ async def run_batch(
     manifest_extra: Mapping[str, Any] | None = None,
     fingerprint_components: Mapping[str, Any] | None = None,
     progress: Callable[[MatchResult], None] | None = None,
+    normalize_errors: Callable[[list[BatchError]], list[BatchError]] | None = None,
 ) -> BatchReport:
     """Match every unfinished source record and export the current view.
 
@@ -404,8 +405,11 @@ async def run_batch(
     `resume=False` recomputes every record; the earlier results go to history.
 
     A fatal provider failure returns a report with `run_state=ABORTED` and the error in
-    `errors`. An exception from a record task or the ledger is re-raised, and so is
-    cancellation (after the run is recorded as interrupted).
+    `errors`. `normalize_errors`, when given, rewrites the invocation's errors before
+    they are recorded, exported in the manifest and reported (`ops` merges the per-record
+    call-limit stops into one run-level diagnostic this way). An exception from a record
+    task or the ledger is re-raised, and so is cancellation (after the run is recorded
+    as interrupted).
     """
     if limit is not None and limit < 0:
         raise ValueError(f"limit must be >= 0, got {limit}")
@@ -527,6 +531,8 @@ async def run_batch(
             in_flight.clear()
         if state is None:
             state = _run_state(ledger, run_fp)
+        if normalize_errors is not None:
+            errors[:] = normalize_errors(list(errors))
         ledger.finish_invocation(
             invocation,
             run_state=state.value,

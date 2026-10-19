@@ -59,7 +59,7 @@ def obo_source(
     *,
     id_prefix: str | None = None,
     include_obsolete: bool = False,
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
 ) -> Iterator[Record]:
     """Yield one Record per `[Term]` stanza. No dependencies."""
     path = Path(path)

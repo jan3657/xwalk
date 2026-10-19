@@ -159,3 +159,205 @@ def test_inspecting_an_old_run_with_a_failed_row_exits_3(run_dir):
     assert result.run is not None and result.run["run_state"] == "unknown"
     assert result.counts["failed"] == 1
     assert result.exit_code == ops.EXIT_RUNTIME
+
+
+# --- read-only commands never migrate (review dx P4) ---------------------------------
+
+
+def tree(path: Path) -> dict[str, str]:
+    """Every file under `path` (names relative to it) with its digest."""
+    return {str(p.relative_to(path)): digest(p) for p in sorted(path.rglob("*")) if p.is_file()}
+
+
+def test_a_read_only_open_reads_an_old_ledger_without_touching_the_directory(run_dir):
+    before = tree(run_dir)
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
+    try:
+        assert ledger.read_only
+        assert ledger.migrated_from == 1 and ledger.backup_path is None
+        assert {r.source_id for r in ledger.iter_results("v011fp")} == {"s1", "s2", "s3"}
+        assert [h.state for h in review_history(ledger, "v011fp")] == ["applied"]
+    finally:
+        ledger.close()
+    assert tree(run_dir) == before  # no upgrade, no backup, no -wal/-shm
+
+
+def test_a_read_only_ledger_refuses_writes(run_dir, tmp_path):
+    from xwalk.ledger import ReadOnlyLedgerError
+
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
+    try:
+        with pytest.raises(ReadOnlyLedgerError):
+            ledger.put_manifest("v011fp", {})
+    finally:
+        ledger.close()
+
+    current = tmp_path / "current" / "ledger.sqlite"
+    Ledger.open(current).close()
+    ledger = Ledger.open(current, read_only=True)
+    try:
+        assert ledger.schema_version == LEDGER_SCHEMA_VERSION
+        with pytest.raises(ReadOnlyLedgerError):
+            ledger.put_manifest("fp", {})
+    finally:
+        ledger.close()
+
+
+def test_a_read_only_open_of_a_missing_ledger_creates_nothing(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        Ledger.open(tmp_path / "absent" / "ledger.sqlite", read_only=True)
+    assert not (tmp_path / "absent").exists()
+
+
+def test_read_commands_leave_an_old_run_byte_identical(run_dir, tmp_path, capsys):
+    from xwalk import ops
+    from xwalk.cli.main import main
+
+    before = tree(run_dir)
+    ops.inspect(run_dir)
+    ops.explain(run_dir, "s1")
+    ops.list_results(run_dir)
+    for view in ops.EXPORT_VIEWS:
+        ops.export(run_dir, view, tmp_path / f"out-{view}")
+    ops.review_export(run_dir, tmp_path / "review.csv")
+    gold = tmp_path / "gold.csv"
+    gold.write_text("source_id,gold_ids\ns1,T1\ns2,T2\n", encoding="utf-8")
+    assert main(["eval", "--run", str(run_dir), "--gold", str(gold)]) in (0, 1, 3)
+    capsys.readouterr()
+    assert tree(run_dir) == before
+
+
+def test_upgrade_migrates_explicitly_and_keeps_a_backup(run_dir):
+    from xwalk import ops
+
+    original = digest(run_dir / "ledger.sqlite")
+    result = ops.upgrade(run_dir)
+    assert result.exit_code == 0
+    backup = Path(result.artifacts["backup"])
+    assert digest(backup) == original
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
+    try:
+        assert ledger.migrated_from is None and ledger.schema_version == LEDGER_SCHEMA_VERSION
+    finally:
+        ledger.close()
+    again = ops.upgrade(run_dir)
+    assert again.exit_code == 0 and "backup" not in again.artifacts
+    assert len(list(run_dir.glob("ledger.sqlite.v1-backup*"))) == 1
+
+
+def _current_ledger(directory: Path) -> Path:
+    path = directory / "ledger.sqlite"
+    writer = Ledger.open(path)
+    writer.put_manifest("fp", {"job": "x"})
+    writer.close()
+    return path
+
+
+def test_a_read_only_open_through_a_symlink_sees_an_active_writer(tmp_path):
+    """The write-ahead log sits next to the real file, not next to the link."""
+    real = tmp_path / "real" / "ledger.sqlite"
+    writer = Ledger.open(real)
+    try:
+        writer.put_manifest("fp", {"job": "x"})
+        assert real.with_name("ledger.sqlite-wal").stat().st_size > 0  # still in the log
+        link_dir = tmp_path / "link"
+        link_dir.mkdir()
+        (link_dir / "ledger.sqlite").symlink_to(real)
+        reader = Ledger.open(link_dir / "ledger.sqlite", read_only=True)
+        try:
+            assert reader.get_manifest("fp") == {"job": "x"}
+        finally:
+            reader.close()
+    finally:
+        writer.close()
+
+
+def test_a_read_only_open_of_a_current_ledger_leaves_the_directory_alone(tmp_path):
+    path = _current_ledger(tmp_path / "run")
+    before = tree(path.parent)
+    ledger = Ledger.open(path, read_only=True)
+    try:
+        assert ledger.get_manifest("fp") == {"job": "x"}
+        assert ledger.schema_version == LEDGER_SCHEMA_VERSION
+    finally:
+        ledger.close()
+    assert tree(path.parent) == before  # no -wal/-shm left behind
+
+
+def _spy_connections(monkeypatch) -> list[str]:
+    import sqlite3
+
+    import xwalk.ledger as ledger_module
+
+    opened: list[str] = []
+    real = sqlite3.connect
+
+    def connect(database, *args, **kwargs):
+        opened.append(str(database))
+        return real(database, *args, **kwargs)
+
+    monkeypatch.setattr(ledger_module.sqlite3, "connect", connect)
+    return opened
+
+
+def test_read_only_opens_never_copy_a_ledger_into_memory(tmp_path, run_dir, monkeypatch):
+    """Memory must not grow with the ledger: a 240 MiB run cost 312 MiB of RSS per
+    reader when every read-only open copied it into RAM (review dx2 #1)."""
+    current = _current_ledger(tmp_path / "current")
+    writer = Ledger.open(tmp_path / "live" / "ledger.sqlite")
+    writer.put_manifest("fp", {"job": "live"})
+    opened = _spy_connections(monkeypatch)
+    try:
+        for path in (current, tmp_path / "live" / "ledger.sqlite", run_dir / "ledger.sqlite"):
+            ledger = Ledger.open(path, read_only=True)
+            try:
+                assert ledger.get_manifest("fp") or ledger.get_manifest("v011fp")
+            finally:
+                ledger.close()
+    finally:
+        writer.close()
+    assert opened and not any(":memory:" in target for target in opened), opened
+
+
+def test_an_old_ledger_is_read_through_a_temporary_file_removed_on_close(run_dir):
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
+    snapshot = ledger.snapshot_path
+    try:
+        assert snapshot is not None and snapshot.is_file()
+        assert not snapshot.is_relative_to(run_dir)
+    finally:
+        ledger.close()
+    assert not snapshot.exists()
+
+
+def test_a_read_only_open_works_on_read_only_files_and_directories(tmp_path):
+    import os
+    import stat
+
+    path = _current_ledger(tmp_path / "run")
+    path.chmod(0o444)
+    path.parent.chmod(0o555)
+    try:
+        if os.access(path.parent, os.W_OK):  # pragma: no cover - running as root
+            pytest.skip("permissions are not enforced for this user")
+        ledger = Ledger.open(path, read_only=True)
+        try:
+            assert ledger.get_manifest("fp") == {"job": "x"}
+            assert ledger.count("fp") == 0
+        finally:
+            ledger.close()
+    finally:
+        path.parent.chmod(stat.S_IRWXU)
+        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+
+def test_the_upgrade_command_reports_the_backup(run_dir, capsys):
+    import json
+
+    from xwalk.cli.main import main
+
+    assert main(["upgrade", "--run", str(run_dir), "--json"]) == 0
+    envelope = json.loads(capsys.readouterr().out)
+    assert envelope["operation"] == "upgrade"
+    assert envelope["data"]["migrated_from"] == 1
+    assert Path(envelope["artifacts"]["backup"]).is_file()

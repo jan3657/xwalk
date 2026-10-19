@@ -72,8 +72,13 @@ class JevClient:
 
     def attach_call_budget(self, budget: CallBudget) -> None:
         """Reserve one unit of `budget` before every HTTP request, retries included
-        (CONTRACTS.md section 5: `calls` counts every dispatched request)."""
+        (CONTRACTS.md section 5: `calls` counts every dispatched request), and report
+        how each ended (`CallBudget.settle`)."""
         self._budget = budget
+
+    def _settle(self, index: int | None, error: str | None) -> None:
+        if index is not None and self._budget is not None:
+            self._budget.settle(index, error)
 
     @property
     def model(self) -> str:
@@ -104,9 +109,10 @@ class JevClient:
         retry_after: float | None = None
         posts = 0
         for attempt in range(self._max_retries + 1):
+            index: int | None = None
             if self._budget is not None:
                 try:
-                    reserve(self._budget)
+                    index = reserve(self._budget)
                 except DecisionFatalError as exc:
                     exc.usage = Usage.unreported(posts)
                     raise
@@ -115,7 +121,12 @@ class JevClient:
                 response = await self._http.post(self._url, json=body)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
+                self._settle(index, last_error)
             else:
+                status = response.status_code
+                self._settle(
+                    index, None if status == 200 else f"HTTP {status}: {_error_message(response)}"
+                )
                 if response.status_code == 200:
                     try:
                         payload = response.json()

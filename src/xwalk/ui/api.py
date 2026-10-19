@@ -947,7 +947,7 @@ class Workspace:
             from xwalk.ledger import Ledger
 
             labels = load_gold_csv(gold)
-            ledger = Ledger.open(run_dir / "ledger.sqlite")
+            ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
             try:
                 report = evaluate(ledger, str(manifest["run_fingerprint"]), labels)
             finally:

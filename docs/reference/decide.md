@@ -227,7 +227,8 @@ raises `DecisionRetryableError`. Every HTTP request counts as a call: a response
 after retries reports `calls` = the number of requests, the retried ones with unknown
 usage, and an error carries `Usage.unreported(n)` for the `n` requests it made.
 `attach_call_budget(budget)` makes it reserve one unit of a `CallBudget` before every
-request, retries included; `BudgetedDecider` (in `xwalk.decide.budget`) does that and
+request, retries included, and report each request's outcome with `budget.settle`, so a
+refusal can name the error of a provider that is failing; `BudgetedDecider` (in `xwalk.decide.budget`) does that and
 keeps the complete usage, which is how `--max-calls` limits the decider path.
 
 **Fingerprint.** `hash_value` over the adapter name, `ADAPTER_VERSION`, the endpoint's host

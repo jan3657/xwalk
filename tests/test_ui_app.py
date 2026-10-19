@@ -148,7 +148,9 @@ def server(tmp_path: Path) -> Iterator[UIServer]:
     root = tmp_path / "ws"
     root.mkdir()
     instance = make_server(str(root), port=0, token="test-token")
-    thread = threading.Thread(target=instance.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=lambda: instance.serve_forever(poll_interval=0.01), daemon=True
+    )
     thread.start()
     try:
         yield instance

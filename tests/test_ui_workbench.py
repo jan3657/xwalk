@@ -292,7 +292,7 @@ def served(tmp_path: Path) -> Iterator[str]:
             pass
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
     try:
         yield f"http://127.0.0.1:{server.server_address[1]}"
     finally:
@@ -732,7 +732,7 @@ def test_uploading_over_http(tmp_path: Path) -> None:
     root = tmp_path / "ws"
     root.mkdir()
     server = make_server(str(root), port=0, token="t", max_upload_mb=1)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
     try:
 
         def post(name: str, body: bytes, token: str = "t") -> tuple[int, dict[str, Any]]:

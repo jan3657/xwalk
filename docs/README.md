@@ -54,7 +54,7 @@ Complete API documentation. Every signature and default here is taken from the s
 | [Releasing](releasing.md) | Cutting a release. Maintainers only. |
 | [Benchmarks](benchmarks.md) | The pilot benchmark: data, the three tracks, how to reproduce, what is synthetic and what is pending, measured performance. |
 | [Contributing](../CONTRIBUTING.md) | The four gates, test markers, and the invariants the design will not give up. |
-| [Historical design plans](superpowers/README.md) | A one-page summary of the superseded July 2026 plans, so nobody needs to read them. |
+| [Historical design plans](https://github.com/jan3657/xwalk/blob/main/docs/superpowers/README.md) | A one-page summary of the superseded July 2026 plans, so nobody needs to read them. |
 
 ## Worked examples
 

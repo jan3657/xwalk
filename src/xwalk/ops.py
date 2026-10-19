@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any
 from xwalk import __version__
 from xwalk.batch import (
     PENDING,
+    BatchError,
     MatcherLike,
     RunState,
     export_history_jsonl,
@@ -331,15 +332,59 @@ def _credential_check(job: JobSpec) -> tuple[dict[str, str], list[OpMessage]]:
     return states, errors
 
 
+def _template_variables(source: str) -> set[str]:
+    """Top-level names a template reads from the record (Jinja globals excluded)."""
+    import jinja2
+    import jinja2.meta
+
+    env = jinja2.Environment()
+    return set(jinja2.meta.find_undeclared_variables(env.parse(source))) - set(env.globals)
+
+
+def _unknown_template_fields(
+    spec: JobSpec, templates: TemplateSet, role: str, columns: set[str]
+) -> list[OpMessage]:
+    """A template naming a field no record of its collection has renders it empty, which
+    reads as a valid job that then matches nothing. Name the field and the file."""
+    if role == "source":
+        named = [("templates.query", templates.query), ("templates.context", templates.context)]
+        named += [(f"templates.queries[{i}]", q) for i, q in enumerate(templates.queries)]
+        collection = spec.source
+    else:
+        named = [("templates.doc", templates.doc), ("templates.candidate", templates.candidate)]
+        collection = spec.target
+    where = str(collection.path) if collection.path is not None else f"the {role} collection"
+    known = columns | {"id"}
+    warnings = []
+    for name, source in named:
+        for variable in sorted(_template_variables(source) - known):
+            warnings.append(
+                OpMessage(
+                    "template_unknown_field",
+                    f"{name} references {variable!r}, which no {role} record in {where} "
+                    f"has (it renders empty); fields are {sorted(columns)!r}",
+                )
+            )
+    return warnings
+
+
 def _scan(
-    records: Iterable[Record], role: str, templates: TemplateSet, *, as_doc: bool
+    records: Iterable[Record],
+    role: str,
+    templates: TemplateSet,
+    *,
+    as_doc: bool,
+    columns: set[str] | None = None,
 ) -> tuple[int, list[OpMessage], list[OpMessage]]:
+    """Count, check ids and rendered texts; collect every field name into `columns`."""
     seen: set[str] = set()
     errors: list[OpMessage] = []
     empty = 0
     count = 0
     for record in records:
         count += 1
+        if columns is not None:
+            columns.update(record.fields)
         if record.id in seen:
             errors.append(
                 OpMessage("duplicate_id", f"{role} id {record.id!r} appears more than once")
@@ -357,6 +402,32 @@ def _scan(
     if count == 0:
         errors.append(OpMessage("empty_collection", f"the {role} collection has no records"))
     return count, errors, warnings
+
+
+# Problems of the machine the job is checked on, not of the job file.
+_ENVIRONMENT_CODES = frozenset({"credential_missing", "missing_extra"})
+
+
+def _validate_headline(name: str, errors: Sequence[OpMessage]) -> str:
+    """`valid`/`invalid`, except that a job whose only problems are a missing credential
+    variable or optional extra is a valid job in an environment that is not ready."""
+    if not errors:
+        return f"job {name!r} is valid"
+    if any(e.code not in _ENVIRONMENT_CODES for e in errors):
+        return f"job {name!r} is invalid"
+    missing = []
+    for error in errors:
+        if error.code == "credential_missing":
+            variable = error.message.removeprefix("environment variable ").split(" ", 1)[0]
+            missing.append(f"{variable} is not set")
+        else:
+            missing.append(error.message.split(": ", 1)[-1])
+    hint = (
+        " (use --no-credentials to check the file alone)"
+        if any(e.code == "credential_missing" for e in errors)
+        else ""
+    )
+    return f"job {name!r} is valid; the environment is not ready: {'; '.join(missing)}{hint}"
 
 
 def validate(
@@ -419,13 +490,18 @@ def validate(
             ("target", spec.build_target_records, True),
             ("source", spec.build_source_records, False),
         ):
+            columns: set[str] = set()
             try:
-                count, scan_errors, scan_warnings = _scan(builder(), role, templates, as_doc=as_doc)
+                count, scan_errors, scan_warnings = _scan(
+                    builder(), role, templates, as_doc=as_doc, columns=columns
+                )
             except Exception as exc:
                 errors.append(OpMessage("records_unreadable", f"{role}: {exc}"))
                 continue
             result.counts[f"{role}s"] = count
             errors += scan_errors
+            if count:
+                result.warnings += _unknown_template_fields(spec, templates, role, columns)
             result.warnings += scan_warnings
 
     result.exit_code = EXIT_USAGE if errors else EXIT_OK
@@ -437,8 +513,7 @@ def validate(
         "retrievers": [r.index_name for r in spec.retrievers],
         "paid_calls": 0,
     }
-    verdict = "invalid" if errors else "valid"
-    result.lines.append(f"job {spec.name!r} is {verdict}")
+    result.lines.append(_validate_headline(spec.name, errors))
     for role in ("targets", "sources"):
         if role in result.counts:
             result.lines.append(f"  {role:<8}: {result.counts[role]} records")
@@ -804,7 +879,7 @@ def _check_out_dir(
         if not foreign:
             return
         if (out / "ledger.sqlite").is_file():
-            ledger = Ledger.open(out / "ledger.sqlite")
+            ledger = Ledger.open(out / "ledger.sqlite", read_only=True)
             try:
                 if ledger.get_manifest(run_fp) is not None:
                     return
@@ -879,7 +954,14 @@ def refuse_cluster_run(run_dir: str | Path, operation: str) -> None:
         )
 
 
-def _open_run(run_dir: str | Path, operation: str) -> tuple[_RunView, Ledger]:
+def _open_run(
+    run_dir: str | Path, operation: str, *, read_only: bool = True
+) -> tuple[_RunView, Ledger]:
+    """The run's manifest view and its ledger, read-only unless the operation writes.
+
+    Reading never migrates: a 0.1.1 ledger is read through an upgraded temporary copy
+    and stays as it is on disk until `match`, `review apply` or `upgrade` opens it.
+    """
     path = Path(run_dir)
     refuse_cluster_run(path, operation)
     manifest = _read_manifest(path)
@@ -892,8 +974,74 @@ def _open_run(run_dir: str | Path, operation: str) -> tuple[_RunView, Ledger]:
         )
     return (
         _RunView(path, str(manifest["run_fingerprint"]), manifest),
-        Ledger.open(path / "ledger.sqlite"),
+        Ledger.open(path / "ledger.sqlite", read_only=read_only),
     )
+
+
+_FAILURE_CODES = frozenset({"provider_failure", "retriever_failure", "record_failure"})
+_FAILURE_GROUPS_SHOWN = 5
+
+
+def _failure_summary(ledger: Ledger, run_fingerprint: str) -> list[OpMessage]:
+    """One message per distinct error of the current `failed` rows, most common first.
+
+    The per-record cause otherwise shows only in `xwalk explain`; a run against a dead
+    endpoint must say why it failed in its own summary.
+    """
+    groups: dict[tuple[str, str], int] = {}
+    for row in ledger.iter_current_summaries(run_fingerprint):
+        if row["status"] != MatchStatus.FAILED.value:
+            continue
+        result = ledger.get_result(str(row["result_key"]))
+        if result is None:  # pragma: no cover - the row was just listed
+            continue
+        errors = [a.error for a in result.attempts if a.error]
+        error = errors[-1] if errors else (result.explanation or "no error recorded")
+        reason = result.reason.value
+        code = reason if reason in _FAILURE_CODES else "record_failure"
+        groups[(code, error)] = groups.get((code, error), 0) + 1
+    ranked = sorted(groups.items(), key=lambda item: (-item[1], item[0]))
+    messages = [
+        OpMessage(code, f"{n} record(s) failed: {error}")
+        for (code, error), n in ranked[:_FAILURE_GROUPS_SHOWN]
+    ]
+    rest = ranked[_FAILURE_GROUPS_SHOWN:]
+    if rest:
+        messages.append(
+            OpMessage(
+                "record_failure",
+                f"{sum(n for _, n in rest)} record(s) failed: {len(rest)} other distinct "
+                "error(s); see xwalk explain",
+            )
+        )
+    return messages
+
+
+def _failure_groups(failures: Sequence[OpMessage]) -> list[tuple[int, str]]:
+    """(count, error) back out of `_failure_summary` messages, in their order."""
+    groups = []
+    for message in failures:
+        head, _, error = message.message.partition(" record(s) failed: ")
+        if head.isdigit() and error:
+            groups.append((int(head), error))
+    return groups
+
+
+def _limit_normalizer(budget: CallBudget) -> Callable[[list[BatchError]], list[BatchError]]:
+    """Merge the per-record call-limit stops into one run-level diagnostic, before
+    `run_batch` records and exports them, so `match`, `inspect` and `manifest.json`
+    say the same thing."""
+
+    def normalize(errors: list[BatchError]) -> list[BatchError]:
+        if not budget.exhausted:
+            return errors
+        kept = [e for e in errors if "call limit of" not in e.message]
+        if len(kept) == len(errors):
+            return errors
+        stop = BatchError(CALL_LIMIT_CODE, budget.limit_message())
+        return [stop, *kept]
+
+    return normalize
 
 
 def _summarise_run(view: _RunView, ledger: Ledger, operation: str) -> OpResult:
@@ -924,6 +1072,8 @@ def _summarise_run(view: _RunView, ledger: Ledger, operation: str) -> OpResult:
             OpMessage(str(e["code"]), str(e["message"]), e.get("source_id"))
             for e in invocation.get("errors") or []
         ]
+    if counts.get(MatchStatus.FAILED.value, 0):
+        result.errors += _failure_summary(ledger, fp)
     duplicates = ledger.duplicate_targets(fp)
     if duplicates:
         result.warnings.append(
@@ -1053,6 +1203,7 @@ async def run_async(
             },
             fingerprint_components=components,
             progress=progress,
+            normalize_errors=_limit_normalizer(budget),
         )
     except Exception as exc:
         raise OpError(
@@ -1082,16 +1233,20 @@ async def run_async(
         usage = usage + Usage(cache_hits=caching.hits)
     result.usage = usage_to_dict(usage)
     result.usage["limit"] = max_calls
-    result.errors = []
-    for e in report.errors:
-        if budget.exhausted and "call limit of" in e.message:
-            # One run-level stop, however many in-flight records the spent budget
-            # refused (each is left unsettled and retried on resume).
-            if all(m.code != CALL_LIMIT_CODE for m in result.errors):
-                message = e.message[e.message.index("call limit of") :]
-                result.errors.append(OpMessage(CALL_LIMIT_CODE, message))
-        else:
-            result.errors.append(OpMessage(e.code, e.message, e.source_id))
+    # result.errors already holds what inspect shows: the invocation's recorded errors
+    # (one run-level call-limit stop, normalised before it was recorded) and the
+    # failed rows summarised by error.
+    failures = [e for e in result.errors if e.code in _FAILURE_CODES and e.source_id is None]
+    if max_calls is None and failures:
+        failed = sum(n for n, _ in _failure_groups(failures))
+        result.warnings.append(
+            OpMessage(
+                "uncapped_failures",
+                f"{failed} record(s) failed on provider or retriever errors in a run "
+                "without a call limit, each after spending its retries. Check the "
+                "endpoint, then set --max-calls to bound what a broken one can cost",
+            )
+        )
     result.artifacts["index"] = str(index_root)
     result.data = {"indexes": actions, "job": spec.name, "model": model, "path": path}
     result.lines += _run_lines(result, report.total)
@@ -1154,6 +1309,9 @@ def _run_lines(result: OpResult, total: int) -> list[str]:
             lines.append(f"  {status:<14}: {count}")
     if result.usage is not None:
         lines.append(f"  tokens        : {result.usage['tokens']} in {result.usage['calls']} calls")
+    for error in result.errors:
+        if error.code in _FAILURE_CODES and error.source_id is None:
+            lines.append(f"  {error.code}: {error.message}")
     return lines
 
 
@@ -1627,7 +1785,7 @@ def review_apply(run_dir: str | Path, reviewed: str | Path, job: JobRef) -> OpRe
 
     spec = load_valid_job(job, operation="review apply")
     _, store = _read_targets(spec, "review apply")
-    _, ledger = _open_run(run_dir, "review apply")
+    _, ledger = _open_run(run_dir, "review apply", read_only=False)
     try:
         report = apply_review(
             ledger, read_review(reviewed), target_store_fingerprint=store.fingerprint
@@ -1643,6 +1801,35 @@ def review_apply(run_dir: str | Path, reviewed: str | Path, job: JobRef) -> OpRe
         OpMessage("review_rejected", f"{key}: {why}") for key, why in report.rejected
     ]
     result.lines.append(f"applied {report.applied} decisions")
+    return result
+
+
+def upgrade(run_dir: str | Path) -> OpResult:
+    """Migrate a run's ledger to the current schema in place, after a backup copy.
+
+    Read-only commands never migrate; `match` and `review apply` do it as they open the
+    ledger. This is the explicit step for a run you only want to read with tools that
+    open the file themselves. A current ledger is left as it is.
+    """
+    view, ledger = _open_run(run_dir, "upgrade", read_only=False)
+    try:
+        migrated_from, backup = ledger.migrated_from, ledger.backup_path
+    finally:
+        ledger.close()
+    result = OpResult(
+        operation="upgrade",
+        exit_code=EXIT_OK,
+        artifacts={"ledger": str(view.run_dir / "ledger.sqlite")},
+        data={"migrated_from": migrated_from},
+    )
+    if backup is not None:
+        result.artifacts["backup"] = str(backup)
+        result.lines.append(
+            f"upgraded {view.run_dir / 'ledger.sqlite'} from schema version {migrated_from}; "
+            f"the original is kept as {backup}"
+        )
+    else:
+        result.lines.append(f"{view.run_dir / 'ledger.sqlite'} is already current")
     return result
 
 
@@ -1731,5 +1918,6 @@ __all__ = [
     "review_export",
     "run",
     "run_async",
+    "upgrade",
     "validate",
 ]

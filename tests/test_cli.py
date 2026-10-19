@@ -956,3 +956,43 @@ def test_fit_holdout_prints_the_holdout_line(tmp_path, monkeypatch, capsys):
     (line,) = [line for line in lines if line.startswith("holdout:")]
     assert line.startswith("holdout: accept_at=")
     assert " accepted=" in line and " coverage=" in line
+
+
+def _all_parsers():
+    """(name, parser) for every subcommand, nested ones as 'review export'."""
+    import argparse
+
+    from xwalk.cli.main import _build_parser
+
+    def nested(parser):
+        return next((a for a in parser._actions if isinstance(a, argparse._SubParsersAction)), None)
+
+    for name, parser in nested(_build_parser()).choices.items():
+        yield name, parser
+        group = nested(parser)
+        for sub_name, sub_parser in group.choices.items() if group else ():
+            yield f"{name} {sub_name}", sub_parser
+
+
+def test_every_flag_and_positional_has_help_text():
+    """`--help` is the first reference a user reads (review dx F6)."""
+    missing = [
+        f"{name}: {action.option_strings[-1] if action.option_strings else action.dest}"
+        for name, parser in _all_parsers()
+        for action in parser._actions
+        if action.dest != "help"
+        and not action.help
+        and type(action).__name__ != "_SubParsersAction"
+    ]
+    assert missing == []
+
+
+@pytest.mark.parametrize(
+    ("group", "subs"), [("review", ("export", "apply")), ("prompts", ("draft", "optimize"))]
+)
+def test_group_commands_describe_their_subcommands(group, subs, capsys):
+    assert main([group, "--help"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    for sub in subs:
+        line = next(line for line in lines if line.split()[:1] == [sub])
+        assert len(line.split()) > 1, f"{group} {sub} has no description: {line!r}"

@@ -20,6 +20,7 @@ runs/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.sqlite.v1-backup*
 index/
 *.index/
 data/

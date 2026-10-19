@@ -33,7 +33,7 @@ def csv_source(
     *,
     id_column: str,
     delimiter: str = ",",
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
     multivalue_columns: Sequence[str] = (),
     multivalue_sep: str = "|",
 ) -> Iterator[Record]
@@ -44,7 +44,9 @@ removed from `fields`; every other column lands in `fields` under its header nam
 Plain cells are stripped strings, and a blank cell is `""`. Columns named in
 `multivalue_columns` are split on `multivalue_sep` into lists with each part stripped
 and blank parts dropped — a blank cell becomes `[]`, never `[""]`. Extra cells beyond
-the header are silently discarded. Pass `delimiter="\t"` for TSV. The CSV field size
+the header are silently discarded. Pass `delimiter="\t"` for TSV. The default
+`utf-8-sig` encoding reads plain UTF-8 and drops the byte-order mark Excel writes, so
+the first column keeps its name. The CSV field size
 limit is raised at import, so long definition cells do not trip the stdlib default.
 
 Raises `ValueError` when `id_column` is not in the header (the message lists the
@@ -58,7 +60,7 @@ def jsonl_source(
     path: str | Path,
     *,
     id_field: str,
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
 ) -> Iterator[Record]
 ```
 
@@ -79,7 +81,7 @@ def obo_source(
     *,
     id_prefix: str | None = None,
     include_obsolete: bool = False,
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
 ) -> Iterator[Record]
 ```
 

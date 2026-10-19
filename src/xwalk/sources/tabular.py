@@ -19,7 +19,7 @@ def csv_source(
     *,
     id_column: str,
     delimiter: str = ",",
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
     multivalue_columns: Sequence[str] = (),
     multivalue_sep: str = "|",
 ) -> Iterator[Record]:
@@ -56,7 +56,7 @@ def jsonl_source(
     path: str | Path,
     *,
     id_field: str,
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
 ) -> Iterator[Record]:
     """Yield one Record per non-blank line. The id field is removed from `fields`."""
     path = Path(path)

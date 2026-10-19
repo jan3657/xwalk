@@ -113,6 +113,15 @@ offline only (FakeDecider, no paid calls).
 
 ### Changed
 
+- The sdist leaves out the 0.2 effort's working notes (`docs/superpowers/` and
+  `docs/claude-upgrade/` except `CONTRACTS.md`, `REVIEW.md` and
+  `CLUSTERING_DECISIONS.md`, which the docs cite), `CLAUDE.md`, the React sources in
+  `web/` (the built workbench still ships in the package), `benchmarks/results/`, and
+  the Ref_zivila research scripts with the two tests that need them.
+  `tests/test_packaging.py` builds the sdist and checks its contents.
+  `scripts/run_pipeline.sh` no longer hard-codes one cluster account's checkout: it
+  takes the checkout as an argument or `XWALK_ROOT` (default: its own) and sources
+  `_env.sh` only when present.
 - Decider jobs run through `xwalk.ops` like LLM jobs: strict validation of the
   `decider:` block and the decider `policy:` (unknown keys with did-you-mean, ranges,
   `shortlist_floor <= accept_at`), `--json` envelopes, run states, exit codes, run
@@ -212,6 +221,53 @@ offline only (FakeDecider, no paid calls).
   under `mint_requires: retrieval_exhausted` while retrievable clusters were never shown.
   It now compares with the depth actually searched. The defaults are not affected (the
   last page reaches `expand_limit`, where doubling is capped).
+- `xwalk validate` names a template field that no record has: `{{ mentoin }}` used to
+  validate with only "4 source record(s) render an empty query text". The new
+  `template_unknown_field` warning reads `templates.query references 'mentoin', which
+  no source record in sources.csv has (it renders empty); fields are [...]`, checking
+  `query`, `context` and `queries` against the sources and `doc` and `candidate`
+  against the targets.
+- CSV/TSV, JSONL and OBO sources and gold files read UTF-8 with a byte-order mark
+  (every Excel "CSV UTF-8" export): the default encoding is `utf-8-sig`, so the first
+  column is `mention_id`, not `\ufeffmention_id`. Such a file used to fail with
+  `id_column 'mention_id' not found`; one whose first column was not the id loaded
+  with a misnamed field, and loads under the right name now (its record digests, and
+  so its index, change once).
+- `xwalk validate` no longer calls a job "invalid" when the file is fine and only the
+  environment lacks something: a missing credential variable or optional extra prints
+  `job 'x' is valid; the environment is not ready: OPENAI_API_KEY is not set (use
+  --no-credentials to check the file alone)`. The exit code (`2`) and error codes are
+  unchanged.
+- Every CLI flag and positional has help text in `--help` (40 had none, among them
+  `--job`, `--run`, `--out`, `--gold`, `--view` and every flag of `prompts` and
+  `review`), and `xwalk review --help` / `xwalk prompts --help` describe their
+  subcommands. `docs/reference/cli.md` documents `ui --chatgpt-login`, `--dense` and
+  `--dense-device`.
+- Read-only commands no longer migrate a run's ledger. `inspect`, `explain`, `results`,
+  `export`, `eval`, `fit`, `compare`, `review export` and the UI's reads opened the
+  ledger for writing, so pointing one at a 0.1.1 run upgraded `ledger.sqlite` in place
+  and left a `ledger.sqlite.v1-backup` beside it. They now open it read-only
+  (`Ledger.open(path, read_only=True)`): a 0.1.1 ledger is read through an upgraded copy
+  on disk (a temporary file, removed afterwards) and the directory stays
+  byte-identical; a reader's memory does not grow with the ledger. `match` and `review apply` still
+  migrate (after the backup), and the new `xwalk upgrade --run DIR` (`ops.upgrade`)
+  does it explicitly. `ledger.sqlite.v1-backup*` is now gitignored.
+- A run against a failing provider says why. A call limit spent on retries against a
+  dead endpoint was reported only as `call_limit_reached` with the advice to raise
+  `--max-calls`; the message now names the provider's last error (`call limit of 5
+  reached while the provider was failing: ... ConnectError: ...`) and advises fixing
+  the endpoint instead. `CallBudget.acquire` now returns a dispatch index and clients
+  report each request's outcome with `CallBudget.settle` (`BudgetedLLM`,
+  `BudgetedDecider`, and per HTTP retry the OpenAI-compatible and Jev clients); the
+  refusal names the error of the latest-dispatched settled request, so a failure that
+  a later success overtook is not blamed, and `run_batch` used directly reports the
+  same message. The one run-level message is what the
+  ledger records, so `match`, `inspect` and `manifest.json` agree. A run (and
+  `inspect`) with `failed` rows lists their errors,
+  deduplicated with counts and most common first, as `provider_failure` /
+  `retriever_failure` errors in the envelope, on stderr and in the summary. A run
+  without `--max-calls` whose records fail adds the `uncapped_failures` warning, and
+  `xwalk match` warns once on stderr when three records in a row fail uncapped.
 - BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
   forms were `strip().lower()`, but the query's exact term was built from the
   *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat
