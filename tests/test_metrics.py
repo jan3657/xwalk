@@ -190,15 +190,24 @@ def test_an_empty_result_set_does_not_divide_by_zero():
 # --- threshold curve and calibration ----------------------------------------------
 
 
+def scored_result(*args, **kwargs):
+    from dataclasses import replace
+
+    from tests.test_replay import scored
+
+    row = result(*args, **kwargs)
+    return replace(row, attempts=(scored(row.matched_id, row.confidence),))
+
+
 def test_threshold_curve_covers_zero_to_one():
-    points = threshold_curve([result("s1", "T1", confidence=0.9)], GOLD, steps=11)
+    points = threshold_curve([scored_result("s1", "T1", confidence=0.9)], GOLD, steps=11)
     assert points[0].threshold == 0.0 and points[-1].threshold == 1.0
 
 
 def test_raising_the_threshold_never_increases_coverage():
     results = [
-        result("s1", "T1", confidence=0.95),
-        result("s2", "TX", confidence=0.45),
+        scored_result("s1", "T1", confidence=0.95),
+        scored_result("s2", "TX", confidence=0.45),
     ]
     coverages = [p.coverage for p in threshold_curve(results, GOLD, steps=11)]
     assert coverages == sorted(coverages, reverse=True)
@@ -206,8 +215,8 @@ def test_raising_the_threshold_never_increases_coverage():
 
 def test_a_higher_threshold_improves_precision_on_separated_confidences():
     results = [
-        result("s1", "T1", confidence=0.95),
-        result("s2", "TX", confidence=0.45),
+        scored_result("s1", "T1", confidence=0.95),
+        scored_result("s2", "TX", confidence=0.45),
     ]
     points = {round(p.threshold, 2): p for p in threshold_curve(results, GOLD, steps=11)}
     assert points[0.0].precision == 0.5
@@ -261,3 +270,16 @@ def test_report_as_dict_is_json_safe():
     import json
 
     json.dumps(evaluate_results([result("s1", "T1")], GOLD).as_dict())
+
+
+def test_unresolved_review_is_not_a_no_match_prediction():
+    row = result("s4", None, MatchStatus.NEEDS_REVIEW, DecisionReason.UNRESOLVED_OUTPUT)
+    report = evaluate_results([row], GOLD)
+    assert report.no_match_precision is None
+    assert report.no_match_recall == 0.0
+
+
+def test_unmatched_with_a_proposal_is_a_no_match_prediction():
+    row = result("s4", "T9", MatchStatus.UNMATCHED, DecisionReason.BELOW_REVIEW_FLOOR)
+    report = evaluate_results([row], GOLD)
+    assert report.no_match_precision == report.no_match_recall == 1.0

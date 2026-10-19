@@ -104,8 +104,8 @@ fix was raising one integer.
 | `accepted_precision` | Of the records xwalk matched automatically, the fraction that were right. This is the number that determines whether you can trust the output unreviewed. |
 | `automatic_coverage` | The fraction of labelled records matched automatically. Precision without coverage is a matcher that abstains on everything. |
 | `review_rate` | The fraction sent to a human. This is your ongoing cost. |
-| `recall_at_any_status` | The fraction where the correct target was chosen at *any* status. This is the ceiling perfect threshold tuning could reach. |
-| `no_match_precision` / `no_match_recall` | How well abstention works, scored only against rows explicitly labelled as no-match. |
+| `recall_at_any_status` | The fraction where the correct target was chosen at *any* status. Verification and other gates may still prevent acceptance. |
+| `no_match_precision` / `no_match_recall` | Only UNMATCHED predicts no match; unresolved/review rows never count as settled abstentions. |
 | `unresolved_rate` | Model output that could not be resolved to a record. Reported separately from the review rate because the fix is different. |
 | `mean_llm_calls` / `mean_tokens` / `mean_cost_usd` / `mean_seconds` | Cost and latency per record. |
 | `duplicate_target_conflicts` | Targets chosen by more than one source record. |
@@ -114,10 +114,9 @@ Every ratio with a zero denominator is `None`, never `0.0`, and renders as `n/a`
 reason. A precision of `n/a (nothing matched)` and a precision of `0.0` are very
 different situations, and collapsing them hides the first one.
 
-The gap between `accepted_precision` and `recall_at_any_status` is where threshold
-tuning lives. If recall is 0.90 and accepted precision is 0.70, your pipeline is finding
-the right answers and your thresholds are misclassifying them. If recall is 0.55, no
-threshold will save you.
+Proposal recall and accepted precision have different denominators. Use policy replay
+to inspect which proposals the production gates accept; a correct review proposal
+may remain under review because its verifier or property checks disagreed.
 
 ### Then the calibration warning
 
@@ -135,17 +134,29 @@ apply.
 
 ## Choosing thresholds
 
-The report includes a threshold curve re-derived from the confidences already recorded,
-so you can see what each `accept_at` would have produced without re-running anything:
+The report includes a threshold curve replayed through the production policy when
+the recorded policy is available. It is conditional on recorded attempts: a new run
+could stop earlier or acquire more evidence. Verification and property gates still
+apply, and evaluation makes no model or retriever calls:
 
 ```python
 for point in report.thresholds:
     print(f"{point.threshold:.2f}  coverage {point.coverage:.3f}  precision {point.precision}")
 ```
 
-Pick the threshold that meets your precision requirement, then set `accept_at` and
-re-run. Note that the re-run changes the fingerprint, so it is a full re-run — the curve
-is there so you only have to do that once.
+Use the curve to investigate thresholds on validation data. A fresh run changes the
+fingerprint and may produce different attempts. To inspect status and gold-outcome
+transitions under a proposed policy:
+
+```sh
+xwalk eval --run run/ --gold gold.csv --replay-policy proposed.yaml --json
+```
+
+Add `--job original.yaml` to supply catalogue ids and compare acquisition settings.
+`gold_unreachable` is reported separately from the ceiling denominator; missing
+traces/searches yield `unavailable`, not a proven retrieval miss. See the
+[replay reference](../reference/evaluation.md#policy-replay) for supported changes,
+misjudgement diagnostics and the descriptive retry metrics.
 
 ## Comparing runs
 

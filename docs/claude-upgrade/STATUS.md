@@ -4,6 +4,7 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 
 | Task | State | Starting balance | Ending balance | Branch or commit | Evidence |
 |---|---|---|---|---|---|
+| Engine batch 4: E1/E2 evaluation semantics | Done (reviewed by orchestrator gates; not pushed) | unreported | unreported | `engine/batch4-eval` | Test-first: 5 metrics/ceiling regressions, 28 replay regressions and 6 ops regressions failed before implementation; later shortlist attribution and artifact-rendering regressions also failed before fixes. Shared status-based no-match, unavailable/unreachable ceiling buckets, both production reducers in conditional replay, recorded/gold transitions, stage diagnostics and descriptive retry metrics; ops/CLI JSON envelope; docs and changelog updated. Python 3.12 venv with `PYTHONPATH=src` verified to import this worktree. Focused evaluation/benchmark tests: 125 passed, 1 skipped. Final offline gate: 2103 passed, 40 skipped, 4 deselected, 8 failed and 40 errors in 47.37 s; all 48 failures/errors are localhost socket binds denied by sandbox. Outside the Codex sandbox (orchestrator, Python 3.12 `.venv`, `PYTHONPATH=src`): `python -m pytest -q -m "not integration"`: 2151 passed, 40 skipped, 4 deselected; ruff check/format clean (222 files); mypy clean (126 files). Implemented by GPT-6 Astra via Codex; committed by the orchestrator because the Codex sandbox cannot write git metadata. No paid calls or downloads. |
 | 00 Baseline and contracts | Done | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | BASELINE.md: 872 passed / 7 skipped (base), ontology 6, sql 10, ruff+mypy clean, build+wheel OK; dense/integration not run |
 | 01 Matching correctness | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11, fresh venv `pip install -e ".[dev]"`. New `tests/test_matching_regressions.py` (audit cases 1-6 + generation precedence): 28 of 34 failed before the fix, 34 passed after. `python -m pytest -q -m "not integration"`: 946 passed, 14 skipped, 1 deselected; `python -m pytest -q`: 946 passed, 15 skipped; `ruff check src tests examples scripts`: all passed; `ruff format --check ...`: 110 files formatted; `mypy`: no issues in 64 files. FakeLLM/MockTransport only, no paid calls; dense/ontology/sql/integration not run. `audit/diagnose_audited_source.py` no longer runs (imports removed private `_clamp`); superseded by the package tests |
 | 02 Persistence and lifecycle | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11 venv `pip install -e ".[dev]"`. New `tests/test_lifecycle.py` (21), `tests/test_ledger_compat.py` (6, on the preserved 0.1.1 fixture), plus additions to test_ledger/test_review/test_batch/test_fingerprint/test_cli. Before the fix: 18 failed in test_batch+test_ledger and 3 new modules failed at import (new API); the two credential tests failed against the old clients. After: `python -m pytest -q`: 996 passed, 15 skipped; `-m "not integration"`: 996 passed, 14 skipped, 1 deselected; ruff check/format clean (113 files); mypy clean (64 files). FakeLLM/ScriptedRetriever only, no paid calls; dense/ontology/sql/integration not run |
@@ -319,3 +320,18 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - Open: the accuracy/cost numbers in `docs/reference/decide.md` were measured on the branch
   before the merge and not re-run; the live Jev tests were skipped (no key). The
   job-file reference's stale "Gotchas" about unvalidated fields were corrected in passing.
+
+## Engine batch 4 review follow-up (19 October 2026)
+
+- Fixed all three findings in `review_b4.md`, each with a regression observed failing
+  before its fix: preserve an absent chooser's resolution in ledger replay; require
+  an explicit LLM path before treating a clipped slate as complete; disclose recorded
+  and current reducer versions and historical/unknown warnings in ordinary evaluation,
+  including `ops.evaluate_run` and saved JSON/text reports.
+- Focused evaluation tests: 87 passed. Full non-integration gate with `PYTHONPATH=src`,
+  `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, and `-p no:cacheprovider`: 2,112 passed,
+  40 skipped, 4 deselected; 8 failures and 40 setup errors all from sandbox socket-bind
+  denials. Ruff check and format pass (222 files); mypy passes (126 source files).
+- No paid calls or push. Balances unreported. This worktree refuses Git's index lock;
+  separate commits and mail patches are prepared in `/private/tmp/xwalk-b4-review-commits`
+  without changing this branch's ref. Source fixes remain in this worktree.
