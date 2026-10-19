@@ -218,6 +218,7 @@ class _Handler(BaseHTTPRequestHandler):
             # A refused upload leaves its body unread; never reuse the connection.
             self.close_connection = True
         query = dict(parse_qsl(parts.query, keep_blank_values=True))
+        self._leased: str | None = None
         try:
             if path.startswith("/api/"):
                 self._api(method, path, query)
@@ -242,6 +243,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._error(error)
         except Exception as exc:  # never a traceback to the browser
             self._error(ApiError(500, "server_error", f"{type(exc).__name__}: {exc}"))
+        finally:
+            if self._leased is not None and self.server.sessions is not None:
+                self.server.sessions.release(self._leased)
+                self._leased = None
 
     def _cookie_session(self) -> str | None:
         jar = SimpleCookie()
@@ -278,14 +283,19 @@ class _Handler(BaseHTTPRequestHandler):
         sessions = self.server.sessions
         if sessions is None:
             return self.server.workspace
+        key = self._cookie_session()
         try:
-            workspace = sessions.open(self._cookie_session(), client=self._client_address())
+            # Leased until `_handle` finishes, so the session cannot be evicted or swept
+            # between here and the handler's first write to it.
+            workspace = sessions.open(key, client=self._client_address(), lease=True)
         except SessionRateLimited as exc:
             raise ApiError(429, "too_many_sessions", str(exc)) from None
         except PublicRefusal as exc:
             raise ApiError(503, "busy", str(exc)) from None
         if workspace is None:
             raise ApiError(401, "session_expired", "your session has ended; reload the page")
+        assert key is not None and self._leased is None
+        self._leased = key
         assert isinstance(workspace, Workspace)
         return workspace
 

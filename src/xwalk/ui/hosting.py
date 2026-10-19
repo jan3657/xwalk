@@ -173,6 +173,9 @@ class Sessions:
         self._open: dict[str, Any] = {}
         self._seen: dict[str, float] = {}
         self._made: dict[str, deque[float]] = {}
+        # Requests in flight per session: a leased session is never evicted or swept,
+        # so a request that has its workspace keeps it until it is done.
+        self._leases: dict[str, int] = {}
         self._lock = threading.Lock()
         self._last_sweep = 0.0
 
@@ -212,23 +215,30 @@ class Sessions:
         self.open(key, client=client)
         return key
 
-    def open(self, key: str | None, *, client: str) -> Any | None:
+    def open(self, key: str | None, *, client: str, lease: bool = False) -> Any | None:
         """The session for `key`, made now if it is new; None for a key that is not
         genuine (forged, malformed, or issued too long ago and never used).
 
+        With `lease`, the session is also held for the caller (atomically with finding
+        or making it) until `release(key)`: nothing evicts or sweeps it meanwhile.
+
         Raises `SessionRateLimited` when `client` has opened too many sessions lately,
         `PublicRefusal` when the pool is full of sessions in use."""
-        workspace = self.get(key)
-        if workspace is not None:
-            return workspace
-        if not self.genuine(key):
+        if not valid_session_id(key):
             return None
         assert key is not None
+        with self._lock:
+            workspace = self._open.get(key)
+            if workspace is not None:
+                self._touch(key, lease)
+                return workspace
+        if not self.genuine(key):
+            return None
         self.sweep()
         with self._lock:
             workspace = self._open.get(key)  # another request of the same page won
             if workspace is not None:
-                self._seen[key] = time.time()
+                self._touch(key, lease)
                 return workspace
             now = time.time()
             self._check_rate(client, now)
@@ -238,10 +248,27 @@ class Sessions:
             directory.mkdir(exist_ok=True)
             workspace = self._make(directory)
             self._open[key] = workspace
-            self._seen[key] = now
+            self._touch(key, lease)
             if self.new_per_client > 0:
                 self._made.setdefault(client, deque()).append(now)
             return workspace
+
+    def _touch(self, key: str, lease: bool) -> None:
+        """Mark `key` seen now, and leased if asked. Lock held."""
+        self._seen[key] = time.time()
+        if lease:
+            self._leases[key] = self._leases.get(key, 0) + 1
+
+    def release(self, key: str) -> None:
+        """End one lease taken by `open(..., lease=True)`; idle time counts from now."""
+        with self._lock:
+            held = self._leases.get(key, 0) - 1
+            if held > 0:
+                self._leases[key] = held
+            else:
+                self._leases.pop(key, None)
+            if key in self._open:
+                self._seen[key] = time.time()
 
     def _check_rate(self, client: str, now: float) -> None:
         if self.new_per_client <= 0:
@@ -260,9 +287,9 @@ class Sessions:
             )
 
     def _evict_one_empty(self) -> bool:
-        """Drop the longest-idle session nobody has used. Lock held."""
+        """Drop the longest-idle session nobody has used and no request holds. Lock held."""
         for key in sorted(self._seen, key=self._seen.__getitem__):
-            if not _in_use(self._open[key], self.root / key):
+            if key not in self._leases and not _in_use(self._open[key], self.root / key):
                 del self._open[key], self._seen[key]
                 shutil.rmtree(self.root / key, ignore_errors=True)
                 return True
@@ -301,7 +328,7 @@ class Sessions:
                 expired = idle > self.ttl or (
                     idle > self.empty_ttl and not _in_use(ws, self.root / session)
                 )
-                if expired and not busy:
+                if expired and not busy and session not in self._leases:
                     del self._open[session], self._seen[session]
                     shutil.rmtree(self.root / session, ignore_errors=True)
                     removed.append(session)

@@ -309,6 +309,65 @@ def test_a_full_pool_makes_room_by_dropping_an_empty_session(tmp_path: Path) -> 
     assert sessions.get(used) is not None and sessions.get(newest) is not None
 
 
+def test_a_session_in_use_by_a_request_is_never_dropped(tmp_path: Path) -> None:
+    import time
+
+    sessions = Sessions(
+        tmp_path / "s", make_workspace=lambda d: Workspace(d), max_sessions=1, empty_ttl=60
+    )
+    alice = sessions.issue()
+    workspace = sessions.open(alice, client="198.51.100.7", lease=True)
+    assert workspace is not None
+    # While Alice's request runs, her (still empty) session is neither evicted for a
+    # newcomer nor swept as idle.
+    with pytest.raises(PublicRefusal, match="busy"):
+        sessions.open(sessions.issue(), client="203.0.113.9")
+    assert sessions.sweep(now=time.time() + 3600, force=True) == []
+    sessions.release(alice)
+    assert sessions.get(alice) is workspace
+    # Released and still empty: now it may make room.
+    assert sessions.open(sessions.issue(), client="203.0.113.9") is not None
+    assert sessions.get(alice) is None
+
+
+def test_eviction_cannot_lose_a_credential_being_set(
+    public: UIServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Alice's first request (setting a key) is paused inside its handler while Bob
+    arrives at a full pool. Her key must still be there afterwards."""
+    from xwalk.ui import workbench
+
+    assert public.sessions is not None
+    public.sessions.max_sessions = 1
+    entered, proceed = threading.Event(), threading.Event()
+    original = workbench.ROUTES[("POST", "/api/credentials")]
+
+    def paused(ws: Workspace, params: Any) -> Any:
+        entered.set()
+        assert proceed.wait(10)
+        return original(ws, params)
+
+    monkeypatch.setitem(workbench.ROUTES, ("POST", "/api/credentials"), paused)
+    alice, bob = Visitor(public), Visitor(public)
+    alice.page()
+    bob.page()
+    result: list[tuple[int, Any]] = []
+    thread = threading.Thread(
+        target=lambda: result.append(
+            alice.call("/api/credentials", {"env": "OPENAI_API_KEY", "value": "sk-alice"})
+        )
+    )
+    thread.start()
+    assert entered.wait(10)
+    status, error = bob.call("/api/info")
+    assert status == 503 and error["error"]["code"] == "busy"
+    proceed.set()
+    thread.join(10)
+    assert result[0][0] == 200 and result[0][1]["set"] is True
+    keys = {c["env"]: c["set"] for c in alice.call("/api/credentials")[1]["credentials"]}
+    assert keys["OPENAI_API_KEY"] is True
+
+
 # --- the public server --------------------------------------------------------------------
 
 
