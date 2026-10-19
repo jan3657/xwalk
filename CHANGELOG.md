@@ -31,6 +31,21 @@ offline only (FakeDecider, no paid calls).
   metric functions moved from `benchmarks/clustering.py` to
   `xwalk.evaluate.clustering` (re-exported by the benchmark), which also reads
   `pending` outcomes and `source_id` columns.
+- `xwalk cluster inspect --run DIR` and `xwalk cluster explain --run DIR SOURCE_ID
+  [--full]` (`ops.cluster_inspect`, `ops.cluster_explain`): read-only, call-free views
+  of a clustering run. `inspect` reports the exported outcome counts, clusters by size,
+  merges, decisions by kind, usage summed over every invocation (with
+  `invocations_without_usage` and a `usage_incomplete` warning when the totals are a
+  lower bound), the selected versus the last state revision, how many records changed
+  after the exported revision (`selected_not_last` warning), and exits with the code
+  the run produced. `explain` reports a record's exported membership, the decisions
+  that placed it with the members each prompt listed, the merge ancestry of its
+  cluster, later changes that went against it or its cluster (for instance a failed
+  reverification that revision selection set aside: `superseded_by_selection`), its
+  assignment history, and the state of `pending` and `failed` records. New error codes
+  `manifest_unreadable` and `store_mismatch` (exit `3`). The `cluster_run` refusal of
+  the matching-run commands now names these commands. `members.csv` is computed by the
+  same function (`exports.exported_state`), so the views match the exports.
 - The benchmark's clustering track runs `xwalk cluster` itself (`xwalk_clustering`,
   default settings) beside the baselines and reports its scores, usage and gold-pair
   co-exposure. In `--smoke` the judge is the offline lexical stand-in and the numbers

@@ -99,9 +99,9 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 Taxonomy seeding, broader/narrower and multi-level hierarchy, fixed cluster counts,
 LLM naming/glosses and name verification (cluster representation is its members), a
 review overlay with clustering verbs (`unresolved.csv` is the worksheet; applying
-decisions is a later task), `inspect`/`explain` for cluster runs (they refuse a
-cluster run with `cluster_run` and point to the exports and `xwalk cluster eval`,
-added October 2026), concurrency.
+decisions is a later task), concurrency. (Read-only `xwalk cluster inspect` and
+`xwalk cluster explain` were added in October 2026; the matching `inspect`/`explain`
+refuse a cluster run with `cluster_run` and point to them.)
 
 ## Scaling check
 

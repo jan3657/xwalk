@@ -176,6 +176,27 @@ that share is low too, the search never put the records in front of the judge (t
 saw. It is a diagnostic, not a ceiling: merges and joins on a cluster's first members
 link records no prompt showed together. Details: [`cluster eval`](../reference/cli.md#cluster-eval).
 
+## Inspecting a run and explaining one record
+
+Both commands read the run read-only and make no model call:
+
+```console
+$ xwalk cluster inspect --run runs/food
+$ xwalk cluster explain --run runs/food c3          # add --full for the stored prompts
+```
+
+`inspect` shows the exported outcome counts, cluster sizes, merges, decisions by kind,
+usage over every invocation (a lower bound when an invocation never finished), and the
+selected versus the last state revision. When refinement stopped at `max_iterations`
+or `oscillation`, the exports hold the state with the fewest unresolved records, which
+can be earlier than the last: decisions made after it (a failed reverification, a
+member moved) are kept in the store but are not in the exports, and `inspect` says so
+(`selected_not_last`). `explain` shows one record's exported membership, the decisions
+of the step that placed it (with the members each prompt actually listed), the merge
+ancestry of its cluster, and any later change that went against it or its cluster.
+Details: [`cluster inspect`](../reference/cli.md#cluster-inspect) and
+[`cluster explain`](../reference/cli.md#cluster-explain).
+
 Cluster ids are `K` + a hash of the run fingerprint and the record that started the
 cluster. They are stable for a run and change when anything in its identity changes.
 
@@ -195,5 +216,6 @@ run; `130` interrupted (resume continues).
 - A different processing order can change the result when the evidence is
   contradictory (A~B, B~C, but not A~C): whichever end arrives first keeps the middle and
   the other goes to review. `order: label` makes the order independent of the input file.
-- `inspect`, `explain` and `review apply` do not read clustering runs yet; they say so
-  and point to the exports and `xwalk cluster eval`.
+- `review apply` does not read clustering runs yet. The matching-run commands
+  (`inspect`, `explain`, ...) refuse a clustering run and point to `xwalk cluster
+  inspect`, `xwalk cluster explain` and `xwalk cluster eval`.

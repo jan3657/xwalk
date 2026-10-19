@@ -329,4 +329,7 @@ def test_matching_commands_point_a_cluster_run_to_the_cluster_commands(
     error = envelope["errors"][0]
     assert error["code"] == "cluster_run"
     assert "xwalk cluster eval" in error["message"] and "members.csv" in error["message"]
+    # every redirect names the read-only cluster views
+    assert f"xwalk cluster inspect --run {chocolate_run}" in error["message"]
+    assert f"xwalk cluster explain --run {chocolate_run} <source_id>" in error["message"]
     assert _files(chocolate_run) == before  # no ledger.sqlite created
