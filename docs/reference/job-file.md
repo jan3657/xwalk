@@ -341,10 +341,18 @@ model.
 | `concurrency` | `int` | no | `32` | records in flight; ≥ 1 |
 | `legacy_id_resolution` | `bool` | no | `false` | accept non-exact key resolution; such matches never become automatic |
 | `retriever_timeout` | `float` | no | `60.0` | seconds before a retriever is treated as failed |
+| `deduplicate_candidates` | `bool` | no | `false` | skip pending/completed work for the same record and scoring context; opt-in |
+| `alternate_queues` | `bool` | no | `false` | alternate candidate and query work so queued searches run; opt-in |
+| `chase_verifier_leads` | `bool` | no | `false` | score well-formed verifier preferences once per record ID; opt-in |
 
 The invariant is `0 <= review_floor <= accept_at <= 1`. Audits are seeded from
 `(run_fingerprint, source_id)`, so the same records are audited across a resume rather than
 re-rolled.
+
+The three routing flags are independent experiments, bounded by `max_attempts`.
+Disabled flags add no fingerprint component; enabled flags enter policy identity.
+They change evidence acquisition, so offline replay refuses changes to them.
+See [routing semantics](pipeline.md#setup) for completion, context and retry rules.
 
 ## `policy` on the decider path
 

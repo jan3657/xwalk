@@ -114,7 +114,7 @@ A lead for the next attempt in the matching loop.
 |---|---|---|---|
 | `kind` | `Literal["candidate", "query"]` | — | what kind of lead this is |
 | `value` | `str` | — | a candidate key, or new query text |
-| `source` | `Literal["scorer", "rewriter"]` | — | which stage proposed it |
+| `source` | `Literal["scorer", "rewriter", "verifier"]` | — | which stage proposed it |
 
 No validation. The `kind` distinction is load-bearing: `"candidate"` means "look
 again at a record we already retrieved" — no new search — while `"query"` means "run
@@ -170,6 +170,7 @@ here. Nothing an attempt learned is discarded when the loop moves on.
 | `candidate_count` | `int` | how many candidates were retrieved, even when `candidates` is empty |
 | `candidates_truncated` | `int` | candidates cut by the selector's budget before the model saw them |
 | `issued_keys` | `Mapping[str, str]` | opaque key → record id, as issued **for this attempt** |
+| `selector_confidence` | `float \| None` | validated selector confidence, including abstentions; advisory only. `None` for old blobs, skipped/failed selection or invalid confidence |
 | `raw_selection` | `str \| None` | the selector's verbatim answer, before resolution |
 | `chosen_id` | `str \| None` | resolved record id; `None` on abstention or unresolved output |
 | `resolution` | `str` | how the raw answer became an id: a `Resolution` value such as `"exact_key"`, `"abstain"`, `"unresolved"`, or a `legacy_*` variant |
@@ -238,6 +239,9 @@ budget in one frozen dataclass.
 | `concurrency` | `int` | `32` | batch-run concurrency |
 | `legacy_id_resolution` | `bool` | `False` | re-enable heuristic ID resolution for reproducing prior work |
 | `retriever_timeout` | `float` | `60.0` | per-retriever search timeout, seconds |
+| `deduplicate_candidates` | `bool` | `False` | skip pending/completed work for the same record and scoring context; opt-in |
+| `alternate_queues` | `bool` | `False` | alternate candidate and query work so queued searches run; opt-in |
+| `chase_verifier_leads` | `bool` | `False` | score well-formed verifier preferences once per record ID; opt-in |
 
 Validation in `__post_init__` — each violation raises `ValueError`:
 

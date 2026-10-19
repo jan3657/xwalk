@@ -12,6 +12,15 @@ contract only in a reviewed commit that edits this file and says why.
   scripted responses, trace on/off must give identical status, matched id, confidence,
   attempts (ignoring the `candidates` field) and identical outgoing LLM requests.
 
+Batch 6 routing addition: each candidate operation retains its originating live key
+map and proposal provenance. `deduplicate_candidates`, `alternate_queues` and
+`chase_verifier_leads` are independent, default-off policy experiments and enter run
+identity only when enabled. Deduplication keys record identity plus scoring context,
+marks completion only after valid scoring/verification, and never suppresses an
+infrastructure retry. Eligible verifier disagreements may enqueue another issued key
+once per preferred record ID; scoring and required verification still gate acceptance.
+All operations remain bounded by `max_attempts`.
+
 ## 2. Current snapshot versus history
 
 - **Source snapshot**: each `run_batch` invocation reads the full source collection and
@@ -47,7 +56,7 @@ contract only in a reviewed commit that edits this file and says why.
 
 | Error | Where | Outcome |
 |---|---|---|
-| Recoverable (`LLMRetryableError` after client retries, timeout, unparseable output, retriever failure) | selector, scorer | attempt `reason=provider_failure` / `retriever_failure`; same query retried within `max_attempts` (existing) |
+| Recoverable (`LLMRetryableError` after client retries, timeout, unparseable output, retriever failure) | selector, scorer | attempt `reason=provider_failure` / `retriever_failure`; same operation retried within `max_attempts` (query search, or forced candidate with its live state and provenance) |
 | Recoverable | gating verifier (score in `verify_band`) | attempt keeps its score, `verifier_decision="error"`, `reason=provider_failure`; retried like above; an unverified in-band score can never become `matched` (best possible status `needs_review`) |
 | Recoverable | audit verifier (score outside band) | decision unchanged; error noted on the attempt |
 | Recoverable | rewriter | loop ends with no new query; status derived from existing attempts; error noted on the last attempt |

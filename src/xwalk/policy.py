@@ -44,6 +44,9 @@ class MatchPolicy:
     concurrency: int = 32
     legacy_id_resolution: bool = False
     retriever_timeout: float = 60.0
+    deduplicate_candidates: bool = False
+    alternate_queues: bool = False
+    chase_verifier_leads: bool = False
 
     def __post_init__(self) -> None:
         if self.max_attempts < 1:

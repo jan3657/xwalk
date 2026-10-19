@@ -361,3 +361,16 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - Worktree Git index writes were denied. Two commits with matching source changes are
   prepared in `/private/tmp/xwalk-b5fix-commits` and exported as
   `/private/tmp/xwalk-b5fix.mbox`; the worktree branch ref is unchanged.
+
+## Engine batch 6: bounded routing (19 October 2026)
+
+| Item | State | Validation | Balances |
+|---|---|---|---|
+| Forced candidate retry | complete | P4 failed first on re-selection; 53 focused tests pass. Full offline non-integration gate: 2,194 passed, 40 skipped, 4 deselected; 8 failures and 40 setup errors are sandbox socket-bind denials. Ruff check/format pass (228 files); mypy passes (128 files). | unreported |
+| Opt-in bounded routing | complete | 29 new tests failed before implementation; 87 routing/matcher tests pass. Full offline non-integration gate: 2,228 passed, 40 skipped, 4 deselected; 8 failures and 40 setup errors are sandbox socket-bind denials. Ruff check/format pass (228 files); mypy passes (128 files). Captured base HTTP bytes and identities match with flags off. | unreported |
+| Selector confidence storage | complete | 9 regressions failed on the absent field before implementation; 127 matcher/serde/legacy-ledger tests pass. Final offline non-integration gate: 2,238 passed, 40 skipped, 4 deselected; 8 failures and 40 setup errors are sandbox socket-bind denials. Ruff check/format pass (228 files); mypy passes (128 files). | unreported |
+
+No paid calls. An initial full-suite invocation was interrupted during an optional
+Hugging Face lookup; the completed gate uses `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`.
+Worktree Git index writes are denied; commits are assembled in
+`/private/tmp/xwalk-b6-commits` and exported to `/private/tmp/xwalk-b6.mbox`.

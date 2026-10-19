@@ -212,6 +212,10 @@ def run_fingerprint_components(
             "max_candidate_tokens": selector_policy.max_candidate_tokens,
         },
     }
+    # Experimental routing adds no identity component while disabled.
+    for flag in ("deduplicate_candidates", "alternate_queues", "chase_verifier_leads"):
+        if getattr(policy, flag):
+            components["policy"][flag] = True
     # The live encoder of each dense retriever: model, revision, prefixes, normalization.
     # An index fingerprint alone misses an encoder reopened with different settings.
     encoders = {

@@ -16,6 +16,20 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- Attempts store validated `selector_confidence`, including abstentions, separately
+  from the scoring confidence. It is advisory and does not affect classification.
+  Old serialized attempts read as `None`; skipped or failed selection also stores `None`.
+
+- Opt-in `MatchPolicy` / job policy flags `deduplicate_candidates`, `alternate_queues`
+  and `chase_verifier_leads` bound repeated scoring, let queued queries run, and score
+  eligible verifier preferences. Candidate work retains its original key map and
+  provenance. Deduplication includes scoring context and excludes incomplete work;
+  infrastructure retries bypass it. All flags default off and add identity only when
+  enabled; they do not change classification thresholds or permit acceptance on a verdict.
+
+- Forced candidate proposals now retry provider failures with their original live
+  candidate state and provenance, skipping retrieval and selection on the retry.
+
 - FoodOn LLM example jobs retain a `[0.6, 0.8]` verify band and audit 10% of
   above-band scores, so confident pilot errors can receive a second opinion.
 

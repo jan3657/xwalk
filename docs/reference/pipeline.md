@@ -21,22 +21,44 @@ from `TemplateSet.render_queries` (see the [single-entry compatibility rule](job
 - **query queue** — `(queries, proposal)` pairs waiting for a fresh retrieval. Starts
   with the initial list. New proposals contain one query each. FIFO, except that an
   infrastructure failure re-inserts its actual query list at the front.
-- **candidate queue** — candidate keys (e.g. `C03`) proposed by the scorer, waiting to
+- **candidate queue** — candidate operations (e.g. `C03`) proposed by the scorer, waiting to
   be re-examined. These records are already in hand; consuming one runs **no retrieval
-  and no selector call** — the loop goes straight to scoring.
+  and no selector call** — the loop goes straight to scoring. Each entry owns its
+  originating live key map, candidates, query list and proposal provenance.
 
-The candidate queue always drains first. Re-examining a record you already retrieved is
-strictly cheaper than a new search, and the paper repo's mistake — pushing candidate
-labels back into the query queue and re-retrieving records already in hand — is exactly
-what the split exists to prevent.
+By default the candidate queue drains first. Three independent `MatchPolicy` flags
+(default `False`) opt into bounded routing experiments:
+
+- `deduplicate_candidates`: drop pending or completed scoring work with the same record
+  ID and scoring context. Context includes the complete rendered keyed presentation,
+  its order and key-to-record map; source/context and stage settings are fixed within a
+  match. The same ID with different alternatives can still be scored. A new query can
+  still retrieve and select; if it selects duplicate work, the attempt records a drop
+  and makes no scoring call. Existing attempts remain the decision evidence. Work is
+  completed only after a valid score and any requested verification completes without
+  a parsing or provider error. Infrastructure retries bypass deduplication.
+- `alternate_queues`: after a candidate operation, prefer a queued query; after a query,
+  prefer a candidate. An empty queue never blocks the other. Thus a query proposed by
+  attempt one runs by attempt three when candidate leads keep arriving. Infrastructure
+  retries take priority and still count toward `max_attempts`.
+- `chase_verifier_leads`: a well-formed `disagree` with another issued key puts a
+  candidate operation at the front, once per preferred record ID per match. Its proposal
+  source is `verifier`; its originating map, presentation and query remain attached even
+  if another query runs first. A verdict with a parsing error (including invalid advisory
+  confidence) cannot create a lead. The lead must be scored and, when in band, verified;
+  the preference itself never accepts a match.
+
+Every operation uses the existing attempt bound. With all flags off, routing and
+request bytes stay unchanged except for the forced-key provider retry fix. Each enabled
+flag enters the policy fingerprint; disabled flags add no identity component.
 
 `Attempt.query` displays multiple queries joined with `" | "`; runtime retrieval and
 retry state retain the original list, including literal separators inside a query.
 
 Alongside the queues: `seen_queries` holds normalised forms of every query ever
 enqueued (deduplication), `tried_queries` keeps original casing for the rewriter's
-prompt, and the last non-empty `KeyedCandidates` is retained so candidate proposals can
-be resolved against the keys that were actually issued.
+prompt. Candidate operations retain their own live `KeyedCandidates`; the last
+non-empty keyed list also supplies the rewriter. None of this state comes from traces.
 
 ### The attempt loop
 
@@ -46,22 +68,22 @@ Up to `policy.max_attempts` iterations (default 4). Each iteration:
 match(source)
   render context + initial queries; queue = [initial queries]
   for index in range(max_attempts):
-    pick work: candidate queue first, else query queue, else STOP (no work)
+    pick work: infrastructure retry first, then queues by policy, else STOP (no work)
     attempt:
       1. retrieve   all retrievers concurrently, RRF-fused   (no LLM; skipped
                     when re-examining a candidate)
       2. select     render keyed blocks -> budget -> key/null  (LLM; skipped when
                     re-examining a candidate — the key is forced)
-      3. score      chosen record vs the full source record   (LLM; always runs
-                    on a resolved choice)
+      3. score      chosen record vs the full source record   (LLM; runs on a resolved choice unless
+                    deduplication skips pending/completed work)
       4. verify     only if score is in verify_band, or on    (LLM, conditional)
                     an audit draw above it
-      5. route      scorer proposals -> candidate keys + new queries
+      5. route      scorer proposals + optional verifier leads -> candidate work + queries
     fatal LLM error          -> record a failed attempt, STOP
     candidate budget exceeded -> needs_review, STOP (no model call)
     acceptable match         -> STOP (early accept)
     attempts exhausted       -> STOP
-    infrastructure failure   -> re-queue the same query at the front, continue
+    infrastructure failure   -> re-queue the same operation at the front, continue
     push candidate keys onto candidate queue, new queries onto query queue
     both queues empty        -> rewrite (LLM); nothing new -> STOP
   derive_status(attempts) -> MatchResult
@@ -81,7 +103,10 @@ Within an attempt (`Matcher._attempt`):
    key resolves directly through the retained `KeyedCandidates`, recorded as
    `EXACT_KEY`. Otherwise `Selector.select` trims the fused list, issues opaque keys,
    and asks the model for one key or null. An abstention or unresolvable answer ends
-   the attempt without a scorer call — neither is worth one.
+   the attempt without a scorer call — neither is worth one. The validated selector
+   confidence is stored as `Attempt.selector_confidence`, including on abstentions;
+   it is never used for classification. Skipped/failed selection, invalid confidence
+   and older serialized attempts have `None`.
 3. **Scoring** (LLM). `Scorer.score` judges the chosen record against the **whole
    source record**, never the retrieval query. If the gate produces no usable number,
    the attempt is downgraded to `UNRESOLVED`: falling back to the selector's
@@ -102,7 +127,7 @@ never raises for a provider error:
 
 | Error | Stage | Outcome |
 |---|---|---|
-| recoverable (`LLMError` other than fatal, or a timeout) | selector, scorer | attempt `reason=PROVIDER_FAILURE`; the same query is retried |
+| recoverable (`LLMError` other than fatal, or a timeout) | selector, scorer | attempt `reason=PROVIDER_FAILURE`; the same operation is retried |
 | recoverable | gating verifier (score in `verify_band`) | the score is kept, `verifier_decision="error"`, `reason=PROVIDER_FAILURE`; retried; an unverified in-band score is never `MATCHED` |
 | recoverable | audit verifier | decision unchanged; the error is noted on the attempt |
 | recoverable | rewriter | the loop ends; status comes from the attempts so far; error noted on the last attempt |
@@ -118,7 +143,9 @@ After each attempt the loop stops early if the attempt is *acceptable*: a primar
 reason, whose verifier decision (if any) is `"support"`. Otherwise, if attempts remain:
 
 - An infrastructure failure (`RETRIEVER_FAILURE`, `PROVIDER_FAILURE`) re-inserts the
-  *same* query at the front of the query queue. An outage is not evidence about this
+  *same* operation: a forced candidate retries scoring with its retained key map and
+  provenance, without retrieval or selection; a query returns to the query queue.
+  An outage is not evidence about this
   record, and the rewriter is not asked to invent a new query for one.
 - Routed candidate keys extend the candidate queue; routed queries are appended to the
   query queue (and their normalised forms to `seen_queries`).
@@ -455,6 +482,8 @@ Fail-safes: a `ParseError` returns `decision="disagree"` — an unreadable secon
 opinion is not a supporting one. An unrecognised decision string also becomes
 `"disagree"`, with the original recorded in `error`. `preferred_key` is kept only if,
 stripped and upper-cased, it is a key issued this attempt; anything else is dropped.
+The preference is recorded by default; `chase_verifier_leads=True` also routes eligible
+preferences through the normal forced scoring path described above.
 
 ### QueryRewriter
 
@@ -759,7 +788,8 @@ Everything whose change should invalidate prior results, hashed into one digest.
   exist at all — raising `k` from 20 to 100 must not silently reuse old results;
 - `llm.fingerprint`;
 - policy classification and loop shape: `max_attempts`, `accept_at`, `review_floor`,
-  `verify_band`, `audit_rate`, `legacy_id_resolution`;
+  `verify_band`, `audit_rate`, `legacy_id_resolution`, plus `deduplicate_candidates`,
+  `alternate_queues` and `chase_verifier_leads` only when enabled;
 - selector budget: `max_candidates`, `max_candidate_tokens`, `budget_version`;
 - `encoders` (only when a retriever exposes `encoder_identity`, as `DenseRetriever`
   does): the live encoder's name, dimension and `settings` — for
