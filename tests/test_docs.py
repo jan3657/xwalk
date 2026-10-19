@@ -170,3 +170,27 @@ def test_the_readme_quickstart_runs_exactly_as_written(tmp_path):
     assert quoted in done.stdout
     assert quoted in " ".join((ROOT / "README.md").read_text("utf-8").split())
     assert (tmp_path / "w" / "demo" / "reviewed.csv").exists()
+
+
+def test_documented_fingerprint_stage_requirements_match_the_public_signature():
+    import inspect
+
+    from xwalk.batch import build_run_fingerprint
+
+    text = (DOCS / "reference" / "pipeline.md").read_text(encoding="utf-8")
+    block = next(b for b in FENCE.findall(text) if b.startswith("def build_run_fingerprint("))
+    documented = ast.parse(block.strip() + ":\n    pass").body[0]
+    defaults = dict(
+        zip((a.arg for a in documented.args.kwonlyargs), documented.args.kw_defaults, strict=True)
+    )
+    actual = inspect.signature(build_run_fingerprint)
+    for name in ("selector", "scorer", "verifier", "rewriter"):
+        assert actual.parameters[name].default is inspect.Parameter.empty
+        assert defaults[name] is None, f"{name} must be documented as required"
+
+
+def test_unreleased_changelog_does_not_advertise_the_removed_multi_query_refusal():
+    unreleased = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split("## [Unreleased]", 1)[1]
+    unreleased = unreleased.split("\n## [", 1)[0]
+    assert "`llm:` job refuses `templates.queries`" not in unreleased
+    assert "LLM jobs accept multi-query retrieval" in unreleased

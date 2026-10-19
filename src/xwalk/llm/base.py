@@ -63,6 +63,35 @@ def failure_usage(exc: BaseException) -> Usage:
     return usage if isinstance(usage, Usage) else Usage.unreported()
 
 
+def token_count(value: object) -> int | None:
+    """A provider-reported token count, or None when it is not a usable count.
+
+    Usable means a non-negative integer (an integral float is accepted). A missing value
+    (`None`), booleans, strings, NaN, infinities and negatives are not counts.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float) and value.is_integer() and value >= 0:
+        return int(value)
+    return None
+
+
+def reported_usage(prompt: object, completion: object) -> Usage:
+    """Usage of one call that returned. Its tokens count only if reported and valid.
+
+    Both counts must be reported and valid. A missing count (even one of the two), or a
+    count that is not a count, makes the call's usage unknown, never a known zero; it
+    never raises, so bad accounting cannot discard an otherwise valid answer.
+    """
+    prompt_tokens = token_count(prompt)
+    completion_tokens = token_count(completion)
+    if prompt_tokens is None or completion_tokens is None:
+        return Usage.unreported()
+    return Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, calls=1)
+
+
 @dataclass(frozen=True)
 class LLMCapabilities:
     """What an adapter claims it can do. Defaults are all-false: assume nothing."""
@@ -72,6 +101,46 @@ class LLMCapabilities:
     usage_reporting: bool = False
     seed: bool = False
     native_retry_after: bool = False
+
+
+def request_capabilities(capabilities: LLMCapabilities) -> dict[str, bool]:
+    """The capability flags that change what a client sends, for identity.
+
+    `strict_schema` is sent only inside a schema, so it counts only with `json_schema`.
+    `usage_reporting` and `native_retry_after` change how an answer is accounted or
+    retried, never the request, so they are not identity.
+    """
+    return {
+        "json_schema": capabilities.json_schema,
+        "strict_schema": capabilities.json_schema and capabilities.strict_schema,
+        "seed": capabilities.seed,
+    }
+
+
+def client_generation_defaults(client: object) -> Mapping[str, Any]:
+    """The `temperature`/`max_tokens` a client sends when a request leaves them unset.
+
+    Optional for a client: one that does not report them (`generation_defaults`) yields
+    an empty mapping, and its stages' explicit overrides then count as they are given.
+    """
+    defaults = getattr(client, "generation_defaults", None)
+    return defaults if isinstance(defaults, Mapping) else {}
+
+
+def effective_generation(
+    client: object, *, temperature: float | None, max_tokens: int | None
+) -> dict[str, Any]:
+    """The generation settings a stage's requests actually carry (CONTRACTS.md section 6).
+
+    An explicit per-stage value wins; `None` falls back to the client's configured value.
+    So `Scorer(temperature=0.0)` on a client configured with 0.0 is the same request, and
+    the same identity, as no override at all.
+    """
+    defaults = client_generation_defaults(client)
+    return {
+        "temperature": defaults.get("temperature") if temperature is None else temperature,
+        "max_tokens": defaults.get("max_tokens") if max_tokens is None else max_tokens,
+    }
 
 
 @dataclass(frozen=True)
@@ -121,5 +190,8 @@ __all__ = [
     "LLMResponse",
     "LLMRetryableError",
     "ParseError",
+    "client_generation_defaults",
+    "effective_generation",
     "failure_usage",
+    "request_capabilities",
 ]

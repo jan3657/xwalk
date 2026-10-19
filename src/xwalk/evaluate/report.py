@@ -7,11 +7,12 @@ spend effort?" is the question this phase exists to answer, and it must not be b
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Collection, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from xwalk.decide.policy import DecisionPolicy
 from xwalk.evaluate.ceiling import CeilingBucket, CeilingReport, ceiling_report
 from xwalk.evaluate.gold import GoldSet
 from xwalk.evaluate.metrics import (
@@ -21,6 +22,13 @@ from xwalk.evaluate.metrics import (
     threshold_curve,
 )
 from xwalk.evaluate.partition import Partition, Partitioner, partition_of
+from xwalk.evaluate.replay import (
+    CONDITIONAL,
+    HISTORICAL_REDUCER,
+    Policy,
+    policy_from_components,
+    status_semantics_version,
+)
 from xwalk.ledger import Ledger
 
 
@@ -30,6 +38,7 @@ class FullReport:
     ceiling: CeilingReport
     thresholds: tuple[ThresholdPoint, ...]
     partition_sizes: Mapping[str, int]
+    threshold_context: Mapping[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -42,10 +51,12 @@ class FullReport:
                     "precision": p.precision,
                     "accepted": p.accepted,
                     "correct": p.correct,
+                    "conditional_on_recorded_attempts": p.conditional_on_recorded_attempts,
                 }
                 for p in self.thresholds
             ],
             "partition_sizes": dict(self.partition_sizes),
+            "threshold_context": dict(self.threshold_context),
         }
 
 
@@ -57,6 +68,9 @@ def evaluate(
     partitioner: Partitioner | None = None,
     partition_overrides: Mapping[str, Partition] | None = None,
     threshold_steps: int = 21,
+    policy: Policy | None = None,
+    target_ids: Collection[str] | None = None,
+    recorded_semantics_version: int | None = None,
 ) -> FullReport:
     results = list(ledger.iter_results(run_fingerprint))
 
@@ -69,10 +83,45 @@ def evaluate(
             counts[partition_of(result.source_id, partitioner, partition_overrides).value] += 1
         sizes = counts
 
+    policy_source = "supplied"
+    manifest = ledger.get_manifest(run_fingerprint) or {}
+    components = manifest.get("fingerprint_components", {})
+    if policy is None:
+        policy = policy_from_components(components)
+        policy_source = "recorded" if policy is not None else "unavailable"
+    if recorded_semantics_version is None:
+        recorded_semantics_version = components.get("policy", {}).get("status_semantics")
+    version = None if policy is None else status_semantics_version(policy)
+    warnings = (
+        [HISTORICAL_REDUCER]
+        if version is not None and recorded_semantics_version != version
+        else []
+    )
+
     return FullReport(
         metrics=evaluate_results(results, gold),
-        ceiling=ceiling_report(results, gold),
-        thresholds=tuple(threshold_curve(results, gold, steps=threshold_steps)),
+        ceiling=ceiling_report(
+            results,
+            gold,
+            target_ids=target_ids,
+            path=None
+            if policy is None
+            else "decider"
+            if isinstance(policy, DecisionPolicy)
+            else "llm",
+        ),
+        thresholds=()
+        if policy is None
+        else tuple(threshold_curve(results, gold, steps=threshold_steps, policy=policy)),
+        threshold_context={
+            "conditional_on_recorded_attempts": True,
+            "definition": CONDITIONAL,
+            "policy_source": policy_source,
+            "status_semantics_version": version,
+            "recorded_semantics_version": recorded_semantics_version,
+            "warnings": warnings,
+            "unavailable_rows": sum(not r.attempts for r in results if r.source_id in gold),
+        },
         partition_sizes=sizes,
     )
 
@@ -122,12 +171,23 @@ def render_report(report: FullReport) -> str:
         CeilingBucket.MISJUDGED,
         CeilingBucket.TRUNCATED,
         CeilingBucket.NEVER_RETRIEVED,
+        CeilingBucket.UNAVAILABLE,
+        CeilingBucket.GOLD_UNREACHABLE,
     ):
         lines.append(f"  {bucket.value:<18}: {c.buckets.get(bucket, 0)}")
     if c.by_retriever:
         lines.append(
             "  gold surfaced by   : "
             + ", ".join(f"{name} ({count})" for name, count in sorted(c.by_retriever.items()))
+        )
+
+    lines += ["", "## Threshold replay", CONDITIONAL]
+    lines.extend(report.threshold_context.get("warnings", ()))
+    if report.threshold_context.get("policy_source") == "unavailable":
+        lines.append("unavailable: no recorded policy; supply the recorded policy explicitly")
+    if report.threshold_context.get("unavailable_rows"):
+        lines.append(
+            f"unavailable rows (missing attempts): {report.threshold_context['unavailable_rows']}"
         )
 
     lines += [

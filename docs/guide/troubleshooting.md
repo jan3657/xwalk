@@ -112,11 +112,14 @@ without it they are indistinguishable.
   cancels what is in flight and records the run as `aborted` (exit 3). Fix the
   configuration and run the same command again: completed records are kept and the rest
   resume.
-- `retriever_failure` — every retriever raised or timed out. Check the index exists and
-  `retriever_timeout` (default `60.0` seconds) is long enough.
+- `retriever_failure` — a retriever raised or timed out and the record could not be
+  settled without it: either no retriever returned a hit, or the survivors' candidates
+  led to a negative outcome. Check the index exists and `retriever_timeout` (default
+  `60.0` seconds) is long enough, then resume: `failed` rows are retried.
 
-A partial retriever failure is not fatal: the matcher degrades to the survivors and
-records a note in `attempt.error`.
+A partial retriever failure is not fatal: the matcher degrades to the survivors, which
+can still produce a match or a review, and records each failed search in
+`attempt.retrieval_failures` (and a note in `attempt.error`).
 
 ## Resume re-runs everything
 
@@ -147,7 +150,8 @@ is never checked against the matcher you actually built. If you hardcoded it, or
 before changing a component, resume will happily serve stale results.
 
 Always build it with `build_run_fingerprint`, passing the same objects you pass to
-`Matcher`. Also pass `retriever_limit` and `rrf_k` to both if you override them — the
+`Matcher`, including the `selector`, `scorer`, `verifier` and `rewriter` (a per-stage
+`max_tokens` or temperature is invisible otherwise). Also pass `retriever_limit` and `rrf_k` to both if you override them — the
 library does not cross-check those either.
 
 ## Two source records matched the same target

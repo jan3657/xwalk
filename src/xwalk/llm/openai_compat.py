@@ -15,6 +15,8 @@ from xwalk.llm.base import (
     LLMRequest,
     LLMResponse,
     LLMRetryableError,
+    reported_usage,
+    request_capabilities,
 )
 from xwalk.llm.budget import CallBudget, CallLimitExceeded
 from xwalk.records import Usage
@@ -74,13 +76,91 @@ def _error_message(response: httpx.Response) -> str:
 
 
 def _reported_usage(raw: object) -> Usage:
-    """One successful call. Its tokens count only if the provider actually reported them."""
-    if not isinstance(raw, Mapping) or not ("prompt_tokens" in raw or "completion_tokens" in raw):
+    """One successful call. Its tokens count only if the provider actually reported them.
+
+    Malformed counts make the call's usage unknown; they never discard the answer and
+    never raise (a bad accounting block is not a reason to spend another call).
+    """
+    if not isinstance(raw, Mapping):
         return Usage.unreported()
-    return Usage(
-        prompt_tokens=int(raw.get("prompt_tokens") or 0),
-        completion_tokens=int(raw.get("completion_tokens") or 0),
-        calls=1,
+    return reported_usage(raw.get("prompt_tokens"), raw.get("completion_tokens"))
+
+
+# Error codes in an HTTP 200 error body that mean the request itself is unusable: auth,
+# billing, unknown model, invalid request. Anything else in an error body -- a
+# retryable status, an unknown code, no code at all -- is treated as transient.
+FATAL_BODY_CODES = frozenset({400, 401, 402, 403, 404, 413, 422})
+
+
+def _body_error(payload: object) -> tuple[int | None, str] | None:
+    """The (code, message) of an error object in a 200 body, or None if there is none.
+
+    Some gateways (OpenRouter among them) report upstream failures as HTTP 200 with an
+    `error` object instead of choices.
+    """
+    if not isinstance(payload, Mapping):
+        return None
+    error = payload.get("error")
+    if not error:
+        return None
+    if not isinstance(error, Mapping):
+        return None, str(error)[:500]
+    raw_code = error.get("code")
+    code: int | None = None
+    if isinstance(raw_code, int) and not isinstance(raw_code, bool):
+        code = raw_code
+    elif isinstance(raw_code, str) and raw_code.isdigit():
+        code = int(raw_code)
+    return code, str(error.get("message", error))[:500]
+
+
+def _json_payload(response: httpx.Response, dispatched: int) -> object:
+    """The decoded body of a 200, or a retryable error if it is not JSON (an HTML page)."""
+    try:
+        return response.json()
+    except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError both subclass it
+        raise LLMRetryableError(
+            f"malformed response: body is not JSON ({response.text[:200]!r})",
+            usage=Usage.unreported(dispatched),
+        ) from exc
+
+
+def openai_compat_fingerprint(
+    *,
+    base_url: str,
+    model: str,
+    profile: str = "unknown",
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    seed: int | None = None,
+    capabilities: LLMCapabilities | None = None,
+) -> str:
+    """The fingerprint `OpenAICompatClient` would have, computed from its settings alone.
+
+    Pure: it builds no client, so identity can be computed where an HTTP client cannot
+    (or need not) be constructed. The API key is deliberately absent: rotating a key
+    must not invalidate a resumable run, and a secret must never reach a manifest.
+    """
+    profile_capabilities = CAPABILITY_PROFILES[profile]
+    sent = request_capabilities(capabilities or profile_capabilities)
+    return hash_value(
+        {
+            "adapter": "openai_compat",
+            "adapter_version": ADAPTER_VERSION,
+            # Userinfo or a key in the query string is a credential, not identity.
+            "base_url": redact_url(base_url.rstrip("/")),
+            "model": model,
+            "profile": profile,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            # Only when set, so fingerprints of runs without a seed are unchanged.
+            **({"seed": seed} if seed is not None else {}),
+            # An explicit `capabilities=` that changes what is sent (a schema, a strict
+            # flag, a seed) is identity; the profile name covers the rest.
+            **(
+                {"capabilities": sent} if sent != request_capabilities(profile_capabilities) else {}
+            ),
+        }
     )
 
 
@@ -104,6 +184,7 @@ class OpenAICompatClient:
         backoff_cap: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        trust_env: bool = True,
     ) -> None:
         if profile not in CAPABILITY_PROFILES:
             raise ValueError(
@@ -122,12 +203,17 @@ class OpenAICompatClient:
         self._backoff_cap = backoff_cap
         self._extra_headers = dict(extra_headers or {})
         self._structured_disabled = False
-        self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
+        self._client = httpx.AsyncClient(timeout=timeout, transport=transport, trust_env=trust_env)
         self._call_budget: CallBudget | None = None
 
     def attach_call_budget(self, budget: CallBudget) -> None:
-        """Reserve from `budget` before every HTTP request, retries included."""
+        """Reserve from `budget` before every HTTP request, retries included, and
+        report how each ended (`CallBudget.settle`)."""
         self._call_budget = budget
+
+    def _settle(self, index: int | None, error: str | None) -> None:
+        if index is not None and self._call_budget is not None:
+            self._call_budget.settle(index, error)
 
     @property
     def model(self) -> str:
@@ -138,22 +224,20 @@ class OpenAICompatClient:
         return self._capabilities
 
     @property
+    def generation_defaults(self) -> Mapping[str, Any]:
+        """What a request that leaves `temperature`/`max_tokens` unset is sent with."""
+        return {"temperature": self._temperature, "max_tokens": self._max_tokens}
+
+    @property
     def fingerprint(self) -> str:
-        # The API key is deliberately absent: rotating a key must not invalidate a
-        # resumable run, and a secret must never reach a manifest on disk.
-        return hash_value(
-            {
-                "adapter": "openai_compat",
-                "adapter_version": ADAPTER_VERSION,
-                # Userinfo or a key in the query string is a credential, not identity.
-                "base_url": redact_url(self._base_url),
-                "model": self._model,
-                "profile": self._profile,
-                "temperature": self._temperature,
-                "max_tokens": self._max_tokens,
-                # Only when set, so fingerprints of runs without a seed are unchanged.
-                **({"seed": self._seed} if self._seed is not None else {}),
-            }
+        return openai_compat_fingerprint(
+            base_url=self._base_url,
+            model=self._model,
+            profile=self._profile,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            seed=self._seed,
+            capabilities=self._capabilities,
         )
 
     def _body(self, request: LLMRequest, *, structured: bool) -> dict[str, Any]:
@@ -225,9 +309,10 @@ class OpenAICompatClient:
         last_retry_after: float | None = None
         for attempt in range(self._max_retries + 1):
             body = self._body(request, structured=structured)
+            index: int | None = None
             if self._call_budget is not None:
                 try:
-                    self._call_budget.acquire()
+                    index = self._call_budget.acquire()
                 except CallLimitExceeded as exc:
                     # The requests already sent (and failed) are still real calls.
                     raise CallLimitExceeded(str(exc), usage=Usage.unreported(dispatched)) from None
@@ -236,11 +321,40 @@ class OpenAICompatClient:
                 response = await self._post(body)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
+                self._settle(index, last_error)
             else:
+                if response.status_code != 200:
+                    self._settle(index, f"HTTP {response.status_code}: {_error_message(response)}")
                 if response.status_code == 200:
-                    return self._parse(
-                        response, structured=structured, failed_before=dispatched - 1
-                    )
+                    # Settled only once the body is understood: a 200 carrying an error,
+                    # or one that does not parse, is a failing provider too.
+                    try:
+                        payload = _json_payload(response, dispatched)
+                        body_error = _body_error(payload)
+                        if body_error is None:
+                            parsed = self._parse(
+                                payload, structured=structured, failed_before=dispatched - 1
+                            )
+                    except Exception as exc:
+                        self._settle(index, f"HTTP 200, {type(exc).__name__}: {exc}")
+                        raise
+                    if body_error is None:
+                        self._settle(index, None)
+                        return parsed
+                    code, message = body_error
+                    self._settle(index, f"HTTP 200 with error {code}: {message}")
+                    if code in FATAL_BODY_CODES:
+                        raise LLMFatalError(
+                            f"HTTP 200 with error {code}: {message}",
+                            usage=Usage.unreported(dispatched),
+                        )
+                    last_error = f"HTTP 200 with error {code}: {message}"
+                    last_retry_after = None
+                    if attempt < self._max_retries:
+                        delay = min(self._backoff_cap, self._backoff_base * (2**attempt))
+                        if delay:
+                            await asyncio.sleep(delay)
+                    continue
 
                 message = _error_message(response)
                 if (
@@ -274,23 +388,58 @@ class OpenAICompatClient:
             usage=Usage.unreported(dispatched),
         )
 
-    def _parse(
-        self, response: httpx.Response, *, structured: bool, failed_before: int
-    ) -> LLMResponse:
-        earlier = Usage.unreported(failed_before)
-        payload = response.json()
-        usage = earlier + _reported_usage(payload.get("usage"))
-        choices = payload.get("choices") or []
+    def _parse(self, payload: object, *, structured: bool, failed_before: int) -> LLMResponse:
+        """Reduce a 200 body to a response. Anything malformed is a retryable error.
+
+        A malformed envelope says nothing about credentials or the request, so it is
+        recoverable (CONTRACTS.md section 3), and its call is counted with unknown usage.
+        """
+        dispatched = failed_before + 1
+
+        def malformed(what: str) -> LLMRetryableError:
+            return LLMRetryableError(
+                f"malformed response: {what}", usage=Usage.unreported(dispatched)
+            )
+
+        if not isinstance(payload, Mapping):
+            raise malformed(f"body is a JSON {type(payload).__name__}, not an object")
+        choices = payload.get("choices")
         if not choices:
-            raise LLMFatalError("provider returned no choices", usage=usage)
-        message = choices[0].get("message") or {}
-        text = message.get("content") or ""
+            raise malformed("provider returned no choices")
+        if not isinstance(choices, list):
+            raise malformed("choices is not a list")
+        choice = choices[0]
+        if not isinstance(choice, Mapping):
+            raise malformed("choice is not an object")
+        choice_error = choice.get("error")
+        if choice_error:
+            # OpenRouter's partial-failure shape: the upstream error sits in the choice
+            # (finish_reason "error", empty content). Keep its message; it is transient
+            # as far as we can tell, and content beside it is not trustworthy.
+            detail = (
+                choice_error.get("message", choice_error)
+                if isinstance(choice_error, Mapping)
+                else choice_error
+            )
+            raise malformed(f"the choice carries an error: {str(detail)[:500]}")
+        message = choice.get("message")
+        if message is None:
+            message = {}
+        if not isinstance(message, Mapping):
+            raise malformed("message is not an object")
+        text = message.get("content")
+        if text is None:
+            text = ""
+        if not isinstance(text, str):
+            raise malformed(f"content is a {type(text).__name__}, not a string")
+        finish_reason = choice.get("finish_reason")
+        usage = Usage.unreported(failed_before) + _reported_usage(payload.get("usage"))
         return LLMResponse(
             text=text,
             usage=usage,
             model=str(payload.get("model", self._model)),
             structured=structured,
-            finish_reason=choices[0].get("finish_reason"),
+            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
         )
 
     async def aclose(self) -> None:

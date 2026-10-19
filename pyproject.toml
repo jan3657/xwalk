@@ -70,6 +70,8 @@ dev = [
     "types-PyYAML",
     # builds the wheel in tests/test_packaging.py without network access
     "hatchling",
+    # self-signed certificates for the local TLS server in tests/test_ui_egress.py
+    "cryptography>=42",
 ]
 
 [project.scripts]
@@ -81,7 +83,33 @@ packages = ["src/xwalk"]
 [tool.hatch.build.targets.sdist]
 # `_env.sh` hardcodes this developer's Ceph paths -- useless to anyone else and a
 # needless disclosure of a directory layout. `data/` and `runs/` are run output.
-exclude = ["_env.sh", "data/", "runs/", ".venv/", "web/node_modules/"]
+# Also left out: the 0.2 effort's working notes (the contracts, review and clustering
+# decisions the docs cite stay), the React sources (the built workbench ships inside
+# the package), benchmark result dumps, and the Ref_zivila research scripts with
+# their tests, which need data or plans that are not shipped.
+exclude = [
+    "_env.sh",
+    "data/",
+    "runs/",
+    ".venv/",
+    "web/",
+    "CLAUDE.md",
+    "docs/superpowers/",
+    "docs/claude-upgrade/*",
+    "!docs/claude-upgrade/CONTRACTS.md",
+    "!docs/claude-upgrade/REVIEW.md",
+    "!docs/claude-upgrade/CLUSTERING_DECISIONS.md",
+    "benchmarks/results/",
+    "scripts/run_pipeline.sh",
+    "scripts/run_jev_eval.sh",
+    "scripts/compare_runs.py",
+    "scripts/compare_gates.py",
+    "scripts/hop_headroom.py",
+    "scripts/screen_recall.py",
+    "scripts/adjudication_to_gold.py",
+    "tests/test_hop_headroom.py",
+    "tests/test_ref_zivila_gold.py",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

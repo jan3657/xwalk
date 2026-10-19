@@ -211,6 +211,7 @@ export function RunsScreen({ go, workspace, tasks, info, reload }: RunsScreenPro
           <div className={r.tableMin}>
             <DataTable
               label="Runs"
+              pageKeys
               rowKey={(x) => x.dir}
               rows={shown}
               loading={loading}

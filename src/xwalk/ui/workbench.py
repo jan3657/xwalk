@@ -317,7 +317,7 @@ def library_download(ws: Workspace, params: Params) -> Response:
                 task.add_event({"status": "downloading", "bytes": received, "total": total})
 
         try:
-            download(url, dest, progress=progress)
+            download(url, dest, progress=progress, allow_local=ws.allow_local_downloads)
             task.add_event({"status": "parsing"})
             records = files.target_records(
                 dest, fmt, id_column="id", label_column="label", synonyms_column="synonyms"
@@ -633,10 +633,10 @@ def reviews(ws: Workspace, params: Params) -> Response:
 
     def work() -> ops.OpResult:
         from xwalk.ledger import Ledger
-        from xwalk.review import adjudicated, review_history
+        from xwalk.review import adjudicated_reviewed, review_history
 
         fingerprint = str(manifest["run_fingerprint"])
-        ledger = Ledger.open(run_dir / "ledger.sqlite")
+        ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
         try:
             history = [
                 {**entry.review, "state": entry.state}
@@ -648,14 +648,38 @@ def reviews(ws: Workspace, params: Params) -> Response:
                     "final_matched_id": row.final_target_id,
                     "final_status": row.final_status.value,
                 }
-                for row in adjudicated(ledger, fingerprint)
-                if row.reviewer is not None
+                # The reviewed results only, from summary columns: the page refetches
+                # this after every decision, so it must not decode the whole run.
+                for row in adjudicated_reviewed(ledger, fingerprint)
             }
         finally:
             ledger.close()
         return ops.OpResult("reviews", data={"history": history, "final": final})
 
     return _envelope("reviews", work)
+
+
+def target(ws: Workspace, params: Params) -> Response:
+    """One record of a run's target collection by its exact id, so the Review screen can
+    check a typed corrected target id before saving it. The job is the run's own (or
+    `job`); an id the collection does not have is a 404 `target_not_found`."""
+    run_dir, _ = ws._run_dir(params)
+    target_id = _str(params, "id")
+    job_param = _str(params, "job", required=False)
+    job_rel = job_param or ws._run_jobs().get(ws.rel(run_dir))
+    if not job_rel:
+        raise ApiError(400, "missing_parameter", "this run has no recorded job; pass job")
+    job = ws.path(job_rel, must_exist=True)
+    found = _envelope("targets", lambda: ops.find_targets(job, [target_id]))
+    if found["status"] == "error":
+        return found
+    record = found["data"]["records"].get(target_id)
+    if record is None:
+        raise ApiError(
+            404, "target_not_found", f"{target_id!r} is not in this job's target collection"
+        )
+    found["data"] = {"record": record}
+    return found
 
 
 def review_sheet(ws: Workspace, params: Params) -> Response:
@@ -831,6 +855,7 @@ ROUTES: dict[tuple[str, str], Handler] = {
     ("GET", "/api/job-file"): job_file,
     ("GET", "/api/review-sheet"): review_sheet,
     ("GET", "/api/reviews"): reviews,
+    ("GET", "/api/target"): target,
     ("POST", "/api/review-upload"): review_upload,
     ("GET", "/api/presets"): presets,
     ("GET", "/api/credentials"): credentials,

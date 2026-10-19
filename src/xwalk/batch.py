@@ -35,18 +35,24 @@ from typing import Any, Protocol
 
 from xwalk import __version__
 from xwalk.decide.base import DecisionClient
+from xwalk.decide.policy import STATUS_SEMANTICS_VERSION as DECISION_STATUS_SEMANTICS_VERSION
 from xwalk.decide.policy import DecisionPolicy
 from xwalk.decide.questions import QuestionSet
 from xwalk.fingerprint import hash_record, hash_value, result_key
 from xwalk.ledger import Ledger
 from xwalk.llm.base import LLMClient
-from xwalk.policy import MatchPolicy
+from xwalk.policy import STATUS_SEMANTICS_VERSION, MatchPolicy
 from xwalk.prompts.contract import PromptSet
 from xwalk.records import DecisionReason, MatchResult, MatchStatus, Record, Usage
 from xwalk.retrieval.base import Retriever
 from xwalk.review import adjudicated
 from xwalk.serde import result_to_dict
-from xwalk.stages.select import SelectorPolicy
+from xwalk.stages.choose import Chooser
+from xwalk.stages.gate import Scorer, Verifier
+from xwalk.stages.property_gate import PropertyGate
+from xwalk.stages.rewrite import QueryRewriter
+from xwalk.stages.screen import Screener
+from xwalk.stages.select import CANDIDATE_BUDGET_VERSION, Selector, SelectorPolicy
 from xwalk.stores.base import TargetStore
 from xwalk.templates import TemplateSet
 
@@ -115,6 +121,35 @@ def usage_to_dict(usage: Usage) -> dict[str, Any]:
     }
 
 
+class _Stage(Protocol):
+    @property
+    def identity(self) -> Mapping[str, Any]: ...
+
+
+def stage_overrides(
+    stages: Mapping[str, tuple[_Stage, _Stage]],
+) -> dict[str, dict[str, Any]]:
+    """Per stage, the settings in which the constructed stage differs from the default.
+
+    `stages` maps a stage name to (the stage as constructed, the stage a job file would
+    build from the same client, prompts and policy). Only differing settings are
+    returned, so a run whose stages are the defaults keeps the fingerprint it had
+    before stages were hashed, and a new stage setting left at its default adds no
+    identity component.
+    """
+    overrides: dict[str, dict[str, Any]] = {}
+    for name, (stage, default) in stages.items():
+        actual, expected = dict(stage.identity), dict(default.identity)
+        changed = {
+            key: value
+            for key, value in sorted(actual.items())
+            if key not in expected or expected[key] != value
+        }
+        if changed:
+            overrides[name] = changed
+    return overrides
+
+
 def run_fingerprint_components(
     *,
     templates: TemplateSet,
@@ -126,6 +161,10 @@ def run_fingerprint_components(
     selector_policy: SelectorPolicy,
     retriever_limit: int = 20,
     rrf_k: int = 60,
+    selector: Selector,
+    scorer: Scorer,
+    verifier: Verifier,
+    rewriter: QueryRewriter,
 ) -> dict[str, Any]:
     """Everything whose change should invalidate prior results, as a JSON-safe dict.
 
@@ -133,6 +172,13 @@ def run_fingerprint_components(
     change what a result means. `retriever_limit` and `rrf_k` must match the values
     handed to `Matcher`, or a resumed run will reuse results produced at another depth.
     The dict is stored in the manifest so a refused resume can name what changed.
+
+    Pass the stages handed to `Matcher` (`selector`, `scorer`, `verifier`, `rewriter`):
+    their effective settings -- a per-stage `temperature`/`max_tokens`, another client,
+    a system message, a review floor or `max_queries` unlike the policy's -- change the
+    requests, so any that differ from the stages a job file would build are recorded
+    under `stages`. The stages are required: a stage that is not passed cannot be
+    identified, and assuming the default would resume another run's results.
     """
     components: dict[str, Any] = {
         "library_version": __version__,
@@ -158,12 +204,18 @@ def run_fingerprint_components(
             "verify_band": list(policy.verify_band) if policy.verify_band else None,
             "audit_rate": policy.audit_rate,
             "legacy_id_resolution": policy.legacy_id_resolution,
+            "status_semantics": STATUS_SEMANTICS_VERSION,
         },
         "selector_policy": {
+            "budget_version": CANDIDATE_BUDGET_VERSION,
             "max_candidates": selector_policy.max_candidates,
             "max_candidate_tokens": selector_policy.max_candidate_tokens,
         },
     }
+    # Experimental routing adds no identity component while disabled.
+    for flag in ("deduplicate_candidates", "alternate_queues", "chase_verifier_leads"):
+        if getattr(policy, flag):
+            components["policy"][flag] = True
     # The live encoder of each dense retriever: model, revision, prefixes, normalization.
     # An index fingerprint alone misses an encoder reopened with different settings.
     encoders = {
@@ -173,6 +225,25 @@ def run_fingerprint_components(
     }
     if encoders:
         components["encoders"] = encoders
+    overrides = stage_overrides(
+        {
+            "selector": (
+                selector,
+                Selector(
+                    llm,
+                    prompts,
+                    templates,
+                    policy=selector_policy,
+                    legacy_id_resolution=policy.legacy_id_resolution,
+                ),
+            ),
+            "scorer": (scorer, Scorer(llm, prompts, templates, review_floor=policy.review_floor)),
+            "verifier": (verifier, Verifier(llm, prompts, templates)),
+            "rewriter": (rewriter, QueryRewriter(llm, prompts, templates)),
+        }
+    )
+    if overrides:
+        components["stages"] = overrides
     return components
 
 
@@ -200,8 +271,12 @@ def build_run_fingerprint(
     selector_policy: SelectorPolicy,
     retriever_limit: int = 20,
     rrf_k: int = 60,
+    selector: Selector,
+    scorer: Scorer,
+    verifier: Verifier,
+    rewriter: QueryRewriter,
 ) -> str:
-    """The hash of `run_fingerprint_components`."""
+    """The hash of `run_fingerprint_components`. Pass the stages handed to `Matcher`."""
     return hash_value(
         run_fingerprint_components(
             templates=templates,
@@ -213,6 +288,10 @@ def build_run_fingerprint(
             selector_policy=selector_policy,
             retriever_limit=retriever_limit,
             rrf_k=rrf_k,
+            selector=selector,
+            scorer=scorer,
+            verifier=verifier,
+            rewriter=rewriter,
         )
     )
 
@@ -227,6 +306,10 @@ def decision_run_fingerprint_components(
     policy: DecisionPolicy,
     rrf_k: int = 60,
     rewrite: str | None = None,
+    screener: Screener,
+    chooser: Chooser,
+    gate: PropertyGate,
+    rewriter: QueryRewriter | None,
 ) -> dict[str, Any]:
     """The decider path's counterpart of `run_fingerprint_components`.
 
@@ -235,8 +318,36 @@ def decision_run_fingerprint_components(
     the fingerprint of the optional miss-only query rewrite; it is included only when
     set, so a job without one keeps the fingerprint (and the cached ledger) it had
     before. The dict is stored in the manifest so a refused resume can name what changed.
+
+    Pass the stages handed to `DecisionMatcher` (required; `rewriter=None` says there is
+    none). A `screener`, `chooser` or `gate` that
+    differs from the one a job file would build (another decider, chunking unlike the
+    policy's) is recorded under `stages`. `rewriter`, when `rewrite` is not given, is
+    hashed whole: its client, prompts and effective generation settings. A job file
+    passes `rewrite` (see `JobSpec.decision_run_fingerprint_components`).
     """
-    extra: dict[str, str] = {} if rewrite is None else {"rewrite": rewrite}
+    if rewrite is None and rewriter is not None:
+        rewrite = hash_value(rewriter.identity)
+    extra: dict[str, Any] = {} if rewrite is None else {"rewrite": rewrite}
+    overrides = stage_overrides(
+        {
+            "screener": (
+                screener,
+                Screener(
+                    decider,
+                    questions,
+                    templates,
+                    chunk_size=policy.chunk_size,
+                    shortlist_size=policy.shortlist_size,
+                    shortlist_floor=policy.shortlist_floor,
+                ),
+            ),
+            "chooser": (chooser, Chooser(decider, questions, templates)),
+            "gate": (gate, PropertyGate(decider, questions, templates)),
+        }
+    )
+    if overrides:
+        extra["stages"] = overrides
     return {
         **extra,
         "library_version": __version__,
@@ -261,6 +372,7 @@ def decision_run_fingerprint_components(
             "rubric_floor": policy.rubric_floor,
             "property_floor": policy.property_floor,
             "chunk_size": policy.chunk_size,
+            "status_semantics": DECISION_STATUS_SEMANTICS_VERSION,
         },
     }
 
@@ -275,8 +387,13 @@ def build_decision_run_fingerprint(
     policy: DecisionPolicy,
     rrf_k: int = 60,
     rewrite: str | None = None,
+    screener: Screener,
+    chooser: Chooser,
+    gate: PropertyGate,
+    rewriter: QueryRewriter | None,
 ) -> str:
-    """The hash of `decision_run_fingerprint_components`."""
+    """The hash of `decision_run_fingerprint_components`. Pass the stages handed to
+    `DecisionMatcher`."""
     return hash_value(
         decision_run_fingerprint_components(
             templates=templates,
@@ -287,6 +404,10 @@ def build_decision_run_fingerprint(
             policy=policy,
             rrf_k=rrf_k,
             rewrite=rewrite,
+            screener=screener,
+            chooser=chooser,
+            gate=gate,
+            rewriter=rewriter,
         )
     )
 
@@ -393,6 +514,7 @@ async def run_batch(
     manifest_extra: Mapping[str, Any] | None = None,
     fingerprint_components: Mapping[str, Any] | None = None,
     progress: Callable[[MatchResult], None] | None = None,
+    normalize_errors: Callable[[list[BatchError]], list[BatchError]] | None = None,
 ) -> BatchReport:
     """Match every unfinished source record and export the current view.
 
@@ -401,8 +523,11 @@ async def run_batch(
     `resume=False` recomputes every record; the earlier results go to history.
 
     A fatal provider failure returns a report with `run_state=ABORTED` and the error in
-    `errors`. An exception from a record task or the ledger is re-raised, and so is
-    cancellation (after the run is recorded as interrupted).
+    `errors`. `normalize_errors`, when given, rewrites the invocation's errors before
+    they are recorded, exported in the manifest and reported (`ops` merges the per-record
+    call-limit stops into one run-level diagnostic this way). An exception from a record
+    task or the ledger is re-raised, and so is cancellation (after the run is recorded
+    as interrupted).
     """
     if limit is not None and limit < 0:
         raise ValueError(f"limit must be >= 0, got {limit}")
@@ -524,6 +649,8 @@ async def run_batch(
             in_flight.clear()
         if state is None:
             state = _run_state(ledger, run_fp)
+        if normalize_errors is not None:
+            errors[:] = normalize_errors(list(errors))
         ledger.finish_invocation(
             invocation,
             run_state=state.value,

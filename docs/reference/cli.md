@@ -75,11 +75,18 @@ errors; progress and logs stay on stderr, so `xwalk match ... --json | jq .` alw
 Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missing_field`,
 `invalid_value`, `missing_file`, `missing_extra`, `credential_missing`, `duplicate_id`,
 `index_mismatch`, `run_fingerprint_mismatch`, `out_not_a_run`, `run_not_found`,
-`source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
+`source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `provider_failure`,
+`retriever_failure`, `record_failure`, `exception`,
 `interrupted` and `usage`. The decider path adds `wrong_job_path` (`ablate`, `prompts` or
 `fit` given the wrong kind of job) and, from `fit`, `no_recommendation`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
-to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`, and the
-`experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
+to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`,
+`run_format_outdated`, `cluster_run` (a matching-run command such as `inspect`
+given a clustering run), from `cluster eval`, `cluster inspect` and `cluster explain`
+`not_a_cluster_run`, `manifest_unreadable`, `store_mismatch`, the `selected_not_last`,
+`invocation_unfinished`, `superseded_by_selection`, `retrieval_bounded`,
+`evidence_bounded` and `resume_determinism` warnings,
+`gold_unreadable`, `store_unreadable` and the `partial_run` and `gold_not_in_run`
+warnings, and the `experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
 `--offline-model` adds the `offline_model` warning.
 
 ## `init`
@@ -117,18 +124,24 @@ do not apply to the `kind`, duplicate retriever names); that the templates compi
 prompt slots satisfy the contract; that referenced files exist; that optional extras the
 job needs are installed; that the credential variable is *set* — reported as `set` or
 `missing`, its value is never read into the output; and, unless `--no-scan`, that both
-collections load, are non-empty and have unique ids (empty rendered texts are warnings).
+collections load, are non-empty and have unique ids (empty rendered texts are warnings),
+and that every field a template names exists in some record of its collection (a
+`template_unknown_field` warning names the template, the field, the file and the fields
+there are, since a misspelt field renders empty and the job would match nothing).
 
 ```console
 $ xwalk validate --job job.yaml
-job 'quickstart' is invalid
+job 'quickstart' is valid; the environment is not ready: OPENAI_API_KEY is not set (use --no-credentials to check the file alone)
   targets : 5 records
   sources : 4 records
   OPENAI_API_KEY: missing
 error: credential_missing: environment variable OPENAI_API_KEY (llm.api_key_env) is not set
 ```
 
-Returns `0` when valid, `2` otherwise.
+Returns `0` when valid, `2` otherwise. A job whose only problems are a missing
+credential variable or optional extra is reported as a valid job in an environment that
+is not ready (still exit `2`, since `match` would fail); any other error makes it
+`invalid`.
 
 ## `index`
 
@@ -200,6 +213,14 @@ there. The limit is per invocation. Retries hidden inside LiteLLM (`num_retries`
 observed or limited; set `num_retries=0` there. The reported `usage` counts calls that were
 in flight when the run stopped as calls with unknown usage, never as free.
 
+When the calls that spent the limit were failing (a wrong `base_url`, a dead proxy), the
+`call_limit_reached` message names the provider's last error instead of advising a higher
+limit. Records that end `failed` are summarised by distinct error with counts
+(`provider_failure` or `retriever_failure` errors, also in `inspect`); `xwalk explain`
+has each record's attempts. Without `--max-calls`, a run with failed records adds the
+`uncapped_failures` warning, and three failed records in a row print one warning on
+stderr while the run continues.
+
 Prints the number of current source records, the run state (`complete`, `partial`,
 `failed`, `aborted`, `interrupted`), a count per status sorted by status name (with
 `pending` and `total`), and tokens (with calls of unknown usage shown, never as zero).
@@ -265,10 +286,165 @@ existing `--out` is refused. Resuming a finished run retries its `failed` record
 stderr. Exit codes: `0` complete, `1` complete with `needs_review` records, `2` usage or
 job error, `3` aborted run, failed records or a foreign run directory, `130` interrupted.
 `--json` data: `stop_reason`, `selected_revision`, `last_revision`, `exported_revision`,
-`experimental`.
+`experimental`. Warnings, each at most once: `experimental`, `needs_review`, and the
+factual `retrieval_bounded`, `evidence_bounded`, `resume_determinism` and
+`selected_not_last` (thresholds in the guide's
+[warnings table](../guide/clustering.md#warnings-about-a-runs-limits)).
 
 `validate` (and `doctor`) accept clustering jobs too: strict schema, source file,
 extras, credential presence and duplicate source ids, with no model call.
+
+`inspect`, `explain`, `results`, `export`, `review`, `eval`, `fit` and `compare` read
+matching runs. Given a clustering run directory they exit `2` with `cluster_run`,
+naming `xwalk cluster inspect`, `xwalk cluster explain`, `xwalk cluster eval` and the
+exports, and create nothing in it.
+
+## `cluster inspect`
+
+Summarises a clustering run. Reads `manifest.json` and `cluster.sqlite` (read-only, as
+`cluster eval` does); calls no model and no retriever and writes nothing. The outcome
+counts are computed by the code that writes `members.csv`, so they match the exports.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | clustering run directory |
+
+```console
+$ xwalk cluster inspect --run runs/food
+clustering run c441597953d31d48 in runs/food
+  job           : food-labels (gpt-4o-mini)
+  written by    : xwalk 0.2.0rc1
+  run state     : complete
+  stop reason   : converged (exported revision 2, last revision 2)
+  assigned      : 3
+  ...
+  cluster sizes : 3 x1 (size x count)
+  merges        : 1 applied, 0 for review, 0 rejected
+  decisions     : 6 (merge 1, merge_select 1, mint 1, novelty 1, select 1, verify 1)
+  usage         : 5 calls over 1 invocation(s); this inspection made none
+```
+
+(A three-record run with a scripted judge.) `counts`: the exported outcomes, `total` and
+`clusters`. `usage`: calls and tokens summed over every invocation of the run,
+`invocations`, `invocations_without_usage` (an invocation that never finished recorded
+none, so the totals are then a lower bound: `usage_incomplete` warning) and
+`calls_made_by_inspect` (always `0`). `errors`: the last invocation's errors. `--json`
+data: `stop_reason`, `selected_revision`, `last_revision`, `exported_revision`,
+`selected_is_last`, `revisions` (each state revision with its unresolved count and
+whether it is the selected one), `changed_after_export` (sources whose last stored
+state differs from the exported one, with up to 20 ids), `clusters` (`accepted`,
+`by_size`, the five `largest`), `merges` by outcome, `decisions` by kind (and how many
+carry an error), `invocations` (state and calls of each), `fingerprint_components`.
+
+Warnings, each at most once: `experimental`, `needs_review`, `partial_run` (sources
+never reached), `invocation_unfinished` (the last invocation is still running or was
+killed), `usage_incomplete`, the factual `retrieval_bounded`, `evidence_bounded` and
+`resume_determinism` (as `xwalk cluster` reports them), and `selected_not_last`: refinement stopped at `max_iterations`
+or `oscillation` and the exports hold an earlier state revision than the last, so
+changes made after it (a member removed by a failed reverification, for instance) are
+in the store and `decisions.jsonl` but not in the exports. `cluster explain` shows them.
+
+Exit codes: the code the run itself produced (`0` complete, `1` records to review or
+an unfinished last invocation, `3` aborted or failed records, `130` interrupted); `2`
+for a directory that is not a run (`run_not_found`) or not a clustering run
+(`not_a_cluster_run`); `3` for an unreadable `manifest.json` (`manifest_unreadable`), a
+missing or corrupt store (`store_unreadable`) or a store of another run
+(`store_mismatch`). Python: `ops.cluster_inspect(run_dir)`.
+
+## `cluster explain`
+
+Why one record of a clustering run has its exported outcome. Read-only and call-free,
+like `cluster inspect`.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `SOURCE_ID` | yes | — | the record's id |
+| `--run` | yes | — | clustering run directory |
+| `--full` | no | off | also print admission and later decisions' stored system and user prompts, retrieved clusters and usage, in human and JSON output |
+
+```console
+$ xwalk cluster explain s --run runs/rollback
+source s in clustering run e82ba4b503b806d8
+  outcome       : assigned in K7e6271b3e0d1b5c6 (2 members: s, t), reason minted:empty_pool
+  decided by    : #1 mint provenance empty_pool
+  after export  : deferred (reverify_failed) by #9 reverify decision not_equivalent (confidence 0.9) [adverse]
+  after export  : cluster revision 3, removed s, added - by #9 reverify decision not_equivalent (confidence 0.9) [adverse]
+  last state    : deferred - (reverify_failed)
+  note          : a member of a cluster with other members
+```
+
+(A scripted run that stopped at `max_iterations` and exported revision 0: refinement
+removed `s` from its cluster in iteration 1, and revision selection set that removal
+aside.) `--json` data:
+
+| Key | Meaning |
+|---|---|
+| `status`, `exported` | the record's `members.csv` row: outcome, cluster, size, reason, proposal, confidence, decision id |
+| `cluster` | the exported cluster: revision, size, status, `seed_id`, mint provenance, and each member with its outcome, reason and admitting decision; `null` for a record outside every cluster |
+| `admission` | every decision of the step that produced the exported row: the select pages and the verification, the novelty check before a mint, or the merge selection and merge verdict. Each lists the clusters shown with the member ids the prompt listed (`members_shown`, at most `pool.member_evidence`), the parsed result, confidence, error and raw answer |
+| `merge_ancestry` | every applied merge retained in the exported state's lineage that fed the record's cluster, recursively: winner, absorbed cluster, its members at the merge, iteration, decision; resume restores the selected revision's lineage, discarding merges set aside with later state |
+| `evidence_in` | decisions whose prompt listed this record as a member line of a shown cluster |
+| `later` | changes after the exported state revision to the record's assignment or to its exported cluster, each with its decision; `adverse` when it took the record out of the cluster or removed members from it |
+| `superseded_by_selection` | `true` when such changes exist because the exports hold an earlier revision than the last (warning `superseded_by_selection`) |
+| `current` | the record's last stored state when it differs from the exported one |
+| `history` | every assignment change of the record (`after_export` marks those set aside) |
+| `note` | what the outcome means; a `pending` record was not reached (resuming continues), a `failed` one is retried in every round and on resume |
+
+Exit codes: `0`; `2` for an unknown source (`source_not_found`) or directory; `3` as for
+`cluster inspect`, or for missing historical revisions needed to reconstruct member
+evidence (`store_inconsistent`). Python: `ops.cluster_explain(run_dir, source_id, full=False)`.
+
+## `cluster eval`
+
+Scores a clustering run's exported partition against a gold partition. Reads
+`manifest.json`, `members.csv` and `cluster.sqlite` (read-only); calls no model and no
+retriever and writes no data in the run directory. (While a run is still in progress,
+SQLite may update its shared-memory index `cluster.sqlite-shm` as it does for any
+reader; the store is snapshotted with SQLite's backup API and the database and its
+log are not written.) Usage is summed over the run's invocations; an invocation that
+never finished recorded none, which makes the totals a lower bound (`usage_incomplete`
+warning, `usage.invocations_without_usage`).
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | clustering run directory |
+| `--gold` | yes | — | gold partition: CSV with a header `item_id,cluster_id` (or `source_id,cluster_id`), or JSONL objects with those keys. Records with the same `cluster_id` are equivalent; give every gold record a row, a singleton its own id |
+| `--out` | no | none | also write the report as JSON to this file. Give it after `eval`: run flags (`--job`, `--out`, `--max-calls`) before `eval` are refused with `usage` (exit `2`) |
+
+```console
+$ xwalk cluster eval --run runs/food --gold food_gold.csv
+clustering run runs/food against food_gold.csv (8 gold items; run complete)
+  as_singletons : pairwise P/R/F1 1.000 / 1.000 / 1.000   B-cubed P/R/F1 1.000 / 1.000 / 1.000
+  accepted_only : pairwise P/R/F1 1.000 / 1.000 / 1.000   B-cubed P/R/F1 1.000 / 1.000 / 1.000
+  outcomes      : 5 assigned, 3 singleton
+  co-exposed    : 4 of 4 gold pairs were in one judge prompt together (a diagnostic, not a recall bound)
+  usage         : 21 calls over 1 invocation(s); this evaluation made none
+```
+
+(Output of the test fixture with a scripted judge, so the scores are perfect by
+construction.) `as_singletons` scores every gold record outside the accepted partition
+(`needs_review`, `failed`, `pending`, or absent from the run) as its own cluster;
+`accepted_only` scores the accepted records against gold restricted to them. Both are
+computed by `xwalk.evaluate.clustering`, the code the benchmark uses. `--json` data:
+`scores` (both conventions with pairwise and B-cubed precision, recall and F1, false
+merges, splits and singleton counts, plus `outcome_counts`, `review_coverage`,
+`accepted_coverage`), `exposure`, `usage` (summed over the run's invocations),
+`calls_per_item`, the run's `stop_reason` and `exported_revision`. `counts` holds
+`gold_items` and the outcome counts.
+
+`exposure.gold_pairs_co_exposed` counts gold co-cluster pairs whose two records were
+in at least one prompt together: the subject record or cluster and the member lines
+shown, as rendered (at most `pool.member_evidence` per cluster). It tells search misses
+from judge misses when recall is low. It is **not an upper bound** on recall: a record
+joins on the evidence of a cluster's first members, and merges link records that no
+prompt showed together.
+
+Exit codes: `0` scored (a run that is not `complete` is scored with a `partial_run`
+warning, its `pending` records as singletons); `2` unknown run directory, a
+directory that is not a clustering run (`not_a_cluster_run`) or an unreadable or
+duplicate-id gold file (`gold_unreadable`); `3` an unreadable or corrupt store
+(`store_unreadable`) or IO error. From
+Python: `ops.cluster_eval(run_dir, gold, out=None)`.
 
 ## `search`
 
@@ -372,12 +548,14 @@ is not a run directory or an out-of-range flag is `2`.
 Serves `validate_job`, `search_candidates`, `match_records`, `get_run`, `list_results` and
 `explain_result` to an agent over MCP on stdin/stdout until the client disconnects. Needs
 `pip install 'xwalk[mcp]'`; without it, `xwalk mcp` prints the install command on stderr
-and exits `2`. See the [MCP guide](../guide/mcp.md).
+and exits `2`, as it does for a `--root` that is not a directory. See the
+[MCP guide](../guide/mcp.md).
 
 | Flag | Required | Default | Meaning |
 |---|---|---|---|
 | `--max-calls-cap` | no | `500` | the largest `max_calls` a `match_records` call may request |
 | `--offline-model` | no | — | answer every model call with a fixed scripted reply (demos and tests; the results are meaningless) |
+| `--root DIR` | no | the working directory | a directory tool paths, and the files a job refers to, must resolve into (symlinks followed); repeatable. Anything else is refused with `path_outside_roots`. See [path confinement](../guide/mcp.md#path-confinement) |
 
 ## `ui`
 
@@ -400,9 +578,48 @@ library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
 | `--session-hours` | no | `24` | public mode: delete idle visitor workspaces after |
 | `--max-tasks` | no | `4` | public mode: runs at once across visitors |
 | `--frame-ancestors` | no | — | origins allowed to embed the page in a frame |
+| `--sessions-per-ip` | no | `20` | public mode: new visitor sessions one address may open per 10 minutes (`0`: no limit) |
+| `--allow-local-downloads` | no | — | let ontology downloads use `http` and private addresses; not with `--public` |
+| `--trust-proxy` | no | — | public mode: believe `X-Forwarded-Proto` and `X-Forwarded-For` from the HTTPS proxy in front ([hosting](../guide/hosting.md)) |
 | `--verbose` | no | — | log every request to stderr |
+| `--chatgpt-login` | no | — | enable local Sign in with ChatGPT (needs `xwalk[chatgpt]` and `--host 127.0.0.1`) |
+| `--dense` | no | — | enable general and biomedical dense retrieval alongside BM25 (needs `xwalk[dense]`) |
+| `--dense-device` | no | automatic | dense encoder device, e.g. `cpu` or `mps` |
 
 A root that is not a directory or a cap below 1 exits `2`.
+
+## `upgrade`
+
+Migrates a run's ledger to the current schema in place. A 0.1.1 ledger is first copied
+to `ledger.sqlite.v1-backup` (the path is printed and returned as the `backup`
+artifact); a current ledger is left as it is (exit `0` either way). Read-only commands
+(`inspect`, `explain`, `results`, `export`, `eval`, `fit`, `compare`, `review export`
+and the UI's views) never migrate: they read an old ledger through an upgraded copy in
+memory. `match` and `review apply` migrate as they open it, so `upgrade` is only needed
+to convert a run you will not write to again.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | run directory |
+
+## `eval`
+
+```sh
+xwalk eval --run run/ --gold gold.csv --job original.yaml --replay-policy proposed.yaml --json
+```
+
+`--run` and `--gold` are required. Optional `--job` supplies target ids for reachable
+gold and compares acquisition blocks with `--replay-policy`. Optional `--replay-policy`
+reads classification thresholds from a job YAML and replays stored attempts without
+model or retriever calls. Changed verification, retrieval, screening, routing and
+attempt bounds are refused or flagged as requiring unrecorded calls. Results are
+conditional on recorded attempts, with historical reducer versions explicitly flagged.
+`--out STEM` writes JSON and text reports, including replay when requested.
+
+The operation is `ops.evaluate_run`; the JSON envelope has `data.report` (recorded
+metrics, ceiling and conditional curve) and optional `data.replay` (status/gold
+transitions, stage diagnostics and descriptive retry counts). See the
+[evaluation reference](evaluation.md#policy-replay) for definitions and limitations.
 
 ## `export`
 

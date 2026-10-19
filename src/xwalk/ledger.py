@@ -13,16 +13,19 @@ Two views of a run are kept apart (docs/claude-upgrade/CONTRACTS.md section 2):
   is deleted.
 
 Schema versions: version 1 is the 0.1.1 layout (no ``ledger_meta`` table). Opening a
-version 1 ledger copies the file aside first and then upgrades it additively; a newer
-version than this code knows is refused without being touched.
+version 1 ledger for writing copies the file aside first and then upgrades it
+additively; opening it read-only reads an upgraded temporary copy on disk and leaves the
+file alone. A newer version than this code knows is refused without being touched.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -138,12 +141,26 @@ _V2_ADDITIONS = (
 )
 
 
+# One source's snapshot entry, for the per-source reads (explain, one review decision).
+# Not part of the versioned layout: a ledger without it reads the same, only slower. It is
+# created with a new or upgraded ledger and by `put_snapshot`, the write every run makes,
+# never by opening a ledger to read it.
+_SNAPSHOT_SOURCE_INDEX = (
+    "CREATE INDEX IF NOT EXISTS snapshot_entries_by_source "
+    "ON snapshot_entries(snapshot_id, source_id)"
+)
+
+
 class UnsupportedLedgerError(Exception):
     """The file is not a ledger this version of xwalk can open. It was not modified."""
 
 
 class LedgerClosedError(RuntimeError):
     """A write was attempted on a closed ledger: the write would have been lost."""
+
+
+class ReadOnlyLedgerError(RuntimeError):
+    """A write was attempted on a ledger opened with ``read_only=True``."""
 
 
 @dataclass(frozen=True)
@@ -175,6 +192,30 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
     }
 
 
+def _connect_uri(uri: str) -> sqlite3.Connection:
+    return sqlite3.connect(uri, uri=True, check_same_thread=False, isolation_level=None)
+
+
+def _temporary_ledger_path() -> Path:
+    """A fresh ``ledger.sqlite`` path in a new private temporary directory."""
+    return Path(tempfile.mkdtemp(prefix="xwalk-ledger-")) / "ledger.sqlite"
+
+
+def _copy_with_log(path: Path) -> Path:
+    """Copy a ledger and its write-ahead log aside, for a directory SQLite cannot use."""
+    target = _temporary_ledger_path()
+    try:
+        shutil.copy2(path, target)
+        for suffix in ("-wal", "-shm"):
+            side = path.with_name(path.name + suffix)
+            if side.exists():
+                shutil.copy2(side, target.with_name(target.name + suffix))
+    except BaseException:
+        shutil.rmtree(target.parent, ignore_errors=True)
+        raise
+    return target
+
+
 def _free_backup_path(path: Path) -> Path:
     candidate = path.with_name(f"{path.name}.v1-backup")
     counter = 1
@@ -198,22 +239,36 @@ class Ledger:
         *,
         migrated_from: int | None = None,
         backup_path: Path | None = None,
+        read_only: bool = False,
+        snapshot_path: Path | None = None,
     ) -> None:
         self._conn = connection
         self._write_lock = asyncio.Lock()
         self._closed = False
         self.migrated_from = migrated_from
         self.backup_path = backup_path
+        self.read_only = read_only
+        # A temporary copy this read-only ledger reads instead of the file; removed,
+        # with its directory, on close.
+        self.snapshot_path = snapshot_path
 
     @classmethod
-    def open(cls, path: str | Path) -> Ledger:
+    def open(cls, path: str | Path, *, read_only: bool = False) -> Ledger:
         """Open or create a ledger.
 
         A 0.1.1 ledger is copied to ``<name>.v1-backup`` before its additive upgrade.
         A ledger from a newer xwalk, or a file that is not a ledger, raises
         `UnsupportedLedgerError` and is left exactly as it was.
+
+        ``read_only=True`` is for commands that only read (inspect, explain, export,
+        eval, the UI's views): the file must exist, it is never created, upgraded or
+        written, and every write raises `ReadOnlyLedgerError`. A 0.1.1 ledger is then
+        read through an upgraded temporary copy on disk (`migrated_from` is 1, there is
+        no backup); `xwalk upgrade` or the next `match` migrates the file itself.
         """
         path = Path(path)
+        if read_only:
+            return cls._open_read_only(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         conn.row_factory = sqlite3.Row
@@ -237,11 +292,110 @@ class Ledger:
             raise
         return cls(conn, migrated_from=1 if version == 1 else None, backup_path=backup)
 
+    @classmethod
+    def _open_read_only(cls, path: Path) -> Ledger:
+        """See `open`. Memory stays bounded: nothing is copied into RAM.
+
+        How the file is read, and what that guarantees. `immutable=1` is never used:
+        SQLite allows it only for a file that cannot change, and nothing here can prove
+        that a writer will not start.
+
+        - **A -wal or -shm file exists** (a writer may be active, even with an empty
+          log) **and either the log is not empty or this process may not write the
+          directory**: ``mode=ro``, which reads the log and is safe against a
+          concurrent writer, whatever its account. If SQLite cannot open it that way
+          (no -shm and no right to create one), the file and its sidecars are copied
+          to a temporary directory and read there.
+        - **Otherwise, when this process may write the file and its directory**: a
+          normal connection with ``PRAGMA query_only``. It is safe against a writer that
+          starts meanwhile, never changes the database, and as the last connection to
+          close it removes the -wal/-shm files it created, so the directory is left as
+          it was.
+        - **Otherwise** (no sidecars, and the file or directory is not writable by this
+          process): the file is copied to a temporary directory and read there; no
+          WAL-mode writer can start without creating a -wal beside it.
+        - **An older schema** (0.1.1, or an empty file): ``backup()`` into a temporary
+          file, upgraded there.
+
+        Temporary copies are removed on `close`.
+        """
+        # The write-ahead log lives beside the real file, not beside a symlink to it.
+        path = path.resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"no ledger at {path}")
+        uri = path.as_uri()
+        wal = path.with_name(path.name + "-wal")
+        shm = path.with_name(path.name + "-shm")
+        pending_log = wal.exists() and wal.stat().st_size > 0
+        sidecars = wal.exists() or shm.exists()
+        writable = os.access(path, os.W_OK) and os.access(path.parent, os.W_OK)
+        snapshot: Path | None = None
+        try:
+            if sidecars and (pending_log or not writable):
+                try:
+                    conn, version = cls._probe(f"{uri}?mode=ro", path)
+                except sqlite3.OperationalError:
+                    snapshot = _copy_with_log(path)
+                    conn, version = cls._probe(snapshot.as_uri(), path)
+            elif writable:
+                conn, version = cls._probe(f"{uri}?mode=rw", path, query_only=True)
+            else:
+                snapshot = _copy_with_log(path)
+                conn, version = cls._probe(snapshot.as_uri(), path)
+        except BaseException:
+            if snapshot is not None:
+                shutil.rmtree(snapshot.parent, ignore_errors=True)
+            raise
+        if version != LEDGER_SCHEMA_VERSION:
+            # An older (or empty) file is read through an upgraded copy on disk.
+            source = conn
+            target = _temporary_ledger_path() if snapshot is None else snapshot
+            try:
+                if snapshot is None:
+                    conn = _connect_uri(target.as_uri())
+                    source.backup(conn)
+                    source.close()
+                if version == 0:
+                    cls._create(conn)
+                else:
+                    cls._upgrade_from_v1(conn)
+            except BaseException:
+                conn.close()
+                source.close()
+                shutil.rmtree(target.parent, ignore_errors=True)
+                raise
+            snapshot = target
+        conn.row_factory = sqlite3.Row
+        return cls(
+            conn,
+            migrated_from=1 if version == 1 else None,
+            read_only=True,
+            snapshot_path=snapshot,
+        )
+
+    @classmethod
+    def _probe(
+        cls, uri: str, path: Path, *, query_only: bool = False
+    ) -> tuple[sqlite3.Connection, int]:
+        """Connect and read the schema version; the connection is closed on failure."""
+        conn = _connect_uri(uri)
+        try:
+            if query_only:
+                conn.execute("PRAGMA query_only = ON")
+            return conn, cls._detect_version(conn, path)
+        except BaseException:
+            conn.close()
+            raise
+
     @staticmethod
     def _detect_version(conn: sqlite3.Connection, path: Path) -> int:
         """0 = empty file, 1 = 0.1.1 layout, 2 = current. Anything else raises."""
         try:
             tables = _tables(conn)
+        except sqlite3.OperationalError:
+            # Cannot open or lock it (permissions, I/O): a problem of access, not of
+            # format. The caller decides whether another way of reading it works.
+            raise
         except sqlite3.DatabaseError as exc:
             raise UnsupportedLedgerError(f"{path} is not an SQLite database: {exc}") from exc
         if not tables:
@@ -294,6 +448,7 @@ class Ledger:
     def _apply_v2(conn: sqlite3.Connection, *, migrated_from: int | None) -> None:
         for statement in _V2_ADDITIONS:
             conn.execute(statement)
+        conn.execute(_SNAPSHOT_SOURCE_INDEX)
         meta = {"schema_version": str(LEDGER_SCHEMA_VERSION), "created_at": _now()}
         if migrated_from is not None:
             meta = {**meta, "migrated_from": str(migrated_from), "migrated_at": meta["created_at"]}
@@ -320,6 +475,8 @@ class Ledger:
     def _check_open(self) -> None:
         if self._closed:
             raise LedgerClosedError("the ledger is closed; this write would be lost")
+        if self.read_only:
+            raise ReadOnlyLedgerError("the ledger was opened read-only; nothing was written")
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -339,6 +496,8 @@ class Ledger:
         if not self._closed:
             self._closed = True
             self._conn.close()
+            if self.snapshot_path is not None:
+                shutil.rmtree(self.snapshot_path.parent, ignore_errors=True)
 
     # --- results -------------------------------------------------------------------
 
@@ -451,6 +610,7 @@ class Ledger:
         An identical consecutive snapshot is reused, so an unchanged rerun adds nothing.
         """
         self._check_open()
+        self._conn.execute(_SNAPSHOT_SOURCE_INDEX)  # ledgers written before it gain it here
         digest = hash_value([list(entry) for entry in entries])
         latest = self._conn.execute(
             "SELECT snapshot_id, digest FROM snapshots WHERE run_fingerprint = ? "
@@ -608,6 +768,84 @@ class Ledger:
                 revision=revision,
                 current=bool(row["live"]) and current.get(key) == revision,
             )
+
+    # --- one source -------------------------------------------------------------------
+    # Reads for interactive callers (explain, one review decision) that are about one
+    # record: indexed lookups that decode that record's rows only, never the run's.
+
+    def _current_row_for(
+        self, run_fingerprint: str, source_id: str, columns: str
+    ) -> sqlite3.Row | None:
+        """`_current_rows` restricted to one source id."""
+        snapshot_id = self.current_snapshot_id(run_fingerprint)
+        if snapshot_id is not None:
+            row: sqlite3.Row | None = self._conn.execute(
+                f"""SELECT e.source_id AS entry_source_id, e.source_hash AS entry_source_hash,
+                    {columns}
+                FROM snapshot_entries e
+                LEFT JOIN results r ON r.run_fingerprint = ? AND r.source_id = e.source_id
+                    AND r.source_hash = e.source_hash
+                WHERE e.snapshot_id = ? AND e.source_id = ?""",
+                (run_fingerprint, snapshot_id, source_id),
+            ).fetchone()
+            return row
+        row = self._conn.execute(
+            f"""SELECT r.source_id AS entry_source_id, r.source_hash AS entry_source_hash,
+                {columns}
+            FROM results r
+            WHERE r.run_fingerprint = ? AND r.source_id = ?
+            ORDER BY r.commit_seq DESC LIMIT 1""",
+            (run_fingerprint, source_id),
+        ).fetchone()
+        return row
+
+    def current_entry(self, run_fingerprint: str, source_id: str) -> CurrentEntry | None:
+        """The `iter_current` entry for one source, or None when the current view does not
+        have it (an unknown or removed source)."""
+        row = self._current_row_for(run_fingerprint, source_id, "r.blob, r.revision")
+        if row is None:
+            return None
+        blob = row["blob"]
+        return CurrentEntry(
+            source_id=str(row["entry_source_id"]),
+            source_hash=str(row["entry_source_hash"]),
+            result=None if blob is None else result_from_dict(json.loads(blob)),
+            revision=None if row["revision"] is None else int(row["revision"]),
+        )
+
+    def iter_source_history(self, run_fingerprint: str, source_id: str) -> Iterator[HistoryEntry]:
+        """`iter_history` for one source: its committed results in commit order."""
+        live = self._current_row_for(run_fingerprint, source_id, "r.result_key, r.revision")
+        current = (
+            (str(live["result_key"]), int(live["revision"]))
+            if live is not None and live["result_key"] is not None
+            else None
+        )
+        cursor = self._conn.execute(
+            """SELECT blob, result_key, revision, commit_seq, 1 AS live
+                FROM results WHERE run_fingerprint = ? AND source_id = ?
+            UNION ALL
+            SELECT blob, result_key, revision, commit_seq, 0 AS live
+                FROM result_history WHERE run_fingerprint = ? AND source_id = ?
+            ORDER BY commit_seq""",
+            (run_fingerprint, source_id, run_fingerprint, source_id),
+        )
+        for row in cursor:
+            key, revision = str(row["result_key"]), int(row["revision"])
+            yield HistoryEntry(
+                result=result_from_dict(json.loads(row["blob"])),
+                revision=revision,
+                current=bool(row["live"]) and current == (key, revision),
+            )
+
+    def iter_reviews_for(self, run_fingerprint: str, result_key: str) -> Iterator[dict[str, Any]]:
+        """`iter_reviews` for one result key, in the order applied."""
+        cursor = self._conn.execute(
+            "SELECT * FROM reviews WHERE run_fingerprint = ? AND result_key = ? ORDER BY review_id",
+            (run_fingerprint, result_key),
+        )
+        for row in cursor:
+            yield dict(row)
 
     def history_count(self, run_fingerprint: str) -> int:
         row = self._conn.execute(

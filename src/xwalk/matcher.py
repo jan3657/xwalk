@@ -5,12 +5,18 @@ Stage-failure policy (CONTRACTS.md section 3). Every stage call goes through
 
 - recoverable (`LLMError` other than fatal, or a timeout) in the selector, scorer or
   gating verifier: the attempt gets `reason=provider_failure` and the same query is
-  retried within `max_attempts`. A gating-verifier failure keeps the score with
+  retried within `max_attempts` (forced keys retain their live candidate state).
+  A gating-verifier failure keeps the score with
   `verifier_decision="error"`, so that score can never become `matched`.
 - recoverable in the audit verifier: the decision is unchanged; the error is noted.
 - recoverable in the rewriter: the loop ends; status comes from the attempts so far.
 - fatal (`LLMFatalError`) anywhere: the result is `failed` with
   `reason=fatal_provider_failure`. `match` never raises for a provider error.
+
+A retriever that raises or times out is recorded on the attempt (`retrieval_failures`).
+With no surviving hits the attempt is `retriever_failure` and the same query is retried;
+with hits the attempt goes on, and can match or go to review, but a negative outcome
+from it is `failed`, not `unmatched` (`policy.derive_status`).
 """
 
 from __future__ import annotations
@@ -23,7 +29,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import TypeVar
 
-from xwalk.fingerprint import hash_record, result_key
+from xwalk.fingerprint import hash_record, hash_value, result_key
 from xwalk.llm.base import LLMError, LLMFatalError, failure_usage
 from xwalk.policy import MatchPolicy, derive_status, is_acceptable, should_audit, should_verify
 from xwalk.records import (
@@ -86,6 +92,32 @@ async def _call_stage(stage: str, call: Awaitable[_T]) -> _T | _StageFailure:
         return _StageFailure(stage, exc, failure_usage(exc), fatal=False)
 
 
+# Source fields, rendered context and stage settings are constant within one match.
+# Query strings and retrieval ranks are absent from the scoring request. The complete
+# keyed presentation (including alternatives/order) is the variable scoring context.
+_WorkIdentity = tuple[str, str]
+
+
+def _work_identity(keyed: KeyedCandidates, key: str) -> _WorkIdentity:
+    return keyed.issued[key], hash_value(
+        {
+            "chosen_key": key,
+            "presentation": [(k, keyed.issued[k], keyed.blocks[k]) for k in keyed.order],
+        }
+    )
+
+
+@dataclass(frozen=True)
+class _CandidateWork:
+    """A forced operation owns its original key map, query and provenance."""
+
+    key: str
+    keyed: KeyedCandidates
+    candidates: tuple[Candidate, ...]
+    queries: list[str]
+    proposal: RetryProposal
+
+
 @dataclass(frozen=True)
 class _AttemptOutcome:
     """What one attempt hands back to the loop.
@@ -99,6 +131,8 @@ class _AttemptOutcome:
     routed: RoutedProposals
     keyed: KeyedCandidates | None
     candidates: tuple[Candidate, ...]
+    completed_work: _WorkIdentity | None = None
+    verifier_lead: RetryProposal | None = None
 
 
 def _join_errors(*parts: str | None) -> str | None:
@@ -152,10 +186,12 @@ class Matcher:
 
     # --- retrieval -------------------------------------------------------------
 
-    async def _retrieve(self, query: str, source: Record) -> tuple[list[Candidate], list[str]]:
-        """One query per attempt on this path; the rewriter supplies the next one."""
+    async def _retrieve(
+        self, queries: Sequence[str], source: Record
+    ) -> tuple[list[Candidate], list[str]]:
+        """Fuse initial queries together; new proposals supply one query each."""
         candidates, notes, _ = await retrieve(
-            [query],
+            queries,
             source,
             self._retrievers,
             self._store,
@@ -171,12 +207,14 @@ class Matcher:
         self,
         source: Record,
         context: str,
-        query: str,
+        queries: Sequence[str],
         proposal: RetryProposal | None,
         index: int,
         reuse: tuple[KeyedCandidates, tuple[Candidate, ...]] | None,
         forced_key: str | None,
         seen_queries: AbstractSet[str],
+        known_work: AbstractSet[_WorkIdentity],
+        retrying: bool,
     ) -> _AttemptOutcome:
         """Run one retrieve -> select -> score -> verify pass.
 
@@ -194,11 +232,12 @@ class Matcher:
         # Overwritten by each stage that talks to the provider; the last one wins,
         # which is the call that ended the attempt.
         finish_reason: str | None = None
+        selector_confidence: float | None = None
 
         if reuse is not None:
             keyed, candidates = reuse
         else:
-            fused, notes = await self._retrieve(query, source)
+            fused, notes = await self._retrieve(queries, source)
             candidates = tuple(fused)
 
         def build(
@@ -218,13 +257,14 @@ class Matcher:
         ) -> Attempt:
             return Attempt(
                 index=index,
-                query=query,
+                query=" | ".join(queries),
                 proposal=proposal,
                 candidates=candidates if self._keep_candidates else (),
                 candidate_count=len(candidates),
                 candidates_truncated=truncated,
                 issued_keys=dict(keyed.issued) if keyed is not None else {},
                 raw_selection=raw,
+                selector_confidence=selector_confidence,
                 chosen_id=chosen_id,
                 resolution=resolution,
                 primary_score=score,
@@ -239,13 +279,30 @@ class Matcher:
                 usage=usage,
                 elapsed_seconds=time.perf_counter() - started,
                 finish_reason=finish_reason,
+                retrieval_failures=tuple(notes),
             )
 
-        def done(attempt: Attempt, routed: RoutedProposals = _NO_PROPOSALS) -> _AttemptOutcome:
-            return _AttemptOutcome(attempt, routed, keyed, candidates)
+        work_identity: _WorkIdentity | None = None
 
-        # Every retriever failed. A dead index is not evidence of a non-match.
-        if not candidates and notes and len(notes) == len(self._retrievers):
+        def done(
+            attempt: Attempt,
+            routed: RoutedProposals = _NO_PROPOSALS,
+            *,
+            completed: bool = False,
+            verifier_lead: RetryProposal | None = None,
+        ) -> _AttemptOutcome:
+            return _AttemptOutcome(
+                attempt,
+                routed,
+                keyed,
+                candidates,
+                work_identity if completed else None,
+                verifier_lead,
+            )
+
+        # No surviving hits and at least one retriever failed: the empty list may be
+        # the outage, not the record. Retried like any retriever failure.
+        if not candidates and notes:
             return done(build(reason=DecisionReason.RETRIEVER_FAILURE))
 
         if not candidates:
@@ -269,6 +326,7 @@ class Matcher:
                 usage = usage + selection.usage
                 return done(build(reason=selection.reason, error=selection.note))
             usage = usage + selection.usage
+            selector_confidence = selection.confidence
             finish_reason = selection.finish_reason
             keyed = selection.keyed
             truncated = selection.truncated
@@ -287,6 +345,7 @@ class Matcher:
                         raw=selection_raw,
                         explanation=selection_explanation,
                         error=selection.error,
+                        reason=selection.reason,
                     )
                 )
             # Bound to a narrowed local so `chosen_key` is `str`, not `str | None`, in
@@ -294,6 +353,19 @@ class Matcher:
             chosen_key = resolved_key
 
         assert keyed is not None
+
+        if self._policy.deduplicate_candidates:
+            work_identity = _work_identity(keyed, chosen_key)
+            if not retrying and work_identity in known_work:
+                return done(
+                    build(
+                        chosen_id=chosen_id,
+                        resolution=resolution,
+                        raw=selection_raw,
+                        explanation=selection_explanation,
+                        dropped=((chosen_key, "scoring work already pending or completed"),),
+                    )
+                )
 
         # --- scoring, against the full source record, never the retrieval query ---
         scored = await _call_stage("scorer", self._scorer.score(source, context, keyed, chosen_key))
@@ -362,7 +434,7 @@ class Matcher:
             score, self._policy, self._run_fingerprint, source.id
         )
         if not (gating or auditing):
-            return done(build_scored(), routed)
+            return done(build_scored(), routed, completed=True)
 
         stage = "verifier" if gating else "audit verifier"
         verdict = await _call_stage(
@@ -394,7 +466,16 @@ class Matcher:
             audited=auditing,
             error=f"{stage}: {verdict.error}" if verdict.error else None,
         )
-        return done(attempt, routed)
+        lead = None
+        if (
+            self._policy.chase_verifier_leads
+            and verdict.error is None
+            and verdict.decision == "disagree"
+            and verdict.preferred_key is not None
+            and keyed.issued[verdict.preferred_key] != chosen_id
+        ):
+            lead = RetryProposal("candidate", verdict.preferred_key, "verifier")
+        return done(attempt, routed, completed=verdict.error is None, verifier_lead=lead)
 
     # --- the loop --------------------------------------------------------------
 
@@ -404,64 +485,143 @@ class Matcher:
     async def match(self, source: Record) -> MatchResult:
         match_started = time.perf_counter()
         context = self._templates.render_context(source)
-        first_query = self._templates.render_query(source)
+        # Historically an LLM job could declare query plus ONE alternate entry,
+        # but searched query only. Preserve that configuration (and SDK equivalent).
+        if len(self._templates.queries) <= 1:
+            first_queries = [self._templates.render_query(source)]
+        else:
+            first_queries = self._templates.render_queries(source)
 
-        queue: list[tuple[str, RetryProposal | None]] = [(first_query, None)]
-        seen_queries = {normalise_query(first_query)}
+        queue: list[tuple[list[str], RetryProposal | None]] = [(first_queries, None)]
+        seen_queries = {normalise_query(query) for query in first_queries}
         tried_queries: list[str] = []  # original casing, for the rewriter's prompt
-        candidate_queue: list[str] = []
+        candidate_queue: list[_CandidateWork] = []
+        completed_work: set[_WorkIdentity] = set()
+        chased_ids: set[str] = set()
+        prefer_candidate = True
+        retry_kind: str | None = None
         attempts: list[Attempt] = []
         all_candidates: tuple[Candidate, ...] = ()
         last_keyed: KeyedCandidates | None = None
-        last_candidates: tuple[Candidate, ...] = ()
-        last_query = first_query
 
         for index in range(self._policy.max_attempts):
             reuse: tuple[KeyedCandidates, tuple[Candidate, ...]] | None = None
             forced_key: str | None = None
             proposal: RetryProposal | None = None
 
-            if candidate_queue and last_keyed is not None:
-                forced_key = candidate_queue.pop(0)
-                proposal = RetryProposal(kind="candidate", value=forced_key, source="scorer")
-                reuse = (last_keyed, last_candidates)
-                query = last_query
+            work: _CandidateWork | None = None
+            take_candidate = candidate_queue and (
+                retry_kind == "candidate"
+                or (
+                    retry_kind != "query"
+                    and (not self._policy.alternate_queues or prefer_candidate or not queue)
+                )
+            )
+            retrying = retry_kind is not None
+            retry_kind = None
+            if take_candidate:
+                prefer_candidate = False
+                work = candidate_queue.pop(0)
+                forced_key = work.key
+                proposal = work.proposal
+                reuse = (work.keyed, work.candidates)
+                queries = work.queries
             elif queue:
-                query, proposal = queue.pop(0)
-                last_query = query
-                if query not in tried_queries:
-                    tried_queries.append(query)
+                prefer_candidate = True
+                queries, proposal = queue.pop(0)
+                for query in queries:
+                    if query not in tried_queries:
+                        tried_queries.append(query)
             else:
                 break
 
-            outcome = await self._attempt(
-                source, context, query, proposal, index, reuse, forced_key, seen_queries
+            pending_work = (
+                {_work_identity(w.keyed, w.key) for w in candidate_queue}
+                if self._policy.deduplicate_candidates
+                else set()
             )
+            outcome = await self._attempt(
+                source,
+                context,
+                queries,
+                proposal,
+                index,
+                reuse,
+                forced_key,
+                seen_queries,
+                completed_work | pending_work,
+                retrying,
+            )
+            if outcome.completed_work is not None:
+                completed_work.add(outcome.completed_work)
             attempt = outcome.attempt
             attempts.append(attempt)
             if outcome.candidates:
                 all_candidates = outcome.candidates
             if outcome.keyed is not None and outcome.keyed.order:
                 last_keyed = outcome.keyed
-                last_candidates = outcome.candidates
 
             if attempt.reason is DecisionReason.FATAL_PROVIDER_FAILURE:
                 break  # a bad key or unknown model will not fix itself
+            if attempt.reason is DecisionReason.CANDIDATE_BUDGET_EXCEEDED:
+                break  # a different query cannot repair the candidate presentation budget
             if self._is_acceptable(attempt):
                 break
             if index + 1 >= self._policy.max_attempts:
                 break
 
             if attempt.reason in _RETRY_SAME_QUERY:
-                # Not evidence about this record. Retry the same query rather than
-                # asking the rewriter to invent a new one for a provider outage.
-                queue.insert(0, (query, proposal))
+                # An outage is not evidence about this record. Forced operations
+                # keep their live state and provenance; query operations search again.
+                if work is not None:
+                    candidate_queue.insert(0, work)
+                    retry_kind = "candidate"
+                else:
+                    queue.insert(0, (queries, proposal))
+                    retry_kind = "query"
                 continue
 
-            candidate_queue.extend(outcome.routed.candidate_keys)
+            if outcome.keyed is not None:
+                keyed = outcome.keyed
+                dropped = list(attempt.dropped_proposals)
+                proposals = [
+                    RetryProposal("candidate", key, "scorer")
+                    for key in outcome.routed.candidate_keys
+                ]
+                # Verifier leads have first claim on provenance and queue position.
+                if outcome.verifier_lead is not None:
+                    proposals.insert(0, outcome.verifier_lead)
+                for lead in proposals:
+                    record_id = keyed.issued[lead.value]
+                    if lead.source == "verifier" and record_id in chased_ids:
+                        dropped.append((lead.value, "verifier lead already chased"))
+                        continue
+                    if self._policy.deduplicate_candidates:
+                        identity = _work_identity(keyed, lead.value)
+                        if identity in completed_work:
+                            dropped.append((lead.value, "scoring work already completed"))
+                            continue
+                        if identity in pending_work:
+                            dropped.append((lead.value, "scoring work already pending"))
+                            continue
+                        pending_work.add(identity)
+                    next_work = _CandidateWork(
+                        lead.value,
+                        keyed,
+                        outcome.candidates,
+                        queries,
+                        lead,
+                    )
+                    if lead.source == "verifier":
+                        chased_ids.add(record_id)
+                        candidate_queue.insert(0, next_work)
+                    else:
+                        candidate_queue.append(next_work)
+                attempt = dataclasses.replace(attempt, dropped_proposals=tuple(dropped))
+                attempts[-1] = attempt
             for text in outcome.routed.queries:
                 seen_queries.add(normalise_query(text))
-                queue.append((text, RetryProposal(kind="query", value=text, source="scorer")))
+                queue.append(([text], RetryProposal(kind="query", value=text, source="scorer")))
 
             if not queue and not candidate_queue:
                 rewritten = await _call_stage(
@@ -492,7 +652,7 @@ class Matcher:
                     if normalised in seen_queries:
                         continue
                     seen_queries.add(normalised)
-                    queue.append((out.value, out))
+                    queue.append(([out.value], out))
                 if not queue:
                     break
 

@@ -37,6 +37,7 @@ from xwalk.evaluate.partition import (
     partition_of,
     write_partition_file,
 )
+from xwalk.evaluate.replay import ReplayReport, replay_result, replay_results
 from xwalk.evaluate.report import FullReport, evaluate, render_report, write_report
 
 __all__ = [
@@ -54,6 +55,7 @@ __all__ = [
     "Partitioner",
     "PromptRole",
     "RunSummary",
+    "ReplayReport",
     "ThresholdPoint",
     "ablate",
     "calibration_warning",
@@ -71,6 +73,8 @@ __all__ = [
     "partition_of",
     "render_failure",
     "render_report",
+    "replay_result",
+    "replay_results",
     "select_failures",
     "standard_ablations",
     "summarise_run",

@@ -12,6 +12,7 @@ async def ledger(tmp_path):
     led = Ledger.open(tmp_path / "l.sqlite")
     await led.put_result(result("s1", "T1", [attempt(0, [cand("T1")], {"C01": "T1"})]))
     await led.put_result(result("s3", "T9", [attempt(0, [cand("T9")], {"C01": "T9"})]))
+    led.put_manifest("fp1", {"fingerprint_components": {"policy": {"accept_at": 0.6}}})
     yield led
     led.close()
 
@@ -113,3 +114,40 @@ async def test_an_empty_run_renders_without_crashing(tmp_path):
     text = render_report(evaluate(led, "nothing", GOLD))
     led.close()
     assert "no ceiling failures" in text
+
+
+@pytest.mark.parametrize("version", [1, None, 2])
+@pytest.mark.parametrize("supplied", [False, True])
+async def test_threshold_report_discloses_historical_semantics(tmp_path, version, supplied):
+    from dataclasses import asdict, replace
+
+    from tests.test_replay import scored
+    from xwalk.policy import STATUS_SEMANTICS_VERSION, MatchPolicy
+    from xwalk.records import MatchStatus
+
+    policy = MatchPolicy()
+    row = result(
+        "s1",
+        "T2",
+        [scored("T2", 0.9, verifier_decision="disagree"), replace(scored("T1", 0.8), index=1)],
+        MatchStatus.NEEDS_REVIEW,
+    )
+    ledger = Ledger.open(tmp_path / "historical.sqlite")
+    try:
+        await ledger.put_result(row)
+        ledger.put_manifest(
+            "fp1",
+            {"fingerprint_components": {"policy": {**asdict(policy), "status_semantics": version}}},
+        )
+        report = evaluate(ledger, "fp1", GOLD, policy=policy if supplied else None)
+    finally:
+        ledger.close()
+    assert report.metrics.automatic_coverage == 0.0
+    unchanged = next(p for p in report.thresholds if p.threshold == policy.accept_at)
+    assert unchanged.coverage == 1.0
+    context = report.as_dict()["threshold_context"]
+    assert context["recorded_semantics_version"] == version
+    assert context["status_semantics_version"] == STATUS_SEMANTICS_VERSION
+    warning = "historical or unknown reducer version"
+    assert (warning in " ".join(context["warnings"])) is (version != STATUS_SEMANTICS_VERSION)
+    assert (warning in render_report(report)) is (version != STATUS_SEMANTICS_VERSION)

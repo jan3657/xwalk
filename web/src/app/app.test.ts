@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ReviewEntry } from '../api/types';
 import { cli, tokens } from './format';
+import { promiseCache } from './promiseCache';
 import { reviewFor } from './RecordParts';
 import { format, parse } from './router';
 
@@ -58,5 +59,39 @@ describe('cli', () => {
     expect(cli('xwalk', 'export', '--run', 'runs/demo', '--view', 'reviewed')).toBe('xwalk export --run runs/demo --view reviewed');
     expect(cli('xwalk', 'inspect', '--run', 'my runs/a')).toBe("xwalk inspect --run 'my runs/a'");
     expect(cli("it's")).toBe(`'it'\\''s'`);
+  });
+});
+
+describe('promiseCache', () => {
+  it('asks once per key until the key is dropped', async () => {
+    const fetch = vi.fn(async (k: string) => `v:${k}`);
+    const cache = promiseCache(fetch);
+    cache.prefetch('a');
+    expect(await cache.get('a')).toBe('v:a');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    cache.drop('a');
+    await cache.get('a');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not keep a failure, so the next get retries', async () => {
+    let fail = true;
+    const cache = promiseCache(async (k: string) => { if (fail) throw new Error('down'); return k; });
+    await expect(cache.get('a')).rejects.toThrow('down');
+    fail = false;
+    expect(await cache.get('a')).toBe('a');
+  });
+
+  it('evicts the least recently used past its limit', async () => {
+    const fetch = vi.fn(async (k: string) => k);
+    const cache = promiseCache(fetch, 2);
+    await cache.get('a');
+    await cache.get('b');
+    await cache.get('a');
+    await cache.get('c'); // evicts b, not a
+    await cache.get('a');
+    expect(fetch.mock.calls.map((c) => c[0])).toEqual(['a', 'b', 'c']);
+    await cache.get('b');
+    expect(fetch).toHaveBeenCalledTimes(4);
   });
 });

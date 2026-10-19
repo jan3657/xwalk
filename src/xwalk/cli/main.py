@@ -89,7 +89,7 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="offline preflight of a job: no model calls",
     )
-    validate.add_argument("--job", required=True)
+    validate.add_argument("--job", required=True, help="the job file (YAML)")
     validate.add_argument(
         "--no-credentials",
         dest="check_credentials",
@@ -104,22 +104,33 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     index = sub.add_parser("index", parents=[common], help="build or open retriever indexes")
-    index.add_argument("--job", required=True)
+    index.add_argument("--job", required=True, help="the job file (YAML)")
     index.add_argument("--out", required=True, help="index directory")
     index.add_argument("--rebuild-index", action="store_true", help="replace an incompatible index")
 
     match = sub.add_parser("match", parents=[common], help="run a matching job")
-    match.add_argument("--job", required=True)
+    match.add_argument("--job", required=True, help="the job file (YAML)")
     match.add_argument("--out", required=True, help="run directory")
     match.add_argument("--index", default=None, help="index directory (default: <out>/index)")
-    match.add_argument("--resume", action="store_true", default=True)
-    match.add_argument("--no-resume", dest="resume", action="store_false")
+    match.add_argument(
+        "--resume",
+        action="store_true",
+        default=True,
+        help="continue a run in --out, skipping settled records (the default)",
+    )
+    match.add_argument(
+        "--no-resume",
+        dest="resume",
+        action="store_false",
+        help="recompute every record; earlier results move to history",
+    )
     match.add_argument("--limit", type=int, default=None, help="process only the first N records")
     match.add_argument(
         "--max-calls",
         type=int,
         default=None,
-        help="cap upstream LLM requests in this invocation (retries and rewrites included)",
+        help="cap upstream LLM requests in this invocation (retries and rewrites "
+        "included); default: no limit",
     )
     match.add_argument("--rebuild-index", action="store_true", help="replace an incompatible index")
 
@@ -128,57 +139,112 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="group one collection into clusters of equivalent records (experimental)",
     )
-    cluster.add_argument("--job", required=True, help="a kind: cluster job file")
-    cluster.add_argument("--out", required=True, help="run directory")
+    # `xwalk cluster --job J --out D` runs a job; `xwalk cluster eval ...` scores a run.
+    # --job/--out are checked in the handler, since `eval` takes neither.
+    cluster.add_argument("--job", help="a kind: cluster job file (required to run)")
+    cluster.add_argument("--out", help="run directory (required to run)")
     cluster.add_argument(
         "--max-calls",
         type=int,
         default=None,
         help="cap upstream LLM requests in this invocation; reaching it aborts (resumable)",
     )
+    cluster_sub = cluster.add_subparsers(dest="cluster_command")
+    cluster_eval = cluster_sub.add_parser(
+        "eval",
+        parents=[common],
+        help="score a clustering run against gold clusters: no model calls",
+    )
+    cluster_eval.add_argument("--run", required=True, help="clustering run directory")
+    cluster_eval.add_argument(
+        "--gold", required=True, help="gold partition: item_id,cluster_id (CSV or JSONL)"
+    )
+    cluster_eval.add_argument(
+        "--out", dest="report_out", default=None, help="also write the report as JSON here"
+    )
+    cluster_inspect = cluster_sub.add_parser(
+        "inspect",
+        parents=[common],
+        help="summarise a clustering run (read-only, no model calls)",
+    )
+    cluster_inspect.add_argument("--run", required=True, help="clustering run directory")
+    cluster_explain = cluster_sub.add_parser(
+        "explain",
+        parents=[common],
+        help="explain one record of a clustering run (read-only, no model calls)",
+    )
+    cluster_explain.add_argument("source_id", help="the source record id to explain")
+    cluster_explain.add_argument("--run", required=True, help="clustering run directory")
+    cluster_explain.add_argument(
+        "--full", action="store_true", help="include the stored prompts and retrieved clusters"
+    )
 
     search = sub.add_parser(
         "search", parents=[common], help="retrieve fused candidates for a query: no model calls"
     )
-    search.add_argument("query")
-    search.add_argument("--job", required=True)
+    search.add_argument("query", help="the text to retrieve candidates for")
+    search.add_argument("--job", required=True, help="the job file (YAML)")
     search.add_argument("--index", required=True, help="index directory (built if absent)")
     search.add_argument("--limit", type=int, default=10, help="candidates to return (max 100)")
 
     inspect = sub.add_parser("inspect", parents=[common], help="summarise a run directory")
-    inspect.add_argument("--run", required=True)
+    inspect.add_argument("--run", required=True, help="run directory")
 
     explain = sub.add_parser("explain", parents=[common], help="explain one source's decision")
-    explain.add_argument("source_id")
-    explain.add_argument("--run", required=True)
+    explain.add_argument("source_id", help="the source record id to explain")
+    explain.add_argument("--run", required=True, help="run directory")
     explain.add_argument("--full", action="store_true", help="include the stored result")
 
     results = sub.add_parser(
         "results", parents=[common], help="one page of a run's current results"
     )
-    results.add_argument("--run", required=True)
+    results.add_argument("--run", required=True, help="run directory")
     results.add_argument("--status", default=None, help="only rows with this status")
-    results.add_argument("--offset", type=int, default=0)
+    results.add_argument("--offset", type=int, default=0, help="rows to skip (default 0)")
     results.add_argument("--limit", type=int, default=50, help="page size (max 200)")
 
     export = sub.add_parser("export", parents=[common], help="export a view of a run")
-    export.add_argument("--run", required=True)
-    export.add_argument("--view", choices=EXPORT_VIEWS, default="raw")
-    export.add_argument("--out", required=True)
+    export.add_argument("--run", required=True, help="run directory")
+    export.add_argument(
+        "--view",
+        choices=EXPORT_VIEWS,
+        default="raw",
+        help="raw: model decisions; reviewed: with review decisions applied; history: "
+        "every result ever committed (default raw)",
+    )
+    export.add_argument("--out", required=True, help="file to write")
+
+    upgrade = sub.add_parser(
+        "upgrade",
+        parents=[common],
+        help="migrate a run's ledger to the current schema in place, after a backup copy",
+    )
+    upgrade.add_argument("--run", required=True, help="run directory")
 
     ev = sub.add_parser("eval", parents=[common], help="evaluate a run against gold labels")
-    ev.add_argument("--run", required=True)
-    ev.add_argument("--gold", required=True)
+    ev.add_argument("--run", required=True, help="run directory")
+    ev.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
     ev.add_argument("--out", default=None, help="write <out>.json and <out>.txt")
+    ev.add_argument("--job", default=None, help="original job; supplies target ids for the ceiling")
+    ev.add_argument(
+        "--replay-policy",
+        default=None,
+        help="job YAML whose policy is replayed on recorded attempts",
+    )
 
     fit = sub.add_parser(
         "fit",
         parents=[common],
         help="fit decider thresholds on a completed run and gold labels",
     )
-    fit.add_argument("--run", required=True)
-    fit.add_argument("--gold", required=True)
-    fit.add_argument("--precision", type=float, default=0.95)
+    fit.add_argument("--run", required=True, help="a completed decider run directory")
+    fit.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
+    fit.add_argument(
+        "--precision",
+        type=float,
+        default=0.95,
+        help="the precision the recommended thresholds must reach (default 0.95)",
+    )
     fit.add_argument(
         "--job",
         default=None,
@@ -197,27 +263,40 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     comp = sub.add_parser("compare", parents=[common], help="compare completed runs")
-    comp.add_argument("--gold", required=True)
+    comp.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
     comp.add_argument("--run", action="append", required=True, help="LABEL=PATH, repeatable")
 
     abl = sub.add_parser("ablate", parents=[common], help="re-run with each component disabled")
-    abl.add_argument("--job", required=True)
-    abl.add_argument("--gold", required=True)
-    abl.add_argument("--out", required=True)
+    abl.add_argument("--job", required=True, help="the job file (YAML)")
+    abl.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
+    abl.add_argument("--out", required=True, help="output directory (indexes and ablation.json)")
 
     prompts = sub.add_parser("prompts", help="draft or optimise prompt slots")
     prompt_sub = prompts.add_subparsers(dest="prompts_command")
-    draft = prompt_sub.add_parser("draft", parents=[common])
-    draft.add_argument("--job", required=True)
-    draft.add_argument("--describe", required=True)
-    draft.add_argument("--out", required=True)
-    optimise = prompt_sub.add_parser("optimize", parents=[common])
-    optimise.add_argument("--job", required=True)
-    optimise.add_argument("--gold", required=True)
-    optimise.add_argument("--out", required=True)
-    optimise.add_argument("--role", default="selector")
-    optimise.add_argument("--rounds", type=int, default=4)
-    optimise.add_argument("--max-calls", type=int, default=None)
+    draft = prompt_sub.add_parser(
+        "draft", parents=[common], help="draft prompt slots from a task description"
+    )
+    draft.add_argument("--job", required=True, help="the job file (YAML)")
+    draft.add_argument("--describe", required=True, help="the matching task, in words")
+    draft.add_argument("--out", required=True, help="slots YAML file to write")
+    optimise = prompt_sub.add_parser(
+        "optimize", parents=[common], help="improve one prompt role against gold labels"
+    )
+    optimise.add_argument("--job", required=True, help="the job file (YAML)")
+    optimise.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
+    optimise.add_argument("--out", required=True, help="work directory")
+    optimise.add_argument(
+        "--role",
+        default="selector",
+        help="selector, scorer, rewriter or doc_template (default selector)",
+    )
+    optimise.add_argument("--rounds", type=int, default=4, help="maximum rounds (default 4)")
+    optimise.add_argument(
+        "--max-calls",
+        type=int,
+        default=None,
+        help="hard budget of LLM calls; refuses to start if the estimate exceeds it",
+    )
 
     mcp = sub.add_parser(
         "mcp", help="serve bounded operations to an agent over MCP stdio (needs xwalk[mcp])"
@@ -233,6 +312,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="answer every model call with a fixed scripted reply instead of the job's "
         "endpoint (demos and tests; results are meaningless)",
+    )
+    mcp.add_argument(
+        "--root",
+        action="append",
+        default=None,
+        metavar="DIR",
+        help="a directory tool paths (and the files a job refers to) must resolve into; "
+        "repeatable (default: the working directory)",
     )
 
     ui = sub.add_parser("ui", help="serve a local web app to explore jobs and runs")
@@ -279,6 +366,24 @@ def _build_parser() -> argparse.ArgumentParser:
     ui.add_argument(
         "--frame-ancestors", default=None, help="origins allowed to embed the page in a frame"
     )
+    ui.add_argument(
+        "--trust-proxy",
+        action="store_true",
+        help="public mode: trust X-Forwarded-Proto/-For from the HTTPS proxy in front "
+        "(only when every request reaches the server through it)",
+    )
+    ui.add_argument(
+        "--sessions-per-ip",
+        type=int,
+        default=20,
+        help="public mode: new visitor sessions one address may open per 10 minutes (0: no limit)",
+    )
+    ui.add_argument(
+        "--allow-local-downloads",
+        action="store_true",
+        help="let library downloads use http and private addresses (an intranet mirror); "
+        "not with --public",
+    )
     ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
     ui.add_argument(
         "--chatgpt-login",
@@ -298,13 +403,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     review = sub.add_parser("review", help="export or apply human review")
     review_sub = review.add_subparsers(dest="review_command")
-    rexport = review_sub.add_parser("export", parents=[common])
-    rexport.add_argument("--run", required=True)
-    rexport.add_argument("--out", required=True)
-    apply_ = review_sub.add_parser("apply", parents=[common])
-    apply_.add_argument("--run", required=True)
-    apply_.add_argument("--reviewed", required=True)
-    apply_.add_argument("--job", required=True)
+    rexport = review_sub.add_parser(
+        "export", parents=[common], help="write the rows that need review to a CSV"
+    )
+    rexport.add_argument("--run", required=True, help="run directory")
+    rexport.add_argument("--out", required=True, help="review CSV to write")
+    apply_ = review_sub.add_parser(
+        "apply", parents=[common], help="record the decisions of a filled-in review CSV"
+    )
+    apply_.add_argument("--run", required=True, help="run directory")
+    apply_.add_argument("--reviewed", required=True, help="the filled-in review CSV")
+    apply_.add_argument("--job", required=True, help="the job the run used (for targets)")
 
     return parser
 
@@ -346,6 +455,31 @@ def _progress(result: Any) -> None:
     print(f"  {result.source_id}: {result.status.value}", file=sys.stderr)
 
 
+# Consecutive failed records after which an uncapped run warns (once) while it runs.
+_FAILING_STREAK = 3
+
+
+def _match_progress(max_calls: int | None) -> Callable[[Any], None]:
+    """Per-record progress, plus one warning when an uncapped run keeps failing."""
+    streak = 0
+    warned = False
+
+    def progress(result: Any) -> None:
+        nonlocal streak, warned
+        _progress(result)
+        streak = streak + 1 if result.status.value == "failed" else 0
+        if max_calls is None and streak >= _FAILING_STREAK and not warned:
+            warned = True
+            print(
+                f"warning: {streak} records in a row failed and no --max-calls is set; "
+                "every record spends its retries against a failing provider. Ctrl-C to "
+                "stop (the run resumes), then check the endpoint",
+                file=sys.stderr,
+            )
+
+    return progress
+
+
 def _cmd_match(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
@@ -357,7 +491,7 @@ def _cmd_match(args: argparse.Namespace) -> OpResult:
         limit=args.limit,
         max_calls=args.max_calls,
         rebuild_index=args.rebuild_index,
-        progress=_progress,
+        progress=_match_progress(args.max_calls),
         # Looked up at call time, so a test can swap in fakes without an API key.
         decider_factory=lambda job: _build_decider(job),
         rewrite_llm_factory=lambda job: _build_rewrite_llm(job),
@@ -371,6 +505,42 @@ def _cluster_progress(source_id: str, outcome: str) -> None:
 def _cmd_cluster(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
+    command = getattr(args, "cluster_command", None)
+    if command is not None:
+        # Flags typed before the subcommand belong to the run parser; ignoring them
+        # would let `xwalk cluster --out report.json eval ...` exit 0 and write no report.
+        stray = [
+            flag
+            for flag, value in (
+                ("--job", args.job),
+                ("--out", args.out),
+                ("--max-calls", args.max_calls),
+            )
+            if value is not None
+        ]
+        if stray:
+            raise OpError(
+                f"cluster {command}",
+                "usage",
+                f"{', '.join(stray)} before `{command}` belong to running a job; give "
+                f"`xwalk cluster {command}` its own flags after `{command}` (for `eval`: "
+                "--run, --gold and --out, the report file)",
+                exit_code=EXIT_USAGE,
+            )
+        if command == "inspect":
+            return ops.cluster_inspect(args.run)
+        if command == "explain":
+            return ops.cluster_explain(args.run, args.source_id, full=args.full)
+        return ops.cluster_eval(args.run, args.gold, out=args.report_out)
+    missing = [flag for flag, value in (("--job", args.job), ("--out", args.out)) if not value]
+    if missing:
+        raise OpError(
+            "cluster",
+            "usage",
+            f"xwalk cluster needs {' and '.join(missing)} (or `xwalk cluster eval`, "
+            "`inspect` or `explain`)",
+            exit_code=EXIT_USAGE,
+        )
     return ops.cluster(args.job, args.out, max_calls=args.max_calls, progress=_cluster_progress)
 
 
@@ -404,24 +574,18 @@ def _cmd_export(args: argparse.Namespace) -> OpResult:
     return ops.export(args.run, args.view, args.out)
 
 
-def _cmd_eval(args: argparse.Namespace) -> OpResult:
-    from xwalk.evaluate.gold import load_gold_csv
-    from xwalk.evaluate.report import evaluate, render_report, write_report
-    from xwalk.ledger import Ledger
+def _cmd_upgrade(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
 
-    run_dir = Path(args.run)
-    gold = load_gold_csv(args.gold)
-    ledger = Ledger.open(run_dir / "ledger.sqlite")
-    try:
-        report = evaluate(ledger, _run_fingerprint_of(run_dir), gold)
-    finally:
-        ledger.close()
-    result = OpResult(operation="eval", lines=[render_report(report)])
-    result.data = {"report": report.as_dict()}
-    if args.out:
-        write_report(report, args.out)
-        result.artifacts = {"json": f"{args.out}.json", "text": f"{args.out}.txt"}
-    return result
+    return ops.upgrade(args.run)
+
+
+def _cmd_eval(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.evaluate_run(
+        args.run, args.gold, job=args.job, replay_policy=args.replay_policy, out=args.out
+    )
 
 
 def _write_fitted_job(job_path: str, out_path: str, point: FitPoint) -> None:
@@ -478,6 +642,7 @@ def _cmd_fit(args: argparse.Namespace) -> OpResult:
         )
 
     run_dir = Path(args.run)
+    ops.refuse_cluster_run(run_dir, operation)
     if not (run_dir / "manifest.json").is_file() or not (run_dir / "ledger.sqlite").is_file():
         raise OpError(
             operation,
@@ -486,7 +651,7 @@ def _cmd_fit(args: argparse.Namespace) -> OpResult:
             exit_code=EXIT_USAGE,
         )
     gold = load_gold_csv(args.gold)
-    ledger = Ledger.open(run_dir / "ledger.sqlite")
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
     fingerprint = _run_fingerprint_of(run_dir)
     try:
         results = list(ledger.iter_results(fingerprint))
@@ -554,6 +719,7 @@ def _cmd_compare(args: argparse.Namespace) -> OpResult:
     from xwalk.evaluate.compare import RunSummary, compare_runs, summarise_run
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.ledger import Ledger
+    from xwalk.ops import refuse_cluster_run
 
     gold = load_gold_csv(args.gold)
     summaries: list[RunSummary] = []
@@ -564,7 +730,8 @@ def _cmd_compare(args: argparse.Namespace) -> OpResult:
             )
         label, _, path = entry.partition("=")
         run_dir = Path(path)
-        ledger = Ledger.open(run_dir / "ledger.sqlite")
+        refuse_cluster_run(run_dir, "compare")
+        ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
         try:
             summaries.append(summarise_run(ledger, _run_fingerprint_of(run_dir), gold, label=label))
         finally:
@@ -743,6 +910,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
     "results": _cmd_results,
     "explain": _cmd_explain,
     "export": _cmd_export,
+    "upgrade": _cmd_upgrade,
     "eval": _cmd_eval,
     "fit": _cmd_fit,
     "compare": _cmd_compare,
@@ -757,7 +925,11 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
 
 def _operation_name(args: argparse.Namespace) -> str:
     command = str(args.command)
-    sub = getattr(args, "prompts_command", None) or getattr(args, "review_command", None)
+    sub = (
+        getattr(args, "prompts_command", None)
+        or getattr(args, "review_command", None)
+        or getattr(args, "cluster_command", None)
+    )
     return f"{command} {sub}" if sub else command
 
 
@@ -785,7 +957,11 @@ def _serve_mcp(args: argparse.Namespace) -> int:
     try:
         from xwalk.mcp_server import serve
 
-        serve(max_calls_cap=args.max_calls_cap, offline_model=args.offline_model)
+        serve(
+            max_calls_cap=args.max_calls_cap,
+            offline_model=args.offline_model,
+            roots=args.root,
+        )
     except KeyboardInterrupt:
         return EXIT_INTERRUPTED
     except Exception as exc:
@@ -822,6 +998,9 @@ def _serve_ui(args: argparse.Namespace) -> int:
             chatgpt_login=args.chatgpt_login,
             dense=args.dense,
             dense_device=args.dense_device,
+            trust_proxy=args.trust_proxy,
+            sessions_per_ip=args.sessions_per_ip,
+            allow_local_downloads=args.allow_local_downloads,
         )
     except KeyboardInterrupt:
         return EXIT_OK

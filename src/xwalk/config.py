@@ -22,21 +22,29 @@ import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from xwalk._yaml import load_strict_yaml, yaml_error_message
-from xwalk.batch import decision_run_fingerprint_components, run_fingerprint_components
+from xwalk.batch import (
+    decision_run_fingerprint_components,
+    run_fingerprint_components,
+    stage_overrides,
+)
 from xwalk.decide.base import DecisionClient
 from xwalk.decide.jev import JevClient
 from xwalk.decide.matcher import DecisionMatcher
 from xwalk.decide.policy import DecisionPolicy
 from xwalk.decide.questions import QuestionSet
-from xwalk.fingerprint import hash_value
-from xwalk.llm.base import LLMClient
-from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
+from xwalk.fingerprint import hash_value, redact_url
+from xwalk.llm.base import LLMCapabilities, LLMClient, LLMRequest, LLMResponse
+from xwalk.llm.openai_compat import (
+    CAPABILITY_PROFILES,
+    OpenAICompatClient,
+    openai_compat_fingerprint,
+)
 from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
 from xwalk.prompts.contract import PromptSet, load_slots
@@ -341,6 +349,9 @@ class PolicySpec(_Spec):
     verify_band: tuple[float, float] | None = (0.6, 0.8)
     audit_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     concurrency: int = Field(default=32, ge=1)
+    deduplicate_candidates: bool = False
+    alternate_queues: bool = False
+    chase_verifier_leads: bool = False
     legacy_id_resolution: bool = False
     retriever_timeout: float = Field(default=60.0, gt=0.0)
 
@@ -399,13 +410,6 @@ class JobSpec(_Spec):
             raise ValueError("a job needs exactly one of `llm:` or `decider:`")
         if self.decider is not None and "selector" in self.model_fields_set:
             raise ValueError("selector does not apply to a decider job")
-        if self.llm is not None and len(self.templates.queries) > 1:
-            # The LLM matcher searches one query per attempt (the rewriter supplies the
-            # next); extra queries would be fingerprinted and silently never searched.
-            raise ValueError(
-                "templates.queries with more than one entry applies to decider jobs; "
-                "an llm job searches templates.query (or a single queries entry)"
-            )
         seen: set[str] = set()
         for spec in self.retrievers:
             if spec.index_name in seen:
@@ -535,6 +539,48 @@ class JobSpec(_Spec):
     def build_selector_policy(self) -> SelectorPolicy:
         return SelectorPolicy(**self.selector.model_dump())
 
+    def _matcher_stages(self, llm: LLMClient, prompts: PromptSet) -> _MatcherStages:
+        """The stages `build_matcher` hands the Matcher. The fingerprint reads its
+        stage identity off these same constructions."""
+        templates = self.build_templates()
+        policy = self.build_policy()
+        return _MatcherStages(
+            selector=Selector(
+                llm,
+                prompts,
+                templates,
+                policy=self.build_selector_policy(),
+                legacy_id_resolution=policy.legacy_id_resolution,
+            ),
+            scorer=Scorer(llm, prompts, templates, review_floor=policy.review_floor),
+            verifier=Verifier(llm, prompts, templates),
+            rewriter=QueryRewriter(llm, prompts, templates),
+        )
+
+    def _run_components(
+        self,
+        store: TargetStore,
+        retrievers: Sequence[Retriever],
+        llm: LLMClient,
+        prompts: PromptSet,
+        stages: _MatcherStages,
+    ) -> dict[str, Any]:
+        return run_fingerprint_components(
+            templates=self.build_templates(),
+            prompts=prompts,
+            store=store,
+            retrievers=retrievers,
+            llm=llm,
+            policy=self.build_policy(),
+            selector_policy=self.build_selector_policy(),
+            # The same fallback depth `build_matcher` hands the Matcher.
+            retriever_limit=self._retriever_limit(),
+            selector=stages.selector,
+            scorer=stages.scorer,
+            verifier=stages.verifier,
+            rewriter=stages.rewriter,
+        )
+
     def run_fingerprint_components(
         self,
         *,
@@ -543,16 +589,9 @@ class JobSpec(_Spec):
         llm: LLMClient,
         prompts: PromptSet | None = None,
     ) -> dict[str, Any]:
-        return run_fingerprint_components(
-            templates=self.build_templates(),
-            prompts=prompts or self.build_prompts(),
-            store=store,
-            retrievers=retrievers,
-            llm=llm,
-            policy=self.build_policy(),
-            selector_policy=self.build_selector_policy(),
-            # The same fallback depth `build_matcher` hands the Matcher.
-            retriever_limit=self._retriever_limit(),
+        resolved = prompts or self.build_prompts()
+        return self._run_components(
+            store, retrievers, llm, resolved, self._matcher_stages(llm, resolved)
         )
 
     def run_fingerprint(
@@ -585,32 +624,57 @@ class JobSpec(_Spec):
         The prompt optimiser needs this: without it every round silently re-runs the
         original slots and the optimiser measures nothing.
         """
-        templates = self.build_templates()
         resolved = prompts or self.build_prompts()
-        policy = self.build_policy()
+        stages = self._matcher_stages(llm, resolved)
         return Matcher(
-            templates=templates,
+            templates=self.build_templates(),
             retrievers=list(retrievers),
             store=store,
-            selector=Selector(
-                llm,
-                resolved,
-                templates,
-                policy=self.build_selector_policy(),
-                legacy_id_resolution=policy.legacy_id_resolution,
-            ),
-            scorer=Scorer(llm, resolved, templates, review_floor=policy.review_floor),
-            verifier=Verifier(llm, resolved, templates),
-            rewriter=QueryRewriter(llm, resolved, templates),
-            policy=policy,
-            run_fingerprint=self.run_fingerprint(
-                store=store, retrievers=retrievers, llm=llm, prompts=resolved
+            selector=stages.selector,
+            scorer=stages.scorer,
+            verifier=stages.verifier,
+            rewriter=stages.rewriter,
+            policy=self.build_policy(),
+            run_fingerprint=hash_value(
+                self._run_components(store, retrievers, llm, resolved, stages)
             ),
             retriever_limit=self._retriever_limit(),
         )
 
-    def decision_run_fingerprint_components(
-        self, *, store: TargetStore, retrievers: Sequence[Retriever], decider: DecisionClient
+    def _decision_stages(
+        self, decider: DecisionClient, rewrite_llm: LLMClient | None
+    ) -> _DecisionStages:
+        """The stages `build_decision_matcher` hands the DecisionMatcher; the rewriter
+        only when the job has `decider.rewrite:` and its client is given."""
+        templates = self.build_templates()
+        questions = self.build_questions()
+        policy = self.build_decision_policy()
+        rewrite = None if self.decider is None else self.decider.rewrite
+        rewriter: QueryRewriter | None = None
+        if rewrite is not None and rewrite_llm is not None:
+            rewriter = QueryRewriter(
+                rewrite_llm, self.build_prompts(), templates, max_queries=rewrite.max_queries
+            )
+        return _DecisionStages(
+            screener=Screener(
+                decider,
+                questions,
+                templates,
+                chunk_size=policy.chunk_size,
+                shortlist_size=policy.shortlist_size,
+                shortlist_floor=policy.shortlist_floor,
+            ),
+            chooser=Chooser(decider, questions, templates),
+            gate=PropertyGate(decider, questions, templates),
+            rewriter=rewriter,
+        )
+
+    def _decision_components(
+        self,
+        store: TargetStore,
+        retrievers: Sequence[Retriever],
+        decider: DecisionClient,
+        stages: _DecisionStages,
     ) -> dict[str, Any]:
         return decision_run_fingerprint_components(
             templates=self.build_templates(),
@@ -619,31 +683,79 @@ class JobSpec(_Spec):
             retrievers=retrievers,
             decider=decider,
             policy=self.build_decision_policy(),
-            rewrite=self._rewrite_fingerprint(),
+            rewrite=self._rewrite_fingerprint(stages.rewriter),
+            screener=stages.screener,
+            chooser=stages.chooser,
+            gate=stages.gate,
+            # `rewrite` above identifies it; passed so the stage set is complete.
+            rewriter=stages.rewriter,
+        )
+
+    def decision_run_fingerprint_components(
+        self,
+        *,
+        store: TargetStore,
+        retrievers: Sequence[Retriever],
+        decider: DecisionClient,
+        rewrite_llm: LLMClient | None = None,
+    ) -> dict[str, Any]:
+        """`rewrite_llm` is the client the rewrite stage will run on. Pass it whenever
+        it is known: without it the rewrite is identified by the job's
+        `decider.rewrite.llm` block alone, as if the job built its own client."""
+        return self._decision_components(
+            store, retrievers, decider, self._decision_stages(decider, rewrite_llm)
         )
 
     def decision_run_fingerprint(
-        self, *, store: TargetStore, retrievers: Sequence[Retriever], decider: DecisionClient
+        self,
+        *,
+        store: TargetStore,
+        retrievers: Sequence[Retriever],
+        decider: DecisionClient,
+        rewrite_llm: LLMClient | None = None,
     ) -> str:
         return hash_value(
             self.decision_run_fingerprint_components(
-                store=store, retrievers=retrievers, decider=decider
+                store=store, retrievers=retrievers, decider=decider, rewrite_llm=rewrite_llm
             )
         )
 
-    def _rewrite_fingerprint(self) -> str | None:
+    def _rewrite_fingerprint(self, rewriter: QueryRewriter | None = None) -> str | None:
         """What the rewrite would propose depends on its model, its prompt, and how many
-        queries it may return; credentials and the env var name do not change that."""
+        queries it may return; credentials and the env var name do not change that.
+
+        The job's own block is the base, so a job whose rewrite runs on the client it
+        describes keeps its fingerprint. `rewriter`, the stage as constructed, adds the
+        settings in which it differs from that: an injected client, another model, a
+        capability override, a per-stage generation setting.
+        """
         if self.decider is None or self.decider.rewrite is None:
             return None
         spec = self.decider.rewrite
-        return hash_value(
+        llm = spec.llm.model_dump(exclude={"api_key", "api_key_env"})
+        if llm.get("base_url"):
+            # Userinfo or a key parameter in the URL is a credential, not identity.
+            llm["base_url"] = redact_url(llm["base_url"])
+        job = hash_value(
             {
-                "llm": spec.llm.model_dump(exclude={"api_key", "api_key_env"}),
+                "llm": llm,
                 "max_queries": spec.max_queries,
                 "prompts": self.build_prompts().fingerprint,
             }
         )
+        if rewriter is None:
+            return job
+        if spec.llm.kind == "chatgpt":  # no job-built client to compare with
+            return hash_value({"job": job, "rewriter": dict(rewriter.identity)})
+        expected = QueryRewriter(
+            # Only its identity is read: no client is built, nothing is called.
+            _SpecIdentity(spec.llm),
+            self.build_prompts(),
+            self.build_templates(),
+            max_queries=spec.max_queries,
+        )
+        overrides = stage_overrides({"rewriter": (rewriter, expected)})
+        return job if not overrides else hash_value({"job": job, "overrides": overrides})
 
     def build_decision_matcher(
         self,
@@ -655,41 +767,40 @@ class JobSpec(_Spec):
     ) -> DecisionMatcher:
         """`rewrite_llm` is the client for `decider.rewrite`; it is built from the job
         file when the block is present and none is passed."""
-        templates = self.build_templates()
-        questions = self.build_questions()
-        policy = self.build_decision_policy()
         rewrite = None if self.decider is None else self.decider.rewrite
-        rewriter: QueryRewriter | None = None
         if rewrite is None:
             if rewrite_llm is not None:
                 raise ValueError("a rewrite LLM was passed but the job has no decider.rewrite:")
         else:
-            rewriter = QueryRewriter(
-                rewrite_llm or self.build_rewrite_llm(),
-                self.build_prompts(),
-                templates,
-                max_queries=rewrite.max_queries,
-            )
+            rewrite_llm = rewrite_llm or self.build_rewrite_llm()
+        stages = self._decision_stages(decider, rewrite_llm)
         return DecisionMatcher(
-            templates=templates,
+            templates=self.build_templates(),
             retrievers=list(retrievers),
             store=store,
-            screener=Screener(
-                decider,
-                questions,
-                templates,
-                chunk_size=policy.chunk_size,
-                shortlist_size=policy.shortlist_size,
-                shortlist_floor=policy.shortlist_floor,
+            screener=stages.screener,
+            chooser=stages.chooser,
+            gate=stages.gate,
+            policy=self.build_decision_policy(),
+            run_fingerprint=hash_value(
+                self._decision_components(store, retrievers, decider, stages)
             ),
-            chooser=Chooser(decider, questions, templates),
-            gate=PropertyGate(decider, questions, templates),
-            policy=policy,
-            run_fingerprint=self.decision_run_fingerprint(
-                store=store, retrievers=retrievers, decider=decider
-            ),
-            rewriter=rewriter,
+            rewriter=stages.rewriter,
         )
+
+
+class _MatcherStages(NamedTuple):
+    selector: Selector
+    scorer: Scorer
+    verifier: Verifier
+    rewriter: QueryRewriter
+
+
+class _DecisionStages(NamedTuple):
+    screener: Screener
+    chooser: Chooser
+    gate: PropertyGate
+    rewriter: QueryRewriter | None
 
 
 def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
@@ -703,6 +814,68 @@ def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
         api_key = os.environ.get(spec.api_key_env)
         if not api_key:
             raise CredentialMissingError(spec.api_key_env, where)
+    return _llm_client(spec, api_key=api_key)
+
+
+def _litellm_kwargs(spec: LLMSpec, api_key: str | None) -> dict[str, Any]:
+    # The key the job required must also be sent. LiteLLMClient keeps it out of its
+    # fingerprint (`without_secrets`), so it never reaches a manifest.
+    extra: dict[str, Any] = {"api_key": api_key} if api_key else {}
+    if spec.base_url:
+        # LiteLLM's name for the endpoint. It is identity, hashed redacted by the client.
+        extra["api_base"] = spec.base_url
+    return extra
+
+
+class _SpecIdentity:
+    """What a spec's client would report for identity, without building the client
+    (building an HTTP client reads the environment and can fail). Never called."""
+
+    def __init__(self, spec: LLMSpec) -> None:
+        self._spec = spec
+
+    @property
+    def model(self) -> str:
+        return self._spec.model
+
+    @property
+    def capabilities(self) -> LLMCapabilities:
+        if self._spec.kind == "openai_compat":
+            return CAPABILITY_PROFILES[self._spec.profile]
+        return LLMCapabilities()
+
+    @property
+    def generation_defaults(self) -> dict[str, Any]:
+        return {"temperature": self._spec.temperature, "max_tokens": self._spec.max_tokens}
+
+    @property
+    def fingerprint(self) -> str:
+        spec = self._spec
+        if spec.kind == "openai_compat":
+            return openai_compat_fingerprint(
+                base_url=spec.base_url or "",
+                model=spec.model,
+                profile=spec.profile,
+                temperature=spec.temperature,
+                max_tokens=spec.max_tokens,
+                seed=spec.seed,
+            )
+        from xwalk.llm.litellm import litellm_fingerprint
+
+        return litellm_fingerprint(
+            spec.model,
+            temperature=spec.temperature,
+            max_tokens=spec.max_tokens,
+            seed=spec.seed,
+            **_litellm_kwargs(spec, None),
+        )
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:  # pragma: no cover
+        raise AssertionError("an identity stand-in is never called")
+
+
+def _llm_client(spec: LLMSpec, *, api_key: str | None) -> LLMClient:
+    """The client an `openai_compat` or `litellm` spec describes, with `api_key`."""
     if spec.kind == "openai_compat":
         return OpenAICompatClient(
             base_url=spec.base_url or "",
@@ -720,6 +893,7 @@ def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
         temperature=spec.temperature,
         max_tokens=spec.max_tokens,
         seed=spec.seed,
+        **_litellm_kwargs(spec, api_key),
     )
 
 

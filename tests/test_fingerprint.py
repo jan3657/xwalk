@@ -94,6 +94,20 @@ def test_litellm_credentials_are_not_part_of_the_run_identity():
     assert a.fingerprint != c.fingerprint
 
 
+def test_credentials_in_a_litellm_api_base_are_not_part_of_the_run_identity():
+    from xwalk.llm.litellm import LiteLLMClient
+
+    a = LiteLLMClient("gpt-4o", api_base="https://user:secret1@host/v1")
+    b = LiteLLMClient("gpt-4o", api_base="https://host/v1?key=secret2")
+    c = LiteLLMClient("gpt-4o", api_base="https://other/v1")
+    assert (
+        a.fingerprint
+        == b.fingerprint
+        == LiteLLMClient("gpt-4o", api_base="https://host/v1").fingerprint
+    )
+    assert a.fingerprint != c.fingerprint
+
+
 def test_credentials_in_a_base_url_are_not_part_of_the_run_identity():
     from xwalk.llm.openai_compat import OpenAICompatClient
 
@@ -110,3 +124,11 @@ def test_secret_parameter_names_are_recognised_without_catching_generation_setti
         assert is_secret_name(name), name
     for name in ("max_tokens", "api_base", "seed", "temperature", "model"):
         assert not is_secret_name(name), name
+
+
+def test_redact_url_keeps_ipv6_brackets_apart_from_the_port():
+    from xwalk.fingerprint import redact_url
+
+    assert redact_url("http://[::1]:8080/decide") == "http://[::1]:8080/decide"
+    assert redact_url("http://[::1:8080]/decide") == "http://[::1:8080]/decide"
+    assert redact_url("http://user:pw@[::1]:8080/x?api_key=s") == "http://[::1]:8080/x"

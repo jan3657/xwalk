@@ -55,6 +55,12 @@ def test_source_state_omits_an_empty_context():
     assert build_source_state(SOURCE, "ctx") == {"fields": dict(SOURCE.fields), "context": "ctx"}
 
 
+def test_source_state_omits_null_fields():
+    # Render version 2: the decider sees a null field exactly as a missing one.
+    source = Record(id="s1", fields={"mention": "glucose", "aliases": None, "note": ""})
+    assert build_source_state(source, "") == {"fields": {"mention": "glucose", "note": ""}}
+
+
 async def test_one_noul_per_candidate_with_keys_numbered_across_chunks():
     fake = FakeDecider()
     screener = Screener(fake, QUESTIONS, TEMPLATES, chunk_size=2)
@@ -166,6 +172,58 @@ async def test_a_failing_chunk_cancels_the_siblings_still_in_flight():
     with pytest.raises(ScreenFailed):
         await screener.screen(SOURCE, "", _cands("glucose", "fructose", "sucrose"))
     assert cancelled == ["C002"]
+
+
+async def test_a_fatal_chunk_wins_over_an_earlier_retryable_one():
+    """Chunk order must not decide the outcome: a fatal error stops the run even when a
+    retryable failure sits before it in the chunk list."""
+
+    def first_retryable_then_fatal(state, questions):
+        if "n_C001" in questions:
+            return DecisionRetryableError("busy")
+        if "n_C003" in questions:
+            return DecisionFatalError("bad key")
+        return overlap_handler(state, questions)
+
+    screener = Screener(
+        FakeDecider(handler=first_retryable_then_fatal), QUESTIONS, TEMPLATES, chunk_size=2
+    )
+    with pytest.raises(DecisionFatalError, match="bad key") as caught:
+        await screener.screen(SOURCE, "", _cands("glucose", "fructose", "sucrose"))
+    assert not isinstance(caught.value, ScreenFailed)
+    # both failed requests were dispatched; neither reported tokens
+    assert caught.value.usage is not None
+    assert (caught.value.usage.calls, caught.value.usage.unknown_calls) == (2, 2)
+
+
+async def test_every_failed_chunk_is_billed():
+    def two_fail(state, questions):
+        if "n_C001" in questions or "n_C005" in questions:
+            return DecisionRetryableError("busy")
+        return overlap_handler(state, questions)
+
+    screener = Screener(FakeDecider(handler=two_fail), QUESTIONS, TEMPLATES, chunk_size=2)
+    with pytest.raises(ScreenFailed) as caught:
+        await screener.screen(SOURCE, "", _cands("a", "b", "c", "d", "e"))
+    # one paid chunk (C003-C004) plus two failed requests
+    assert (caught.value.usage.calls, caught.value.usage.unknown_calls) == (3, 2)
+    assert "2 chunks failed" in str(caught.value)
+
+
+async def test_a_chunk_cancelled_after_dispatch_is_billed_as_unknown():
+    class SlowDecider(FakeDecider):
+        async def decide(self, state, questions):
+            if "n_C001" in questions:
+                return await super().decide(state, questions)
+            if "n_C002" in questions:
+                await asyncio.sleep(10)  # in flight when its sibling fails
+            raise DecisionRetryableError("busy")
+
+    screener = Screener(SlowDecider(), QUESTIONS, TEMPLATES, chunk_size=1)
+    with pytest.raises(ScreenFailed) as caught:
+        await screener.screen(SOURCE, "", _cands("glucose", "fructose", "sucrose"))
+    # C001 answered, C003 failed, C002 was dispatched and then cancelled
+    assert (caught.value.usage.calls, caught.value.usage.unknown_calls) == (3, 2)
 
 
 async def test_a_single_candidate_over_the_cap_is_sent_with_a_note():

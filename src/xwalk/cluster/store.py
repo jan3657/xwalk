@@ -24,7 +24,10 @@ run can be compared row for row.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -168,6 +171,7 @@ class ClusterStore:
     def __init__(self, conn: sqlite3.Connection, path: Path) -> None:
         self._conn = conn
         self.path = path
+        self._scratch: tempfile.TemporaryDirectory[str] | None = None
 
     @classmethod
     def open(cls, path: str | Path) -> ClusterStore:
@@ -189,8 +193,80 @@ class ClusterStore:
             )
         return store
 
+    @classmethod
+    def open_readonly(cls, path: str | Path) -> ClusterStore:
+        """Open an existing store for reading only (evaluation, inspection).
+
+        No row is written and no schema created. Three cases:
+
+        - Closed cleanly (no sidecars): a writable file and directory use a normal
+          connection with `query_only`, safe if a writer starts later. Otherwise the
+          file is copied to a temporary directory. Never assume `immutable`.
+        - Shared memory exists (even with an empty or absent `-wal`): read through SQLite with
+          `mode=ro` and snapshotted with `Connection.backup()` into a temporary file, so
+          the copy is one consistent transaction, never a torn file copy taken during a
+          checkpoint. As any reader of a WAL database does, SQLite may update the
+          shared-memory index (`-shm`) while reading; the database and log are not
+          written.
+        - A killed run (`-wal` without `-shm`, so no writer): the file and its log are
+          copied to a temporary directory and read there, committed steps included.
+
+        A missing file is an error, not a new empty store; an unreadable or corrupt one
+        is a `ClusterStoreError`."""
+        # Sidecars belong to the resolved database, never to its symlink alias.
+        path = Path(path).resolve()
+        if not path.is_file():
+            raise ClusterStoreError(f"{path}: no clustering store")
+        wal = path.with_name(path.name + "-wal")
+        shm = path.with_name(path.name + "-shm")
+        scratch: tempfile.TemporaryDirectory[str] | None = None
+        conn: sqlite3.Connection | None = None
+        try:
+            writable = os.access(path, os.W_OK) and os.access(path.parent, os.W_OK)
+            if wal.exists() or shm.exists() or not writable:
+                scratch = tempfile.TemporaryDirectory(prefix="xwalk-cluster-ro-")
+                copy = Path(scratch.name) / path.name
+                if shm.exists():
+                    source = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+                    try:
+                        target = sqlite3.connect(copy)
+                        try:
+                            source.backup(target)
+                        finally:
+                            target.close()
+                    finally:
+                        source.close()
+                else:
+                    shutil.copyfile(path, copy)
+                    if wal.exists():
+                        shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
+                uri = f"{copy.as_uri()}?mode=ro"
+            else:
+                uri = f"{path.as_uri()}?mode=rw"
+            conn = sqlite3.connect(uri, uri=True)
+            conn.execute("PRAGMA query_only=ON")
+            conn.row_factory = sqlite3.Row
+            store = cls(conn, path)
+            store._scratch = scratch
+            version = store.get_meta("schema_version")
+        except sqlite3.DatabaseError as exc:
+            if conn is not None:
+                conn.close()
+            if scratch is not None:
+                scratch.cleanup()
+            raise ClusterStoreError(f"{path}: unreadable clustering store ({exc})") from None
+        if version != SCHEMA_VERSION:
+            store.close()
+            raise ClusterStoreError(
+                f"{path} has cluster store schema {version}; this xwalk reads {SCHEMA_VERSION}"
+            )
+        return store
+
     def close(self) -> None:
         self._conn.close()
+        if self._scratch is not None:
+            self._scratch.cleanup()
+            self._scratch = None
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -424,6 +500,54 @@ class ClusterStore:
                 data[key] = json.loads(data[key])
             yield data
 
+    def steps(self) -> list[dict[str, Any]]:
+        """Every completed step in commit order (`seq`)."""
+        return [dict(r) for r in self._conn.execute("SELECT * FROM steps ORDER BY seq")]
+
+    def revision_log(self) -> list[dict[str, Any]]:
+        """Every cluster revision with the `seq` of the step that wrote it, in commit
+        order (within a step: cluster id, then revision)."""
+        rows = self._conn.execute(
+            "SELECT r.*, s.seq AS step_seq FROM cluster_revisions r "
+            "JOIN steps s ON s.step_key = r.step_key ORDER BY s.seq, r.cluster_id, r.revision"
+        )
+        return [self._revision(row) for row in rows]
+
+    def assignment_log(self, source_id: str) -> list[dict[str, Any]]:
+        """Every assignment change of one source, with the `seq` of its step, oldest first."""
+        rows = self._conn.execute(
+            "SELECT a.*, s.seq AS step_seq FROM assignments a "
+            "JOIN steps s ON s.step_key = a.step_key WHERE a.source_id = ? ORDER BY a.seq",
+            (source_id,),
+        )
+        return [dict(r) for r in rows]
+
+    def decisions_by_id(self, ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+        """The decisions with these ids (absent ids are left out)."""
+        wanted = sorted({int(i) for i in ids})
+        found: dict[int, dict[str, Any]] = {}
+        for start in range(0, len(wanted), 500):
+            chunk = wanted[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                f"SELECT * FROM decisions WHERE decision_id IN ({marks})", chunk
+            )
+            for row in rows:
+                data = dict(row)
+                for key in ("retrieved", "shown", "result", "usage"):
+                    data[key] = json.loads(data[key])
+                found[int(data["decision_id"])] = data
+        return found
+
+    def decisions_in_step(self, step_key: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT decision_id FROM decisions WHERE step_key = ? ORDER BY decision_id",
+            (step_key,),
+        )
+        ids = [int(r["decision_id"]) for r in rows]
+        found = self.decisions_by_id(ids)
+        return [found[i] for i in ids]
+
     def dump(self, table: str) -> list[tuple[Any, ...]]:
         """Every row of a deterministic table, for comparing runs."""
         if table not in DETERMINISTIC_TABLES:
@@ -442,6 +566,17 @@ class ClusterStore:
                 (_now(),),
             )
         return int(cursor.lastrowid or 0)
+
+    def invocations(self) -> list[dict[str, Any]]:
+        """Every invocation with its run state, usage and errors, oldest first."""
+        rows = self._conn.execute("SELECT * FROM invocations ORDER BY id")
+        out = []
+        for row in rows:
+            data = dict(row)
+            for key in ("usage", "errors"):
+                data[key] = json.loads(data[key]) if data[key] else None
+            out.append(data)
+        return out
 
     def finish_invocation(
         self,

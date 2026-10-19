@@ -27,6 +27,7 @@ xwalk ui --offline-only --no-browser      # never call a job's endpoint; print t
 | `--max-calls-cap` | `500` | the largest call limit a run against the job's endpoint may request |
 | `--offline-only` | — | refuse runs against the job's endpoint; only the offline stand-in |
 | `--max-upload-mb` | `512` | the largest file the page may upload |
+| `--allow-local-downloads` | — | let ontology downloads use `http` and private addresses (an intranet mirror); not with `--public` |
 | `--verbose` | — | log every request to stderr |
 
 Ctrl-C stops the server and exits `0`. A root that is not a directory, or a cap below 1,
@@ -69,9 +70,15 @@ retrievable at all. It is not a decision; the first candidate is the best text m
 - *Imported*: an OBO, OWL (needs `xwalk[ontology]` at import time only), CSV, TSV or
   JSONL file, parsed once into `<root>/.xwalk-ui/library/<name>/terms.jsonl`.
 - *Downloaded*: any OBO Foundry ontology from the catalog (HPO, Mondo, DOID, GO, ChEBI,
-  Uberon, CL, PATO, UO, ENVO by their permanent `purl.obolibrary.org` URLs), or any
-  `http(s)` URL ending in `.obo`, `.owl`, `.csv`, `.tsv` or `.jsonl` (gzip is
-  unpacked). The download runs as a background task with progress.
+  Uberon, CL, PATO, UO, ENVO by their permanent `purl.obolibrary.org` URLs; ChEBI from
+  EBI's `https` server, because its PURL redirects to plain `http`), or any
+  `https` URL ending in `.obo`, `.owl`, `.csv`, `.tsv` or `.jsonl` (gzip is
+  unpacked). The download runs as a background task with progress. The host must
+  resolve to public addresses only (no localhost, private ranges or the cloud metadata
+  address), the connection goes to the addresses that were checked, and at most 5
+  redirects are followed, each checked the same way (an `https` page cannot redirect
+  to `http`). To download from a mirror on your own network, or over plain `http`,
+  start with `--allow-local-downloads`.
 
 Mapping onto several entries at once combines their terms, each tagged with its
 `ontology`, which the model sees in the candidate text. An id two entries share keeps
@@ -147,11 +154,23 @@ setting jobs up. It has three screens:
   candidate list, with the five decisions in a fixed bar (keys A, P, R, N, D; J/K to move;
   ⌘↵ to *Save and next*). Each decision is recorded through `ops.review_apply` against the
   exact result it was made on. A failed save says why and the queue does not advance; a
-  result that changed since the queue loaded is reported as a conflict to reload.
+  result that changed since the queue loaded is reported as a conflict to reload. Each
+  record is read from the run on its own (and the next one is fetched while you read),
+  so stepping and saving stay quick on runs of thousands of rows. The queue opens on the
+  first record still to decide and scrolls with J/K. A corrected target id you type is
+  looked up in the job's target collection before it can be saved; an id the collection
+  does not have is refused, by the page and again by the server.
+
+Keys work without clicking into a list first: J/K and ↵ on Runs and Results as soon as
+the page opens, and Escape leaves a text field (Reviewer, Note, a filter) so the
+single-key shortcuts work again.
 
 Setting up jobs, uploads, the ontology library, evaluation and clustering stay on the
-classic explorer, which the workbench links to. The source and its design notes are in
-[`web/`](../../web/README.md).
+classic explorer, which the workbench links to. A clustering run opened in the workbench
+(by a link or a typed URL) says so and links to its classic run page; a screen that fails
+to render shows the error and a way back instead of a blank page. The source and its design
+notes are in [`web/`](https://github.com/jan3657/xwalk/blob/main/web/README.md) in the
+repository (not in the sdist).
 
 ## Which model answers
 
@@ -189,6 +208,8 @@ jobs' endpoints. The defences are aimed at other web pages open in the same brow
   which defeats DNS rebinding.
 - Every path a request names is resolved, symlinks included, and refused (`403`) when it
   lies outside the root.
+- Ontology downloads go only to public `https` hosts unless `--allow-local-downloads`
+  is set, so the server cannot be pointed at services on its own network.
 - Both pages set a Content Security Policy that allows only their own scripts and
   styles, and render record text and model output as text, never as HTML. The
   workbench's assets are served only by their flat, content-hashed names.
@@ -232,6 +253,7 @@ failed; misuse of the API raises `ApiError` with an HTTP status. Routes:
 | POST | `/api/quickmap` | pasted terms: `candidates` (retrieval only) or a run (`offline`, `endpoint`) |
 | GET | `/api/mapping`, `/api/mapping.csv` | a run's results with source texts, contexts and target labels; the same as CSV |
 | GET | `/api/reviews` | a run's review overlay: every decision with its state (`applied`, `superseded`, `stale`) and the adjudicated answer of each reviewed result |
+| GET | `/api/target` | one record of a run's target collection by its exact id (`dir`, `id`, optional `job`); 404 `target_not_found` otherwise |
 | GET | `/api/job-file`, `/api/review-sheet` | download a job file; download the review worksheet |
 | POST | `/api/review-upload` | apply a filled-in worksheet from the workspace |
 | GET, POST | `/api/presets`, `/api/credentials` | model presets; session API keys (state only, never values) |

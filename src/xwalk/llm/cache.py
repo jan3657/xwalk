@@ -7,9 +7,18 @@ how an answer was obtained, never what it means.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from xwalk.fingerprint import hash_value
 from xwalk.ledger import Ledger
-from xwalk.llm.base import LLMCapabilities, LLMClient, LLMRequest, LLMResponse
+from xwalk.llm.base import (
+    LLMCapabilities,
+    LLMClient,
+    LLMRequest,
+    LLMResponse,
+    client_generation_defaults,
+)
 from xwalk.records import Usage
 
 # Bump when the stored representation changes, to invalidate old entries rather than
@@ -69,6 +78,10 @@ class CachingLLM:
     @property
     def fingerprint(self) -> str:
         return self._inner.fingerprint
+
+    @property
+    def generation_defaults(self) -> Mapping[str, Any]:
+        return client_generation_defaults(self._inner)
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         key = llm_cache_key(self._inner, request)

@@ -4,6 +4,7 @@ from xwalk.decide.base import (
     Choice,
     ChoiceAnswer,
     DecisionFatalError,
+    DecisionResponseError,
     Noul,
     NoulAnswer,
     Score,
@@ -13,6 +14,7 @@ from xwalk.decide.base import (
     response_from_dict,
     response_to_dict,
 )
+from xwalk.records import Usage
 
 QUESTIONS = {
     "same": Noul(instructions="Is it the same?"),
@@ -96,6 +98,77 @@ def test_a_probability_outside_the_unit_interval_is_fatal():
     payload = {**PAYLOAD, "answers": {**PAYLOAD["answers"], "same": bad}}
     with pytest.raises(DecisionFatalError, match="same"):
         parse_response(payload, QUESTIONS, configured_model="m")
+
+
+@pytest.mark.parametrize(
+    "score",
+    [-0.1, 2.01, 3, 99.0, float("inf"), float("-inf"), float("nan"), True, "2"]
+    + [pytest.param(10**400, id="huge-int")],
+)
+def test_a_rubric_score_outside_the_offered_levels_is_rejected_not_clamped(score):
+    # Three criteria offer levels 0, 1 and 2. Anything else -- including a number Python
+    # cannot even represent as a float -- is a broken response, never data.
+    bad = {**PAYLOAD["answers"]["grade"], "score": score}
+    payload = {**PAYLOAD, "answers": {**PAYLOAD["answers"], "grade": bad}}
+    with pytest.raises(DecisionResponseError, match="grade"):
+        parse_response(payload, QUESTIONS, configured_model="m")
+
+
+@pytest.mark.parametrize("score", [0, 0.0, 1.6, 2, 2.0])
+def test_a_rubric_score_on_or_inside_the_bounds_is_kept(score):
+    good = {**PAYLOAD["answers"]["grade"], "score": score}
+    payload = {**PAYLOAD, "answers": {**PAYLOAD["answers"], "grade": good}}
+    answer = parse_response(payload, QUESTIONS, configured_model="m").answers["grade"]
+    assert isinstance(answer, ScoreAnswer) and answer.score == float(score)
+
+
+@pytest.mark.parametrize(
+    "value", [pytest.param(10**400, id="huge-int"), float("nan"), float("inf")]
+)
+def test_a_probability_that_is_not_a_finite_unit_number_is_rejected(value):
+    bad = {"type": "noul", "noul": value}
+    payload = {**PAYLOAD, "answers": {**PAYLOAD["answers"], "same": bad}}
+    with pytest.raises(DecisionResponseError, match="same"):
+        parse_response(payload, QUESTIONS, configured_model="m")
+
+
+def test_reported_usage_is_read():
+    usage = parse_response(PAYLOAD, QUESTIONS, configured_model="m").usage
+    assert (usage.prompt_tokens, usage.calls, usage.unknown_calls) == (120, 1, 0)
+    assert usage.cost_usd == 0.000005
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        None,
+        "lots",
+        {},
+        {"cost": 0.1},
+        {"input_tokens": None},
+        {"input_tokens": "120"},
+        {"input_tokens": -3},
+        {"input_tokens": True},
+        {"input_tokens": float("nan")},
+        {"input_tokens": float("inf")},
+        {"input_tokens": 1.5},
+    ],
+)
+def test_missing_or_invalid_token_usage_is_unknown_not_zero(usage):
+    payload = {k: v for k, v in PAYLOAD.items() if k != "usage"}
+    if usage is not None:
+        payload["usage"] = usage
+    parsed = parse_response(payload, QUESTIONS, configured_model="m").usage
+    assert (parsed.calls, parsed.unknown_calls, parsed.total_tokens) == (1, 1, 0)
+
+
+@pytest.mark.parametrize("cost", [float("nan"), float("inf"), -1.0, "0.1"])
+def test_an_invalid_cost_makes_the_whole_usage_block_unknown(cost):
+    # A malformed accounting block is not trusted in part: the call is one with unknown
+    # usage, and no NaN or negative cost can poison a run's totals.
+    payload = {**PAYLOAD, "usage": {"input_tokens": 120, "cost": cost}}
+    parsed = parse_response(payload, QUESTIONS, configured_model="m").usage
+    assert parsed == Usage.unreported(1)
 
 
 def test_a_type_mismatch_is_fatal():

@@ -608,7 +608,10 @@ async def test_resuming_a_finished_run_retries_its_failed_sources(tmp_path):
     assert resumed.exported_revision == resumed.selected_revision == first.last_revision + 1
     after = _dump(run)
     for table in ("decisions", "assignments", "cluster_revisions", "state_revisions", "steps"):
-        assert after[table][: len(before[table])] == before[table], table  # history kept
+        # History kept: every earlier row is still there, unchanged. Not a prefix check:
+        # dumps sort by the first column, and cluster ids are hashes that include the run
+        # fingerprint, so a cluster minted on resume may sort before an older one.
+        assert set(before[table]) <= set(after[table]), table
 
     again = Oracle(concepts(CHOCOLATE))
     exports = _exports(run)
@@ -841,3 +844,135 @@ async def test_a_stricter_mint_requirement_defers_instead(tmp_path):
     rows = member_rows(tmp_path / "run")
     assert rows["s9_0"]["outcome"] == "needs_review"
     assert rows["s9_0"]["reason"] == "expansion_incomplete:bounded"
+
+
+@pytest.mark.parametrize(
+    "payload, resolution",
+    [
+        ({"chosen_key": None, "confidence_score": 0.9}, "abstain"),
+        ({"confidence_score": 0.9}, "unresolved"),
+        ({}, "unresolved"),
+    ],
+)
+def test_only_an_explicit_null_chosen_key_abstains(payload, resolution):
+    from xwalk.cluster.stages import Reply, keyed_clusters, read_choice
+    from xwalk.records import Usage
+
+    reply = Reply("select", "u", json.dumps(payload), payload, 0.9, "", Usage.unreported())
+    choice = read_choice(reply, keyed_clusters(["k1"], ["[C01] a"]))
+    assert choice.cluster_id is None
+    assert choice.resolution == resolution
+    assert (choice.error is None) == (resolution == "abstain")
+
+
+# --- a seed that leaves its cluster (review F6) ----------------------------------------
+
+SEED_LEAVES = {"s": ("aaa core", "X"), "t": ("aaa core variant", "X"), "u": ("core zzz other", "Z")}
+
+
+def _seed_reverification_fails(name, request):
+    # During reassignment the seed "aaa core" picks nothing and fails reverification, so
+    # it is removed from its own cluster and "aaa core variant" is left alone in it.
+    if sections(request.user).get("Record", "").strip() != "aaa core":
+        return None
+    if name == "select-cluster":
+        return json.dumps({"chosen_key": None, "confidence_score": 0.9, "explanation": "x"})
+    if name == "verify-assignment":
+        return json.dumps({"decision": "not_equivalent", "confidence_score": 0.9})
+    return None
+
+
+def _seed_switches(name, request):
+    # During reassignment the seed prefers the "core zzz other" cluster and moves there.
+    parts = sections(request.user)
+    if parts.get("Record", "").strip() != "aaa core":
+        return None
+    if name == "select-cluster":
+        for key, members in blocks(parts["Candidate clusters"]):
+            if "core zzz other" in members:
+                return json.dumps({"chosen_key": key, "confidence_score": 0.9})
+        return None
+    if name == "compare-clusters":
+        return json.dumps({"preferred": "alternative", "confidence_score": 0.95})
+    return None
+
+
+def _exports_agree(run: Path) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
+    """The exports describe one partition the same way in both files."""
+    rows = member_rows(run)
+    with (run / "clusters.csv").open(encoding="utf-8") as handle:
+        clusters = {r["cluster_id"]: r for r in csv.DictReader(handle)}
+    for cid, row in clusters.items():
+        ids = row["member_ids"].split("|")
+        assert row["seed_id"] in ids, f"{cid}: seed_id {row['seed_id']} is not a member"
+        assert ids[0] == row["seed_id"]
+        assert row["status"] == ("singleton" if len(ids) == 1 else "verified")
+        for sid in ids:
+            member = rows[sid]
+            assert member["cluster_id"] == cid and member["cluster_size"] == str(len(ids))
+            assert member["outcome"] == ("singleton" if len(ids) == 1 else "assigned")
+    return rows, clusters
+
+
+# For the switch, "aaa core" is also equivalent to "core zzz other" (not transitively), so
+# its new cluster keeps it and the run converges on the switched state.
+SWITCH_PAIRS = [("aaa core", "aaa core variant"), ("aaa core", "core zzz other")]
+
+
+@pytest.mark.parametrize(
+    ("override", "pairs"), [(_seed_reverification_fails, []), (_seed_switches, SWITCH_PAIRS)]
+)
+async def test_a_cluster_whose_seed_left_is_exported_consistently(tmp_path, override, pairs):
+    oracle = Oracle(concepts(SEED_LEAVES), override=override, pairs=pairs)
+    report = await cluster(records(SEED_LEAVES), tmp_path / "run", oracle)
+
+    rows, clusters = _exports_agree(tmp_path / "run")
+    lone = rows["t"]
+    assert lone["outcome"] == "singleton" and lone["cluster_size"] == "1"
+    # not described as a verified equivalence: nobody else is left in its cluster
+    assert lone["reason"] == "sole_remaining_member"
+    assert lone["decision_id"] != ""  # the decision that admitted it stays traceable
+    assert clusters[lone["cluster_id"]]["seed_id"] == "t"
+    singletons = sum(1 for r in rows.values() if r["outcome"] == "singleton")
+    assert report.counts["singleton"] == singletons
+
+
+# --- mint provenance claims only what the search showed (review F7) --------------------
+
+
+async def test_retrieval_exhausted_is_claimed_only_when_retrieval_returned_less(tmp_path):
+    # Three clusters no query retrieves (private tokens), then 30 distinct concepts that
+    # share the token "kind". With no expansion page and shown_limit == retrieve_limit,
+    # fewer hits than the depth searched means retrieval is exhausted; a full page of 20
+    # proves nothing about the clusters beyond it.
+    table = {f"u{i}": (label, f"U{i}") for i, label in enumerate(("ab", "ac", "ad"))}
+    table |= {f"a{i:02d}": (f"item{i:02d} kind", f"C{i}") for i in range(30)}
+    config = settings(
+        retrieve_limit=20,
+        shown_limit=20,
+        expand_limit=40,
+        max_expansion_pages=0,
+        scan_below=0,
+        mint_requires="retrieval_exhausted",
+        max_refine_iterations=0,
+    )
+    await cluster(records(table), tmp_path / "run", Oracle(concepts(table)), settings=config)
+
+    rows = member_rows(tmp_path / "run")
+    # 19 "kind" clusters retrieved for a depth of 20: exhausted, although the three
+    # private clusters were never shown
+    assert rows["a00"]["reason"] == rows["a19"]["reason"] == "minted:retrieval_exhausted"
+    late = [rows[f"a{i:02d}"] for i in range(20, 30)]
+    assert {(r["outcome"], r["reason"]) for r in late} == {
+        ("needs_review", "expansion_incomplete:bounded")
+    }
+    store = _store(tmp_path / "run")
+    try:
+        searched = {
+            d["subject_id"]: (len(d["retrieved"]), d["result"]["depth"])
+            for d in store.decisions()
+            if d["kind"] == "select"
+        }
+    finally:
+        store.close()
+    assert searched["a20"] == (20, 20)

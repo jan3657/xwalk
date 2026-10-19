@@ -38,6 +38,15 @@ class PropertyGate:
         self._questions = questions
         self._templates = templates
 
+    @property
+    def identity(self) -> dict[str, str]:
+        """What this stage asks, for the run fingerprint; never a credential."""
+        return {
+            "decider": self._decider.fingerprint,
+            "questions": self._questions.fingerprint,
+            "templates": self._templates.fingerprint,
+        }
+
     async def gate(self, source: Record, context: str, chosen: Candidate) -> GateOutcome:
         state = {
             "source": build_source_state(source, context),

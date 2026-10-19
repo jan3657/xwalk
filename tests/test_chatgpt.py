@@ -399,7 +399,7 @@ def test_hosted_and_offline_servers_cannot_enable_loopback_login(tmp_path):
 def test_public_sessions_and_callback_state_are_isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     server = make_server(str(tmp_path), port=0, public=True, chatgpt_login=True, token="test-token")
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
     try:
         with httpx.Client(base_url=server.url) as a, httpx.Client(base_url=server.url) as b:
             a.get("/")

@@ -11,7 +11,7 @@ image (see `deploy/Dockerfile`):
     python scripts/build_ontology_library.py --out lib --url "HPO=https://github.com/obophenotype/human-phenotype-ontology/releases/latest/download/hp.obo"
 
 Entries already in `<out>` are kept (pass `--refresh` to rebuild them). The default set is
-the catalog in `xwalk.ui.library.CATALOG` (OBO Foundry permanent URLs).
+the catalog in `xwalk.ui.library.CATALOG` (OBO Foundry permanent URLs; ChEBI from EBI).
 """
 
 from __future__ import annotations
@@ -28,7 +28,13 @@ from xwalk.ui.retrieval import heads
 
 
 def _build(
-    library: Library, slug: str, name: str, url: str, description: str, refresh: bool
+    library: Library,
+    slug: str,
+    name: str,
+    url: str,
+    description: str,
+    refresh: bool,
+    allow_local: bool = False,
 ) -> str:
     slug = slugify(slug)
     existing = {o.slug: o for o in library.imported()}
@@ -40,7 +46,7 @@ def _build(
     started = time.monotonic()
     fmt = files.detect_format(Path(url.split("?")[0]))
     with tempfile.TemporaryDirectory() as scratch:
-        path = download(url, Path(scratch) / f"download.{fmt}")
+        path = download(url, Path(scratch) / f"download.{fmt}", allow_local=allow_local)
         records = files.target_records(
             path, fmt, id_column="id", label_column="label", synonyms_column="synonyms"
         )
@@ -82,6 +88,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--refresh", action="store_true", help="rebuild entries already there")
     parser.add_argument(
+        "--allow-local-urls",
+        action="store_true",
+        help="allow http:// and private-network --url sources (a local mirror)",
+    )
+    parser.add_argument(
         "--dense",
         action="store_true",
         help="also index the general and biomedical dense heads (requires xwalk[dense])",
@@ -110,7 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for slug_hint, name, url, description in jobs:
         try:
-            slug = _build(library, slug_hint, name, url, description, args.refresh)
+            slug = _build(
+                library, slug_hint, name, url, description, args.refresh, args.allow_local_urls
+            )
             if args.cache:
                 _index(library, slug, Path(args.cache), dense=args.dense, device=args.dense_device)
         except Exception as exc:

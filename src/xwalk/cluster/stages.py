@@ -113,6 +113,9 @@ def read_choice(reply: Reply, keyed: KeyedCandidates) -> Choice:
     if reply.error and reply.payload is None:
         return Choice(None, "error", reply.error)
     assert reply.payload is not None
+    # Only an explicit null abstains; an absent field is malformed output.
+    if "chosen_key" not in reply.payload:
+        return Choice(None, "unresolved", "unresolved_output: chosen_key missing")
     raw_key = reply.payload.get("chosen_key")
     if raw_key is not None and not isinstance(raw_key, str):
         raw_key = str(raw_key)

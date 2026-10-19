@@ -34,8 +34,8 @@
 .ghost { color: var(--text-muted); background: transparent; border-color: transparent; }
 .ghost:hover:not(:disabled) { color: var(--text-strong); background: var(--surface-subtle); border-color: var(--border-subtle); }
 
-.accent { color: var(--text-inverse); background: var(--accent); border-color: var(--accent); }
-.accent:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+.accent { color: var(--text-on-accent); background: var(--accent); border-color: var(--accent); }
+.accent:hover:not(:disabled) { background: var(--orange-400); border-color: var(--orange-400); }
 
 .danger { color: var(--danger); background: var(--surface-panel); border-color: var(--danger-border); }
 .danger:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger); }

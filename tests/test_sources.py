@@ -5,6 +5,34 @@ import pytest
 from xwalk.sources.tabular import csv_source, jsonl_source
 
 
+@pytest.mark.parametrize("delimiter", [",", "\t"])
+def test_csv_source_reads_a_byte_order_mark_as_nothing(tmp_path, delimiter):
+    """Excel writes UTF-8 CSV with a BOM; the first column must keep its real name."""
+    path = tmp_path / "bom.csv"
+    path.write_bytes(f"mention_id{delimiter}mention\ns1{delimiter}glucose\n".encode("utf-8-sig"))
+    (record,) = csv_source(path, id_column="mention_id", delimiter=delimiter)
+    assert record.id == "s1" and record.fields == {"mention": "glucose"}
+
+
+def test_jsonl_source_reads_a_byte_order_mark_as_nothing(tmp_path):
+    path = tmp_path / "bom.jsonl"
+    path.write_bytes('{"id": "s1", "label": "glucose"}\n'.encode("utf-8-sig"))
+    (record,) = jsonl_source(path, id_field="id")
+    assert record.id == "s1"
+
+
+def test_obo_and_gold_files_read_a_byte_order_mark_as_nothing(tmp_path):
+    from xwalk.evaluate.gold import load_gold_csv
+    from xwalk.sources.ontology import obo_source
+
+    obo = tmp_path / "bom.obo"
+    obo.write_bytes("[Term]\nid: X:1\nname: glucose\n".encode("utf-8-sig"))
+    assert [r.id for r in obo_source(obo)] == ["X:1"]
+    gold = tmp_path / "gold.csv"
+    gold.write_bytes("source_id,gold_ids\ns1,T1\n".encode("utf-8-sig"))
+    assert load_gold_csv(gold).labels == {"s1": frozenset({"T1"})}
+
+
 def test_csv_source_yields_one_record_per_row(targets_csv):
     records = list(csv_source(targets_csv, id_column="id"))
     assert len(records) == 5

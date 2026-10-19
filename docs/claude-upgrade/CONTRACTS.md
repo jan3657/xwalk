@@ -12,6 +12,15 @@ contract only in a reviewed commit that edits this file and says why.
   scripted responses, trace on/off must give identical status, matched id, confidence,
   attempts (ignoring the `candidates` field) and identical outgoing LLM requests.
 
+Batch 6 routing addition: each candidate operation retains its originating live key
+map and proposal provenance. `deduplicate_candidates`, `alternate_queues` and
+`chase_verifier_leads` are independent, default-off policy experiments and enter run
+identity only when enabled. Deduplication keys record identity plus scoring context,
+marks completion only after valid scoring/verification, and never suppresses an
+infrastructure retry. Eligible verifier disagreements may enqueue another issued key
+once per preferred record ID; scoring and required verification still gate acceptance.
+All operations remain bounded by `max_attempts`.
+
 ## 2. Current snapshot versus history
 
 - **Source snapshot**: each `run_batch` invocation reads the full source collection and
@@ -47,7 +56,7 @@ contract only in a reviewed commit that edits this file and says why.
 
 | Error | Where | Outcome |
 |---|---|---|
-| Recoverable (`LLMRetryableError` after client retries, timeout, unparseable output, retriever failure) | selector, scorer | attempt `reason=provider_failure` / `retriever_failure`; same query retried within `max_attempts` (existing) |
+| Recoverable (`LLMRetryableError` after client retries, timeout, unparseable output, retriever failure) | selector, scorer | attempt `reason=provider_failure` / `retriever_failure`; same operation retried within `max_attempts` (query search, or forced candidate with its live state and provenance) |
 | Recoverable | gating verifier (score in `verify_band`) | attempt keeps its score, `verifier_decision="error"`, `reason=provider_failure`; retried like above; an unverified in-band score can never become `matched` (best possible status `needs_review`) |
 | Recoverable | audit verifier (score outside band) | decision unchanged; error noted on the attempt |
 | Recoverable | rewriter | loop ends with no new query; status derived from existing attempts; error noted on the last attempt |
@@ -207,6 +216,11 @@ Task 04 additions (details and reasons in `CLUSTERING_DECISIONS.md`):
 - 10.4, outcomes: a seed is exported `singleton` only while its cluster has one member;
   once a verified member joins (or a verified merge), it is `assigned`. Sources not
   reached by an aborted run are exported as `pending`.
+- 10.4, outcomes (October 2026, `cluster/bugs-and-eval`): a member left alone after every
+  other member, the seed included, moved out is exported `singleton` (reason
+  `sole_remaining_member`; not a verified equivalence). `members.csv` and `clusters.csv`
+  both decide by the exported cluster size, and `seed_id` is the cluster's first current
+  member.
 
 ## 11. File ownership and task order
 
@@ -224,3 +238,21 @@ starts from `claude/zealous-heisenberg-nri5m0`.
 | 04 | new `src/xwalk/cluster/`, `tests/test_cluster_*.py`, one `cluster` hook in `ops.py`/CLI |
 | 05 | new `benchmarks/` (manifests, runners), `scripts/` additions |
 | 07 | `README.md`, `docs/`, `CHANGELOG.md`, version bump |
+
+## 12. Rendered candidate budget (engine revision B2/L2)
+
+- LLM initial retrieval may fuse multiple configured queries. Runtime state retains the
+  actual query list for retries, deduplication and rewriter history; `Attempt.query` is
+  only a display (joined with `" | "`). Existing single-query jobs, including `query`
+  alongside a one-entry alternate `queries`, keep their request bodies and ordering.
+- Selection renders each count-capped candidate once. The estimate is four characters
+  per token, counting rendered key prefixes, content and inter-block separators. Keep
+  a ranked prefix of whole blocks without slicing text or skipping oversized blocks.
+- If the first block alone exceeds the budget, record
+  `needs_review / candidate_budget_exceeded` and stop without a selector call or any
+  further model calls. Keep retrieval/truncation counts, issue no candidate keys.
+  A fatal failure or an acceptable attempt keeps its existing reducer precedence;
+  otherwise a budget-exceeded attempt forces review, including after a prior negative.
+- Rendered-budget version 2 enters both selector identity and LLM run components. It
+  changes candidate acquisition, not the interpretation of historical attempts without
+  the new reason. The existing status-semantics version remains unchanged.

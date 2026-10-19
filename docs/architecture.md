@@ -28,7 +28,7 @@ The binding 0.2 decisions are in
 
 - **Front ends only format.** `cli/main.py` and `mcp_server.py` call one `xwalk.ops`
   operation and print or return its `OpResult` (the `--json` envelope, schema 1). Logic
-  that decides anything lives below `ops`. (`eval`, `compare`, `ablate` and `prompts`
+  that decides anything lives below `ops`. (`compare`, `ablate` and `prompts`
   are still assembled in the CLI.)
 - **`ops` owns orchestration**: strict job loading, preflight (files, extras,
   credentials by name), reading targets once, planning and opening/building indexes by
@@ -50,16 +50,18 @@ Each one has tests; a change that needs to weaken one needs a reviewed contract 
    per-attempt keys; resolution is exact lookup only (`stages/keying.py`).
 2. **Failure fails toward review.** Unparseable output, an unknown verdict, a
    non-finite or out-of-range confidence, or an unverified in-band score cannot become
-   `matched` (`policy.derive_status`, `llm/parsing.py`).
+   `matched` (`policy.derive_status`, `llm/parsing.py`). Only an acceptable attempt
+   (the one that stops the loop) is `matched`, and a negative outcome resting on a
+   provider or retriever failure is `failed`, never a settled `unmatched`.
 3. **Provider errors never escape `Matcher.match`.** Recoverable errors stay in the
    record; a fatal one yields `failed`/`fatal_provider_failure`, which `run_batch` does
    not commit and treats as a run abort (CONTRACTS §3-4).
 4. **One current row per source.** Every export reads the current view of the latest
    complete source snapshot; everything ever committed stays in history (CONTRACTS §2).
 5. **Run identity is a fingerprint** of everything that changes what a result means
-   (templates, prompts, targets, retriever identities, LLM identity and effective
-   generation settings, policy, library version), never credentials, paths or
-   concurrency. A run directory holds one fingerprint; a different one is refused.
+   (templates, prompts, targets, retriever identities, LLM identity, request-affecting
+   capabilities and each stage's effective generation settings, policy, library
+   version), never credentials, paths, concurrency or wrappers. A run directory holds one fingerprint; a different one is refused.
 6. **Indexes are reused only when their stored components match**; an incompatible
    index is refused, never silently rebuilt or reused. `build` replaces an index
    directory's contents, never appends.
@@ -88,7 +90,7 @@ Each one has tests; a change that needs to weaken one needs a reviewed contract 
 | Loading records | `sources/*.py`, `stores/*.py` | `test_sources.py`, `test_ontology_source.py`, `test_sql_source.py`, `test_stores.py` |
 | Batch scheduling, resume, cancellation | `batch.py` | `test_batch.py`, `test_lifecycle.py` |
 | Ledger schema, current view, history | `ledger.py`, `serde.py` | `test_ledger.py`, `test_ledger_compat.py`, `test_serde.py`, `test_lifecycle.py` |
-| Run fingerprints | `fingerprint.py`, `batch.build_run_fingerprint`, `config.py` | `test_fingerprint.py` |
+| Run fingerprints | `fingerprint.py`, `batch.build_run_fingerprint`, each stage's `identity`, `config.py` | `test_fingerprint.py`, `test_effective_identity.py` |
 | Review | `review.py` | `test_review.py` |
 | Job file keys or validation | `config.py` (and `cluster/job.py`) | `test_config.py`, `test_job_validation.py` |
 | An operation, JSON envelope or exit code | `ops.py` | `test_ops.py`, `test_ops_read.py`, `test_cli_json.py` |

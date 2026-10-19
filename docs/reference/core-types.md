@@ -114,7 +114,7 @@ A lead for the next attempt in the matching loop.
 |---|---|---|---|
 | `kind` | `Literal["candidate", "query"]` | — | what kind of lead this is |
 | `value` | `str` | — | a candidate key, or new query text |
-| `source` | `Literal["scorer", "rewriter"]` | — | which stage proposed it |
+| `source` | `Literal["scorer", "rewriter", "verifier"]` | — | which stage proposed it |
 
 No validation. The `kind` distinction is load-bearing: `"candidate"` means "look
 again at a record we already retrieved" — no new search — while `"query"` means "run
@@ -128,10 +128,10 @@ The terminal classification of one source record. Produced by
 
 | Member | Value | Produced when |
 |---|---|---|
-| `MATCHED` | `"matched"` | best attempt resolved exactly, unchallenged, score ≥ `accept_at` |
+| `MATCHED` | `"matched"` | some attempt is acceptable: resolved exactly, completed, unchallenged by the verifier, score ≥ `accept_at` |
 | `NEEDS_REVIEW` | `"needs_review"` | a human should look: mid-band score, verifier disagreement, or inexact/unresolved output |
-| `UNMATCHED` | `"unmatched"` | evidence points to no match: sub-floor score, abstention, or no candidates |
-| `FAILED` | `"failed"` | infrastructure failed; **not** evidence about the record |
+| `UNMATCHED` | `"unmatched"` | complete evidence points to no match: sub-floor score, abstention, or no candidates, with no provider or retriever failure anywhere in the result |
+| `FAILED` | `"failed"` | infrastructure failed, or a negative outcome rests on incomplete evidence; **not** evidence about the record. A resumed run retries it |
 
 `UNMATCHED` is a claim about the data; `FAILED` is a claim about the run. A dead
 index or provider outage must never be recorded as "there is no match".
@@ -147,10 +147,11 @@ Why a result carries the status it does. Every `MatchResult` and (optionally) ev
 | `BELOW_ACCEPT_THRESHOLD` | `"below_accept_threshold"` | best score in `[review_floor, accept_at)` → `NEEDS_REVIEW` |
 | `BELOW_REVIEW_FLOOR` | `"below_review_floor"` | best score < `review_floor` → `UNMATCHED` |
 | `SELECTOR_ABSTAINED` | `"selector_abstained"` | candidates were shown, the model declined every one → `UNMATCHED` |
+| `CANDIDATE_BUDGET_EXCEEDED` | `"candidate_budget_exceeded"` | first rendered candidate block cannot fit; no selector call → `NEEDS_REVIEW` |
 | `NO_CANDIDATES` | `"no_candidates"` | no attempt ever retrieved a candidate → `UNMATCHED` |
 | `UNRESOLVED_OUTPUT` | `"unresolved_output"` | model output could not be resolved to an issued key, or the best attempt used an inexact (legacy) resolution → `NEEDS_REVIEW` |
-| `RETRIEVER_FAILURE` | `"retriever_failure"` | every retriever in an attempt failed or timed out; all attempts failed → `FAILED` |
-| `PROVIDER_FAILURE` | `"provider_failure"` | a recoverable LLM call failure; all attempts failed → `FAILED`; best attempt's in-band score could not be verified → `NEEDS_REVIEW`. Also the fallback reason when there are no attempts at all |
+| `RETRIEVER_FAILURE` | `"retriever_failure"` | on an attempt: no surviving hits and at least one retriever failed or timed out. On a result: all attempts failed with it last, or an otherwise negative result whose latest blocking failure is a retriever failure or a degraded search → `FAILED` |
+| `PROVIDER_FAILURE` | `"provider_failure"` | a recoverable LLM call failure; all attempts failed, or an otherwise negative result whose latest blocking failure is a provider failure → `FAILED`; the best attempt's in-band score could not be verified → `NEEDS_REVIEW`. Also the fallback reason when there are no attempts at all |
 | `FATAL_PROVIDER_FAILURE` | `"fatal_provider_failure"` | an `LLMFatalError` (auth, unknown model, invalid request) in any stage → `FAILED`. Added in 0.2 |
 | `VERIFIER_DISAGREEMENT` | `"verifier_disagreement"` | verifier answered `"disagree"` or `"no_match"` on the best attempt → `NEEDS_REVIEW` |
 
@@ -169,6 +170,7 @@ here. Nothing an attempt learned is discarded when the loop moves on.
 | `candidate_count` | `int` | how many candidates were retrieved, even when `candidates` is empty |
 | `candidates_truncated` | `int` | candidates cut by the selector's budget before the model saw them |
 | `issued_keys` | `Mapping[str, str]` | opaque key → record id, as issued **for this attempt** |
+| `selector_confidence` | `float \| None` | validated selector confidence, including abstentions; advisory only. `None` for old blobs, skipped/failed selection or invalid confidence |
 | `raw_selection` | `str \| None` | the selector's verbatim answer, before resolution |
 | `chosen_id` | `str \| None` | resolved record id; `None` on abstention or unresolved output |
 | `resolution` | `str` | how the raw answer became an id: a `Resolution` value such as `"exact_key"`, `"abstain"`, `"unresolved"`, or a `legacy_*` variant |
@@ -185,6 +187,7 @@ here. Nothing an attempt learned is discarded when the loop moves on.
 | `elapsed_seconds` | `float` | wall time for this attempt |
 | `finish_reason` | `str \| None` | `finish_reason` of the **last** provider response in the attempt |
 | `signals` | `Mapping[str, float]` | calibrated numbers from a decision model; `{}` on the LLM path |
+| `retrieval_failures` | `tuple[str, ...]` | one `"retriever: message"` note per search that raised or timed out in this attempt; `()` for a clean search, a forced re-score (no search), and blobs written before the field existed. Kept whether or not the trace keeps candidates |
 
 `finish_reason` earns its place: `"length"` is the tell for a truncated answer — the
 provider stopped mid-JSON, which surfaces as `UNRESOLVED_OUTPUT` and is otherwise
@@ -236,6 +239,9 @@ budget in one frozen dataclass.
 | `concurrency` | `int` | `32` | batch-run concurrency |
 | `legacy_id_resolution` | `bool` | `False` | re-enable heuristic ID resolution for reproducing prior work |
 | `retriever_timeout` | `float` | `60.0` | per-retriever search timeout, seconds |
+| `deduplicate_candidates` | `bool` | `False` | skip pending/completed work for the same record and scoring context; opt-in |
+| `alternate_queues` | `bool` | `False` | alternate candidate and query work so queued searches run; opt-in |
+| `chase_verifier_leads` | `bool` | `False` | score well-formed verifier preferences once per record ID; opt-in |
 
 Validation in `__post_init__` — each violation raises `ValueError`:
 
@@ -289,26 +295,56 @@ def derive_status(
 ```
 
 Reduces a list of attempts to one status, one reason, and the winning attempt.
-Precedence, in order:
 
-1. No attempts at all → `(FAILED, PROVIDER_FAILURE, None)`.
-2. Every attempt is an infrastructure failure (`RETRIEVER_FAILURE` or
-   `PROVIDER_FAILURE`) → `FAILED` with the last attempt's reason (falling back to
-   `PROVIDER_FAILURE`), no winning attempt.
-3. Any attempt has both `chosen_id` and `primary_score`: the highest score wins,
-   ties go to the earlier attempt. Then, on that best attempt:
+An attempt is **acceptable** (`is_acceptable`, the same test that stops the loop) when
+it completed (`reason is None`), chose a target with an exact key, has a valid score
+≥ `accept_at`, and its verifier verdict, if any, is `"support"`. A **blocking**
+failure is an attempt with reason `PROVIDER_FAILURE` or `RETRIEVER_FAILURE`, or any
+attempt with `retrieval_failures` (a degraded search that still returned hits). A
+recoverable rewriter or audit-verifier error is only noted; it does not block.
+
+### Status precedence
+
+| Evidence, highest first | Status / reason | Winning attempt |
+|---|---|---|
+| no attempts at all | `FAILED` / `PROVIDER_FAILURE` | `None` |
+| any `FATAL_PROVIDER_FAILURE` | `FAILED` / `FATAL_PROVIDER_FAILURE` | `None` |
+| some attempt is acceptable | `MATCHED` / `ACCEPT_THRESHOLD` | the acceptable attempt (highest score, then earliest) |
+| every attempt failed | `FAILED` / the last attempt's reason | `None` |
+| any attempt exceeded the candidate budget | `NEEDS_REVIEW` / `CANDIDATE_BUDGET_EXCEEDED` | last budget-exceeded attempt |
+| the fallback ranking below gives a review | `NEEDS_REVIEW` / its reason | as ranked |
+| the fallback is negative and any attempt is blocking | `FAILED` / the latest blocking reason (`PROVIDER_FAILURE` when one attempt has both) | `None` |
+| clean scored negative | `UNMATCHED` / `BELOW_REVIEW_FLOOR` | as ranked |
+| clean selector abstention | `UNMATCHED` / `SELECTOR_ABSTAINED` | last attempt with candidates |
+| clean search, no candidates | `UNMATCHED` / `NO_CANDIDATES` | last attempt |
+
+The fallback ranking, used only when no attempt is acceptable:
+
+1. Any attempt has both `chosen_id` and a valid `primary_score`: the highest score
+   wins; on a tie an attempt that completed beats one whose verifier call failed,
+   then the earlier attempt wins. On that best attempt:
    1. `verifier_decision` in `("disagree", "no_match")` →
       `(NEEDS_REVIEW, VERIFIER_DISAGREEMENT)`.
-   2. `resolution` is not `"exact_key"` → `(NEEDS_REVIEW, UNRESOLVED_OUTPUT)`.
+   2. `verifier_decision == "error"` (the gating verifier call failed) →
+      `(NEEDS_REVIEW, PROVIDER_FAILURE)`.
+   3. `resolution` is not `"exact_key"` → `(NEEDS_REVIEW, UNRESOLVED_OUTPUT)`.
       Legacy or otherwise inexact resolution never becomes an automatic match.
-   3. score ≥ `accept_at` → `(MATCHED, ACCEPT_THRESHOLD)`.
-   4. score ≥ `review_floor` → `(NEEDS_REVIEW, BELOW_ACCEPT_THRESHOLD)`.
-   5. otherwise → `(UNMATCHED, BELOW_REVIEW_FLOOR)`.
-4. No scored attempt, but some attempt's resolution is `"unresolved"` →
+   4. score ≥ `accept_at` (only possible for an attempt that did not complete) →
+      `(NEEDS_REVIEW, PROVIDER_FAILURE)`.
+   5. score ≥ `review_floor` → `(NEEDS_REVIEW, BELOW_ACCEPT_THRESHOLD)`.
+   6. otherwise → `(UNMATCHED, BELOW_REVIEW_FLOOR)`.
+2. No scored attempt, but some attempt's resolution is `"unresolved"` →
    `(NEEDS_REVIEW, UNRESOLVED_OUTPUT)` with the last such attempt.
-5. Some attempt had candidates → `(UNMATCHED, SELECTOR_ABSTAINED)` with the last
+3. Some attempt had candidates → `(UNMATCHED, SELECTOR_ABSTAINED)` with the last
    attempt that had any.
-6. Otherwise → `(UNMATCHED, NO_CANDIDATES)` with the last attempt.
+4. Otherwise → `(UNMATCHED, NO_CANDIDATES)` with the last attempt.
+
+So a verified lower-scoring retry beats a higher score the verifier rejected or could
+not check, while without an acceptable attempt an unverified `0.7` is still proposed
+for review ahead of an unchallenged `0.3`. A later clean negative does not clear an
+earlier failure in the same result: the record stays `FAILED` and a resumed run
+settles it. These rules are versioned as `STATUS_SEMANTICS_VERSION` (now 2), which is
+part of the run fingerprint.
 
 ## TemplateSet
 
@@ -344,6 +380,15 @@ Rendering rules:
   sparse in practice; aborting a 100k-row run because one row lacks an optional
   column is the wrong trade, and a silently-empty slot is visible in the rendered
   output and in the attempt trace.
+- A field whose value is `null`/`None` is treated exactly like a missing one: it is
+  not passed to the template, so `default(...)` applies, `is defined` is false and
+  `join` yields nothing (before render version 2 it rendered as the text `None`, or
+  raised in `join`). The same holds where the model reads the source record: the
+  `source_fields` block of the base prompts (`PromptSet`) and the decider's source
+  state omit null fields. `TEMPLATE_RENDER_VERSION` is part of
+  `TemplateSet.fingerprint` (and so of both run identities), and of an index's identity
+  when some target has a null field. Only top-level nulls are dropped: a list such as
+  `["a", null]` still renders its `None` item.
 - Whitespace is tidied after rendering: runs of spaces and tabs collapse to one
   space, lines are stripped, blank lines are dropped, and the result is stripped.
   Conditionals therefore never leave ragged gaps in what the model sees.
@@ -440,13 +485,15 @@ LEDGER_SCHEMA_VERSION = 2
 
 class UnsupportedLedgerError(Exception): ...
 class LedgerClosedError(RuntimeError): ...
+class ReadOnlyLedgerError(RuntimeError): ...
 
 class Ledger:
     @classmethod
-    def open(cls, path: str | Path) -> Ledger: ...
+    def open(cls, path: str | Path, *, read_only: bool = False) -> Ledger: ...
     schema_version: int          # property
-    migrated_from: int | None    # 1 when this open upgraded a 0.1.1 ledger
+    migrated_from: int | None    # 1 when this open upgraded (or read) a 0.1.1 ledger
     backup_path: Path | None     # the copy taken before that upgrade
+    read_only: bool
     closed: bool                 # property
 
     # results
@@ -499,6 +546,24 @@ source. `HistoryEntry(result, revision, current)`.
   `<name>.v1-backup` and then upgraded additively in one transaction. A newer schema
   version, an SQLite file that is not a ledger, or a non-SQLite file raises
   `UnsupportedLedgerError` without modifying the file.
+- `open(path, read_only=True)` is what read-only commands use (`inspect`, `explain`,
+  `results`, `export`, `eval`, `fit`, `compare`, `review export`, the UI's views). The
+  file must exist (`FileNotFoundError` otherwise) and is never created, upgraded or
+  written; every write raises `ReadOnlyLedgerError`. A symlink is resolved first.
+  `immutable=1` is never used, since nothing can prove a writer will not start. When a
+  -wal or -shm file exists (a writer may be active, even with an empty log) and the log
+  is not empty or the directory is not writable, the ledger is opened with `mode=ro`,
+  which reads the log and is safe against a writer of any account; if SQLite cannot
+  open it that way (no -shm and no right to create one), the file and its sidecars are
+  copied to a temporary directory. Otherwise, when this process may write the file and
+  its directory, a `query_only` connection reads it directly (the -wal/-shm files it
+  creates are removed when it closes, so the directory is left byte-identical); when it
+  may not, the file is copied to a temporary directory. A 0.1.1 ledger is copied with
+  `backup()` into a temporary file and upgraded there (`migrated_from == 1`, no backup).
+  `snapshot_path` names any temporary copy, removed on `close`. Nothing is copied into
+  memory, so a reader's memory does not grow with the ledger. A file that cannot be
+  opened for lack of permission raises `sqlite3.OperationalError`, not
+  `UnsupportedLedgerError`.
 - `put_result` on an existing `result_key` moves the previous row to history and
   stores the new one as the next revision; nothing is overwritten in place.
 - The current view is the latest snapshot's entries joined to their results. Without a
@@ -516,7 +581,9 @@ source. `HistoryEntry(result, revision, current)`.
 ## Gotchas
 
 - **`FAILED` is not `UNMATCHED`.** Infrastructure failure says nothing about the
-  record. `derive_status` only emits `FAILED` when *every* attempt failed, and a
+  record. `derive_status` emits `FAILED` when every attempt failed, and also when the
+  outcome would be negative but some attempt failed or searched with a retriever
+  down; a match or a review still stands on the evidence that survived. A
   `FAILED`/`UNMATCHED` result always has `matched_id=None`.
 - **Inexact resolution never auto-matches.** Even a score of 1.0 lands in
   `NEEDS_REVIEW` when the best attempt's resolution is anything but `"exact_key"` —
@@ -528,6 +595,9 @@ source. `HistoryEntry(result, revision, current)`.
   verified, never audited.
 - **Audit sampling is deterministic** per `(run_fingerprint, source_id)`. Resuming a
   run audits the same records; it does not re-roll.
+- **An acceptable attempt wins over a higher score.** The loop stops on the first
+  acceptable attempt and `derive_status` reports that one, even when an earlier attempt
+  scored higher but was rejected or left unverified by the verifier.
 - **Ties in `derive_status` go to the earlier attempt** — a retry that merely
   equals the first attempt's score does not displace it.
 - **`RetrievalHit.rank` is 1-based.** Constructing with `rank=0` raises.

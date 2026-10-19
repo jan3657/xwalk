@@ -167,8 +167,9 @@ one collection into equivalence classes.
 A run has an identity. `build_run_fingerprint` digests everything whose change should
 invalidate previously computed results: the templates, the prompts and slots, the target
 collection snapshot, every retriever's index fingerprint, retrieval depth and the fusion
-constant, the model and provider identity and generation parameters, the policy
-thresholds, the selector budget, and the library version.
+constant, the model and provider identity, the request-affecting capabilities and
+the effective generation parameters of every stage, the policy thresholds, the selector
+budget, and the library version.
 
 Each individual record's identity is `result_key(run_fingerprint, source_id,
 hash_record(source))`. Resume skips a record when that key is already in the ledger with
@@ -186,7 +187,9 @@ a status other than `failed`; failed records are retried. So:
 The one sharp edge: `run_fingerprint` is a string you hand to `Matcher`, and it is never
 cross-checked against the matcher you actually built. If you construct it by hand and
 then change a component without rebuilding it, resume will happily reuse stale results.
-Build it with `build_run_fingerprint` and pass the same objects you pass to `Matcher`.
+Build it with `build_run_fingerprint` and pass the same objects you pass to `Matcher`,
+the four stages included: a stage you build with its own `max_tokens`, temperature or
+client is part of the identity only if the fingerprint sees it.
 
 ## The ledger is the source of truth
 

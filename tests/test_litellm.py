@@ -2,6 +2,7 @@ import pytest
 
 from xwalk.llm.base import LLMClient, LLMFatalError, LLMRequest, LLMRetryableError
 from xwalk.llm.litellm import LiteLLMClient
+from xwalk.records import Usage
 
 
 async def _async(value):
@@ -80,6 +81,65 @@ async def test_an_auth_error_becomes_fatal(monkeypatch):
         await client.complete(LLMRequest(system="", user="u"))
 
 
+async def _raise_named(monkeypatch, class_name: str, message: str):
+    """Raise an exception whose class has LiteLLM's public name (litellm not needed)."""
+    client = LiteLLMClient("fake/model")
+    error_type = type(class_name, (Exception,), {})
+
+    def boom(**kwargs):
+        raise error_type(message)
+
+    monkeypatch.setattr(client, "_acompletion", boom)
+    await client.complete(LLMRequest(system="", user="u"))
+
+
+@pytest.mark.parametrize(
+    "class_name",
+    [
+        # LiteLLM's own "the provider's response was malformed" error: recoverable (R1).
+        "APIResponseValidationError",
+        # LiteLLM's catch-all for provider statuses it does not map one by one (502...).
+        "APIError",
+        "RateLimitError",
+        "Timeout",
+        "ServiceUnavailableError",
+        "InternalServerError",
+        "APIConnectionError",
+    ],
+)
+async def test_litellm_transient_and_malformed_response_errors_are_retryable(
+    monkeypatch, class_name
+):
+    with pytest.raises(LLMRetryableError):
+        await _raise_named(monkeypatch, class_name, "upstream said no")
+
+
+@pytest.mark.parametrize(
+    "class_name",
+    [
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "NotFoundError",
+        "BadRequestError",
+        "UnprocessableEntityError",
+        "ContextWindowExceededError",
+        "ContentPolicyViolationError",
+        "RejectedRequestError",
+        "BudgetExceededError",
+    ],
+)
+async def test_litellm_auth_model_and_request_errors_are_fatal(monkeypatch, class_name):
+    # Classified by name, so a message that happens to mention a transient word cannot
+    # turn a request that will never succeed into a retry.
+    with pytest.raises(LLMFatalError):
+        await _raise_named(monkeypatch, class_name, "rejected; not a timeout")
+
+
+async def test_a_transient_class_name_wins_over_a_fatal_sounding_message(monkeypatch):
+    with pytest.raises(LLMRetryableError):
+        await _raise_named(monkeypatch, "RateLimitError", "model not found; invalid request")
+
+
 async def test_an_unrecognised_error_is_fatal_not_retried_forever(monkeypatch):
     """Retrying an error we do not understand burns budget on a permanent failure."""
     client = LiteLLMClient("fake/model")
@@ -92,15 +152,87 @@ async def test_an_unrecognised_error_is_fatal_not_retried_forever(monkeypatch):
         await client.complete(LLMRequest(system="", user="u"))
 
 
-async def test_no_choices_is_a_clear_error_not_an_index_error(monkeypatch):
+async def test_no_choices_is_a_clear_retryable_error_not_an_index_error(monkeypatch):
+    # CONTRACTS.md section 3: malformed output is recoverable, never a run abort.
     client = LiteLLMClient("fake/model")
 
     class Empty:
         choices: list[object] = []
 
     monkeypatch.setattr(client, "_acompletion", lambda **kw: _async(Empty()))
-    with pytest.raises(LLMFatalError, match="choices"):
+    with pytest.raises(LLMRetryableError, match="choices") as caught:
         await client.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(1)
+
+
+def _malformed(kind):
+    completion = FakeCompletion("x")
+    if kind == "no choices attribute":
+        del completion.choices
+    elif kind == "choices is a string":
+        completion.choices = "x"
+    elif kind == "choice without a message":
+        completion.choices = [type("C", (), {"finish_reason": "stop"})()]
+    elif kind == "message is a string":
+        completion.choices = [type("C", (), {"message": "x"})()]
+    elif kind == "content is a list":
+        completion.choices[0].message.content = [{"type": "text", "text": "x"}]
+    elif kind == "response is None":
+        return None
+    return completion
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "no choices attribute",
+        "choices is a string",
+        "choice without a message",
+        "message is a string",
+        "content is a list",
+        "response is None",
+    ],
+)
+async def test_a_malformed_response_is_retryable_with_unknown_usage(monkeypatch, kind):
+    client = LiteLLMClient("fake/model")
+    completion = _malformed(kind)
+    monkeypatch.setattr(client, "_acompletion", lambda **kw: _async(completion))
+    with pytest.raises(LLMRetryableError) as caught:
+        await client.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(1)
+
+
+@pytest.mark.parametrize("prompt", ["ten", -1, float("nan"), float("inf"), True, [10]])
+async def test_unusable_token_counts_are_unknown_and_keep_the_answer(monkeypatch, prompt):
+    client = LiteLLMClient("fake/model")
+    completion = FakeCompletion("x", prompt=prompt)
+    monkeypatch.setattr(client, "_acompletion", lambda **kw: _async(completion))
+    response = await client.complete(LLMRequest(system="", user="u"))
+    assert response.text == "x"
+    assert response.usage == Usage.unreported(1)
+
+
+@pytest.mark.parametrize("prompt, completion", [(10, None), (None, 3)])
+async def test_a_half_reported_usage_is_unknown_not_a_known_zero(monkeypatch, prompt, completion):
+    client = LiteLLMClient("fake/model")
+    completion_obj = FakeCompletion("x", prompt=prompt, completion=completion)
+    monkeypatch.setattr(client, "_acompletion", lambda **kw: _async(completion_obj))
+    response = await client.complete(LLMRequest(system="", user="u"))
+    assert response.text == "x"
+    assert response.usage == Usage.unreported(1)
+
+
+async def test_a_dict_shaped_response_is_read(monkeypatch):
+    client = LiteLLMClient("fake/model")
+    completion = {
+        "choices": [{"message": {"content": "x"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 2},
+        "model": "fake/model",
+    }
+    monkeypatch.setattr(client, "_acompletion", lambda **kw: _async(completion))
+    response = await client.complete(LLMRequest(system="", user="u"))
+    assert (response.text, response.finish_reason) == ("x", "stop")
+    assert response.usage == Usage(prompt_tokens=4, completion_tokens=2, calls=1)
 
 
 async def test_a_schema_is_only_sent_when_the_capability_is_declared(monkeypatch):

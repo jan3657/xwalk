@@ -1,0 +1,43 @@
+/* A filter toggle in the hairline idiom: dashed while off, solid ink while on. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  overflow: hidden;
+  transition: background-color var(--duration-fast) linear, border-color var(--duration-fast) linear;
+}
+.chip:hover { background: var(--surface-panel); }
+.active { border-style: solid; border-color: var(--gray-800); background: var(--surface-panel); }
+.main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 10.5px/1 var(--font-mono);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.active .main { color: var(--text-strong); }
+.withClear { padding-right: 4px; }
+.divider { width: 1px; height: 12px; background: var(--border-default); }
+.value { color: var(--text-strong); }
+.count { font: 500 11px var(--font-mono); color: var(--text-faint); }
+.clear {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 8px 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.clear:hover { color: var(--accent-ink); }

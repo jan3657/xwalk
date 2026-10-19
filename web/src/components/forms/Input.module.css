@@ -27,4 +27,4 @@
 .input::placeholder { color: var(--text-faint); }
 .input:focus-visible { box-shadow: none; }
 .mono { font: 400 12px var(--font-mono); }
-.prefix { font: 600 10px/1 var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); white-space: nowrap; }
+.prefix { font: 600 10px/1 var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-ink); white-space: nowrap; }

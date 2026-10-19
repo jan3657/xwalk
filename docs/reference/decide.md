@@ -166,12 +166,16 @@ def parse_response(
 ```
 
 Every answer is typed against the question that was asked. A missing answer, an answer of
-the wrong kind, a probability outside `[0, 1]`, or a `ChoiceAnswer` naming an option that
-was never offered is a `DecisionResponseError` (a `DecisionFatalError` subclass) — a broken
+the wrong kind, a probability outside `[0, 1]`, a `ScoreAnswer.score` outside the offered
+levels `[0, len(criteria) - 1]` (never clamped; NaN, infinities and booleans included), or
+a `ChoiceAnswer` naming an option that was never offered is a `DecisionResponseError` (a `DecisionFatalError` subclass) — a broken
 contract, not data about your records. The client does not retry it; the matcher treats it
 as a per-record failure (see below). `usage` is read from the payload's `usage` object into a `Usage` with
 `prompt_tokens`, `calls=1`, and `cost_usd`; there are no completion tokens, because there
-is no completion.
+is no completion. A missing usage object, a missing or invalid `input_tokens` (not a
+non-negative integer: NaN, infinite, fractional, a string) or an invalid `cost` makes the
+call one with unknown usage (`Usage.unreported()`), never a known zero; an absent `cost`
+is 0.0.
 
 | Error | Raised for |
 |---|---|
@@ -223,14 +227,19 @@ raises `DecisionRetryableError`. Every HTTP request counts as a call: a response
 after retries reports `calls` = the number of requests, the retried ones with unknown
 usage, and an error carries `Usage.unreported(n)` for the `n` requests it made.
 `attach_call_budget(budget)` makes it reserve one unit of a `CallBudget` before every
-request, retries included; `BudgetedDecider` (in `xwalk.decide.budget`) does that and
+request, retries included, and report each request's outcome with `budget.settle`, so a
+refusal can name the error of a provider that is failing; `BudgetedDecider` (in `xwalk.decide.budget`) does that and
 keeps the complete usage, which is how `--max-calls` limits the decider path.
 
-**Fingerprint.** `hash_value` over the adapter name, `ADAPTER_VERSION`, the endpoint's host
-and path, and the configured model id. The API key is not in it, so rotating a key does not
-invalidate a resumable run — the same rule the LLM adapters follow. Moving from the
-OpenRouter endpoint to TypeSafe's *does* change it, because the host and path are part of
-what answered.
+**Fingerprint.** `hash_value` over the adapter name, `ADAPTER_VERSION`, the redacted full
+endpoint and the configured model id. Endpoint identity includes scheme, host, path and
+non-secret query parameters (including blank values). URL userinfo and credential
+parameters never enter the hash, so rotating credentials preserves the identity. Changing
+providers or deployment query parameters changes it.
+
+**Compatibility.** Jev adapter identity version 2 deliberately invalidates version 1
+cache and run identities, which omitted scheme and query parameters. Start a fresh run
+directory for existing Jev runs.
 
 `aclose()` closes the underlying `httpx.AsyncClient`.
 
@@ -455,12 +464,15 @@ further: it is sent anyway, and a note (`candidate C… alone exceeds the state 
 only warning.
 
 **Failures.** The first chunk to fail cancels the chunks still in flight, since they are
-wasted spend once the record is going to fail. A `DecisionFatalError` (other than a
-`DecisionResponseError`) propagates as itself, its `usage` set to what the screen cost. Any
-other `DecisionError` is raised as `ScreenFailed`, which carries the original error as
-`cause` and, as `usage`, what the chunks that had already finished cost plus the failed
-request (a call with unknown usage), so the caller can bill the failed attempt for it. Cancelling `screen()` itself cancels and awaits
-every chunk task, so none is left running.
+wasted spend once the record is going to fail. Every chunk is then settled and every
+failure collected. If any of them is a `DecisionFatalError` (other than a
+`DecisionResponseError`), that fatal error propagates as itself whichever chunk it came
+from, its `usage` set to what the screen cost. Otherwise the failures are raised as
+`ScreenFailed`, which carries the first in chunk order as `cause`, the count as
+`failed_chunks`, and, as `usage`, the whole bill: the chunks that answered, every failed
+request, and every request cancelled after dispatch (each failed or cancelled request a
+call with unknown usage). A chunk cancelled before it reached the decider is not a call.
+Cancelling `screen()` itself cancels and awaits every chunk task, so none is left running.
 
 `shortlist` is the top `shortlist_size` record ids by probability that also clear
 `shortlist_floor`. `best` is the highest probability seen over **all** candidates, not just
@@ -597,6 +609,7 @@ class Signals:
     rubric_levels: int | None = None
     rubric_confidence: float | None = None
     properties: Mapping[str, float] = field(default_factory=dict)
+    retrieval_degraded: bool = False  # some retriever search failed (either pass)
 
     def flat(self) -> dict[str, float]
 
@@ -624,7 +637,7 @@ def derive_status(signals: Signals, policy: DecisionPolicy) -> tuple[MatchStatus
 
 Seven rules, in order; the first that matches wins.
 
-1. every retriever failed → `failed` / `retriever_failure`
+1. every retriever failed (first pass) → `failed` / `retriever_failure`
 2. no candidates, or nothing was screened → `unmatched` / `no_candidates`
 3. best screen probability < `screen_floor` → `unmatched` / `below_review_floor`
 4. choose said `NONE` and `p_none` ≥ `none_at` → `unmatched` / `selector_abstained`
@@ -635,8 +648,16 @@ Seven rules, in order; the first that matches wins.
    → `matched` / `accept_threshold`
 7. otherwise → `needs_review` / `below_accept_threshold`
 
+Then one override: if the outcome is `unmatched` and `Signals.retrieval_degraded` is set
+(some retriever search failed in the first pass or in the rewrite's search), the result is
+`failed` / `retriever_failure` instead, so a resumed run retries it. A match or a review
+stands on the surviving candidates. `DecisionMatcher` stores the failed searches on the
+attempt as `retrieval_failures`.
+
 A provider failure is handled by the matcher rather than here, and produces `failed` /
-`provider_failure`.
+`provider_failure`, which takes precedence over a retriever failure in the same record.
+`STATUS_SEMANTICS_VERSION` (now 2) versions these rules and is part of the run
+fingerprint.
 
 Rule 6 is a conjunction: one property at `0.40` sends an otherwise perfect match to review.
 That is the intended direction — an automatic match is the one nobody looks at.
@@ -678,6 +699,20 @@ class DecisionMatcher:
 It satisfies the same `MatcherLike` protocol `run_batch` takes — `run_fingerprint`,
 `policy`, `store_fingerprint`, `async match` — so batching, the ledger, resume, review and
 every export work unchanged. An empty retriever list raises `ValueError`.
+
+Build `run_fingerprint` with `xwalk.batch.build_decision_run_fingerprint`, passing the
+stages you pass here (`screener=`, `chooser=`, `gate=`, `rewriter=`; all required,
+`rewriter=None` when there is none). A screener whose
+chunking differs from the policy's, or a stage on another decider, is recorded under the
+`stages` component; the rewriter is hashed whole (its client fingerprint, prompts,
+effective `temperature`/`max_tokens` and `max_queries`) as the `rewrite` component.
+Credentials, timeouts, concurrency and the budget and cache wrappers are not identity.
+A job file's rewrite is identified by its `decider.rewrite` block, plus whatever the
+client actually used differs from the one that block describes (an injected client,
+a capability override); `ops.run` passes that client. That comparison is computed
+from the block's settings (`openai_compat_fingerprint`, `litellm_fingerprint`), without
+building a client, and the block's `base_url` is hashed with userinfo and key
+parameters removed.
 
 Retrieval is the shared `xwalk.retrieve.retrieve`, which searches every retriever with
 every rendered query concurrently and fuses by reciprocal rank. A record surfaced by

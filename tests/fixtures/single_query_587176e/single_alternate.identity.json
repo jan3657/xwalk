@@ -1,0 +1,72 @@
+{
+  "run": {
+    "library_version": "0.2.0rc1",
+    "llm": "26e96da7cd1486b6",
+    "policy": {
+      "accept_at": 0.6,
+      "audit_rate": 0.0,
+      "legacy_id_resolution": false,
+      "max_attempts": 4,
+      "review_floor": 0.4,
+      "status_semantics": 2,
+      "verify_band": [
+        0.6,
+        0.8
+      ]
+    },
+    "prompts": "43c0177d6246a1f9",
+    "retrieval": {
+      "depths": [
+        "bm25:20"
+      ],
+      "retriever_limit": 20,
+      "retriever_timeout": 60.0,
+      "rrf_k": 60
+    },
+    "retrievers": [
+      "bm25:scripted-bm25"
+    ],
+    "selector_policy": {
+      "max_candidate_tokens": 8000,
+      "max_candidates": 30
+    },
+    "target": "7530c81d9ca482a2",
+    "templates": "4a8d1f23eccad586"
+  },
+  "stages": {
+    "rewriter": {
+      "llm": "26e96da7cd1486b6",
+      "max_queries": 2,
+      "max_tokens": 1024,
+      "prompts": "43c0177d6246a1f9",
+      "temperature": 0.0,
+      "templates": "4a8d1f23eccad586"
+    },
+    "scorer": {
+      "llm": "26e96da7cd1486b6",
+      "max_tokens": 1024,
+      "prompts": "43c0177d6246a1f9",
+      "review_floor": 0.4,
+      "temperature": 0.0,
+      "templates": "4a8d1f23eccad586"
+    },
+    "selector": {
+      "legacy_id_resolution": false,
+      "llm": "26e96da7cd1486b6",
+      "max_candidate_tokens": 8000,
+      "max_candidates": 30,
+      "max_tokens": 1024,
+      "prompts": "43c0177d6246a1f9",
+      "system": "You return JSON only. No prose, no code fences.",
+      "temperature": 0.0,
+      "templates": "4a8d1f23eccad586"
+    },
+    "verifier": {
+      "llm": "26e96da7cd1486b6",
+      "max_tokens": 1024,
+      "prompts": "43c0177d6246a1f9",
+      "temperature": 0.0,
+      "templates": "4a8d1f23eccad586"
+    }
+  }
+}

@@ -96,6 +96,7 @@ def _attempt_to_dict(attempt: Attempt) -> dict[str, Any]:
         "candidates_truncated": attempt.candidates_truncated,
         "issued_keys": dict(attempt.issued_keys),
         "raw_selection": attempt.raw_selection,
+        "selector_confidence": attempt.selector_confidence,
         "chosen_id": attempt.chosen_id,
         "resolution": attempt.resolution,
         "primary_score": attempt.primary_score,
@@ -112,6 +113,7 @@ def _attempt_to_dict(attempt: Attempt) -> dict[str, Any]:
         "elapsed_seconds": attempt.elapsed_seconds,
         "finish_reason": attempt.finish_reason,
         "signals": dict(attempt.signals),
+        "retrieval_failures": list(attempt.retrieval_failures),
     }
 
 
@@ -125,6 +127,7 @@ def _attempt_from_dict(data: Mapping[str, Any]) -> Attempt:
         candidates_truncated=data["candidates_truncated"],
         issued_keys=data["issued_keys"],
         raw_selection=data["raw_selection"],
+        selector_confidence=data.get("selector_confidence"),
         chosen_id=data["chosen_id"],
         resolution=data["resolution"],
         primary_score=data["primary_score"],
@@ -140,6 +143,8 @@ def _attempt_from_dict(data: Mapping[str, Any]) -> Attempt:
         elapsed_seconds=data["elapsed_seconds"],
         finish_reason=data["finish_reason"],
         signals=dict(data.get("signals") or {}),
+        # Absent from older blobs, which read as a clean search.
+        retrieval_failures=tuple(str(n) for n in data.get("retrieval_failures") or ()),
     )
 
 

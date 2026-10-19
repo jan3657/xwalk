@@ -128,7 +128,7 @@ class RetryProposal:
 
     kind: Literal["candidate", "query"]
     value: str
-    source: Literal["scorer", "rewriter"]
+    source: Literal["scorer", "rewriter", "verifier"]
 
 
 class MatchStatus(Enum):
@@ -144,6 +144,7 @@ class DecisionReason(Enum):
     BELOW_REVIEW_FLOOR = "below_review_floor"
     SELECTOR_ABSTAINED = "selector_abstained"
     NO_CANDIDATES = "no_candidates"
+    CANDIDATE_BUDGET_EXCEEDED = "candidate_budget_exceeded"
     UNRESOLVED_OUTPUT = "unresolved_output"
     RETRIEVER_FAILURE = "retriever_failure"
     PROVIDER_FAILURE = "provider_failure"
@@ -185,6 +186,14 @@ class Attempt:
     finish_reason: str | None
     # Calibrated signals from a decision model. Empty on the LLM path.
     signals: Mapping[str, float] = field(default_factory=dict)
+    # One note per retriever search that raised or timed out in this attempt
+    # ("name: message"). Non-empty means the candidate list may be incomplete, so a
+    # negative outcome from it is not settled evidence. Kept whether or not the trace
+    # keeps candidates; empty for a forced re-score, which does not search.
+    retrieval_failures: tuple[str, ...] = ()
+    # Advisory selector output, including abstention; never a classification score.
+    # Absent when selection was skipped/failed or its confidence was invalid.
+    selector_confidence: float | None = None
 
 
 @dataclass(frozen=True)

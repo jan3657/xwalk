@@ -129,6 +129,13 @@ Each is Jinja source, compiled on construction so a typo fails immediately with
 100k-row run; `id` always refers to the record's identity, even if a field is also named
 `id`.
 
+Templates run in Jinja's sandbox (`ImmutableSandboxedEnvironment`), because a job file is
+input: field access, filters, tests and loops work as usual, but a template cannot reach
+Python internals or change a record. A constant dunder such as `{{ x.__class__ }}` is
+refused when the templates are built (`xwalk validate` reports `template_invalid`); an
+attribute the sandbox refuses at render time is a template error for that record. A
+mapping key starting with a single underscore (`{{ meta._id }}`) is still data.
+
 | Field | Type | Required | Default | Input | Produces |
 |---|---|---|---|---|---|
 | `query` | `str \| None` | one of `query` / `queries` | `None` | source record | the retrieval query string |
@@ -155,8 +162,19 @@ templates:
 `render_queries` drops every query that renders empty and de-duplicates the rest, so listing
 a field that is blank on most records costs nothing on those records. Both keys may be given;
 `queries` is then what is searched, while `query` remains `TemplateSet.query` for anything
-that wants a single string. A job giving only `query` gets `queries = ()` and retrieval falls
+that wants a single string. Compatibility exception on the LLM path: a distinct `query`
+plus a one-entry `queries` list still searches only `query`, as existing jobs did. Omit
+`query` to use that entry. Multi-entry lists work on both paths; the LLM matcher fuses
+them on the first attempt, then searches each new proposed query separately. An
+infrastructure retry repeats the actual query list, never its joined trace display. A job giving only `query` gets `queries = ()` and retrieval falls
 back to that one query — the single-query path, byte-identical to what it always was.
+
+The LLM selector budgets the rendered candidate blocks at four characters per estimated
+token (`selector.max_candidate_tokens`), including opaque key prefixes and blank-line
+separators. Unused target fields cost nothing; template expansion counts in full. It
+keeps a ranked prefix without slicing text. If the first block cannot fit, the record
+is `needs_review / candidate_budget_exceeded`, with no selector call. Rendered-budget
+version 2 changes LLM run identity; use a new run directory for old configurations.
 
 ## `target` and `source`
 
@@ -217,7 +235,7 @@ backend that declares no depth of its own; it does feed the run fingerprint.
 |---|---|---|---|---|---|
 | `kind` | `openai_compat \| litellm` | no | `openai_compat` | both | which adapter |
 | `model` | `str` | yes | — | both | model identifier |
-| `base_url` | `str \| None` | required for `openai_compat` | `None` | openai_compat | endpoint root, without `/chat/completions` |
+| `base_url` | `str \| None` | required for `openai_compat` | `None` | both | endpoint root, without `/chat/completions`; sent to LiteLLM as `api_base` |
 | `api_key_env` | `str \| None` | no | `None` | both | **name** of the environment variable holding the key |
 | `api_key` | — | never | `None` | — | present only so it can be rejected |
 | `profile` | `str` | no | `"unknown"` | openai_compat | capability profile, below |
@@ -230,9 +248,11 @@ Valid `profile` values are `openai`, `anthropic-compat`, `google-compat`, `vllm`
 seeding, `Retry-After` — never whether it trusts the answer; every response is parsed and
 validated regardless. `unknown` asks for nothing, which always works.
 
-`kind: litellm` needs `xwalk[litellm]` and ignores `base_url` and `profile`; only `model`,
-`temperature`, `max_tokens` and `seed` reach `LiteLLMClient`, and its capabilities default to
-all-false.
+`kind: litellm` needs `xwalk[litellm]` and ignores `profile`. `model`, `temperature`,
+`max_tokens`, `seed`, the key named by `api_key_env` (as `api_key`) and `base_url` (as
+`api_base`) reach `LiteLLMClient`; its capabilities default to all-false. The endpoint is
+part of the run fingerprint with any userinfo or credential-like query parameter removed;
+the key never is.
 
 ## `decider`
 
@@ -321,10 +341,18 @@ model.
 | `concurrency` | `int` | no | `32` | records in flight; ≥ 1 |
 | `legacy_id_resolution` | `bool` | no | `false` | accept non-exact key resolution; such matches never become automatic |
 | `retriever_timeout` | `float` | no | `60.0` | seconds before a retriever is treated as failed |
+| `deduplicate_candidates` | `bool` | no | `false` | skip pending/completed work for the same record and scoring context; opt-in |
+| `alternate_queues` | `bool` | no | `false` | alternate candidate and query work so queued searches run; opt-in |
+| `chase_verifier_leads` | `bool` | no | `false` | score well-formed verifier preferences once per record ID; opt-in |
 
 The invariant is `0 <= review_floor <= accept_at <= 1`. Audits are seeded from
 `(run_fingerprint, source_id)`, so the same records are audited across a resume rather than
 re-rolled.
+
+The three routing flags are independent experiments, bounded by `max_attempts`.
+Disabled flags add no fingerprint component; enabled flags enter policy identity.
+They change evidence acquisition, so offline replay refuses changes to them.
+See [routing semantics](pipeline.md#setup) for completion, context and retry rules.
 
 ## `policy` on the decider path
 
@@ -483,7 +511,6 @@ file, no index, no environment variable and no network.
 | an unknown `decider.kind` | `Input should be 'jev'` |
 | a decider `policy` threshold outside `[0, 1]`, `shortlist_floor > accept_at`, `chunk_size: 0` | the field and the bound; an unknown decider `policy` key gets a did-you-mean |
 | `selector:` on a decider job | `selector does not apply to a decider job` |
-| `templates.queries` with more than one entry on an `llm:` job | `templates.queries with more than one entry applies to decider jobs; …` |
 | `kind: openai_compat` with no `base_url` | `openai_compat needs a base_url` |
 | a wrongly typed scalar (`accept_at: high`) | pydantic type error |
 

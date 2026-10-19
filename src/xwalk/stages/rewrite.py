@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from xwalk.llm.base import LLMClient, LLMRequest, ParseError
+from xwalk.llm.base import LLMClient, LLMRequest, ParseError, effective_generation
 from xwalk.llm.parsing import parse_json_object
 from xwalk.prompts.contract import REWRITE_SCHEMA, PromptSet
 from xwalk.records import Record, RetryProposal, Usage
@@ -45,6 +46,20 @@ class QueryRewriter:
         self._temperature = temperature
         self._max_tokens = max_tokens
 
+    @property
+    def identity(self) -> dict[str, Any]:
+        """What this stage sends, for the run fingerprint. `max_queries` is rendered
+        into the prompt and caps the proposals kept. Never a credential."""
+        return {
+            "llm": self._llm.fingerprint,
+            "prompts": self._prompts.fingerprint,
+            "templates": self._templates.fingerprint,
+            **effective_generation(
+                self._llm, temperature=self._temperature, max_tokens=self._max_tokens
+            ),
+            "max_queries": self._max_queries,
+        }
+
     async def rewrite(
         self,
         source: Record,
@@ -81,11 +96,22 @@ class QueryRewriter:
                 error=str(exc),
             )
 
+        explanation = str(payload.get("explanation", ""))
+        queries = payload.get("queries")
+        # `queries` must be a list of strings. Anything else is malformed output: no
+        # proposals, error noted. A bare string is never iterated into one-letter queries.
+        if not isinstance(queries, list) or not all(isinstance(q, str) for q in queries):
+            return RewriteOutcome(
+                proposals=(),
+                explanation=explanation,
+                raw=response.text,
+                usage=response.usage,
+                error=f"queries must be a list of strings, got {queries!r}"[:200],
+            )
+
         seen = {normalise_query(q) for q in previous_queries}
         proposals: list[RetryProposal] = []
-        for value in payload.get("queries", []) or []:
-            if not isinstance(value, str):
-                continue
+        for value in queries:
             text = value.strip()
             normalised = normalise_query(text)
             if not text or normalised in seen:
@@ -97,7 +123,7 @@ class QueryRewriter:
 
         return RewriteOutcome(
             proposals=tuple(proposals),
-            explanation=str(payload.get("explanation", "")),
+            explanation=explanation,
             raw=response.text,
             usage=response.usage,
         )

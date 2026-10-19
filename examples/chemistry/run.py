@@ -72,15 +72,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     prompts = PromptSet.from_slots(load_slots(HERE / "slots.yaml"))
     policy, selector_policy = MatchPolicy(), SelectorPolicy()
+    # The same stage objects go to the Matcher and to the fingerprint, so a per-stage
+    # setting (Scorer(max_tokens=...), another client) is part of the run's identity.
+    selector = Selector(llm, prompts, templates, policy=selector_policy)
+    scorer = Scorer(llm, prompts, templates, review_floor=policy.review_floor)
+    verifier = Verifier(llm, prompts, templates)
+    rewriter = QueryRewriter(llm, prompts, templates)
 
     matcher = Matcher(
         templates=templates,
         retrievers=[retriever],
         store=store,
-        selector=Selector(llm, prompts, templates, policy=selector_policy),
-        scorer=Scorer(llm, prompts, templates, review_floor=policy.review_floor),
-        verifier=Verifier(llm, prompts, templates),
-        rewriter=QueryRewriter(llm, prompts, templates),
+        selector=selector,
+        scorer=scorer,
+        verifier=verifier,
+        rewriter=rewriter,
         policy=policy,
         run_fingerprint=build_run_fingerprint(
             templates=templates,
@@ -90,6 +96,10 @@ def main(argv: list[str] | None = None) -> int:
             llm=llm,
             policy=policy,
             selector_policy=selector_policy,
+            selector=selector,
+            scorer=scorer,
+            verifier=verifier,
+            rewriter=rewriter,
         ),
     )
 

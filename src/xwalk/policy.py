@@ -15,6 +15,11 @@ from dataclasses import dataclass
 from xwalk.records import Attempt, DecisionReason, MatchStatus
 from xwalk.stages.keying import Resolution
 
+# Bumped when the same attempts can reduce to a different status, so results computed
+# under the old rules are not reused on resume (it enters the run fingerprint).
+# 2: an acceptable attempt wins; an incomplete negative is failed, not unmatched.
+STATUS_SEMANTICS_VERSION = 2
+
 _EXACT_RESOLUTIONS = frozenset({Resolution.EXACT_KEY.value})
 _FAILURE_REASONS = frozenset(
     {
@@ -23,6 +28,8 @@ _FAILURE_REASONS = frozenset(
         DecisionReason.FATAL_PROVIDER_FAILURE,
     }
 )
+# Failures that leave a record's evidence incomplete but may clear on a retry.
+_BLOCKING_REASONS = frozenset({DecisionReason.RETRIEVER_FAILURE, DecisionReason.PROVIDER_FAILURE})
 # A verifier verdict that lets a score stand. "error" (the verifier call failed) does not.
 _UNCHALLENGED = frozenset({None, "support"})
 
@@ -37,6 +44,9 @@ class MatchPolicy:
     concurrency: int = 32
     legacy_id_resolution: bool = False
     retriever_timeout: float = 60.0
+    deduplicate_candidates: bool = False
+    alternate_queues: bool = False
+    chase_verifier_leads: bool = False
 
     def __post_init__(self) -> None:
         if self.max_attempts < 1:
@@ -105,10 +115,14 @@ def _has_choice(attempt: Attempt) -> bool:
 
 
 def is_acceptable(attempt: Attempt, policy: MatchPolicy) -> bool:
-    """Good enough to stop early: a valid exact-key score at or above `accept_at`, from
-    an attempt that did not fail, with no verifier verdict against it."""
+    """Good enough to stop early: a valid exact-key score at or above `accept_at` for a
+    chosen target, from an attempt that did not fail, with no verifier verdict against it.
+
+    `derive_status` reports such an attempt as the match, so stopping and reduction
+    always agree (R4)."""
     return (
         attempt.reason is None
+        and attempt.chosen_id is not None
         and is_valid_score(attempt.primary_score)
         and (attempt.primary_score or 0.0) >= policy.accept_at
         and attempt.resolution in _EXACT_RESOLUTIONS
@@ -116,11 +130,29 @@ def is_acceptable(attempt: Attempt, policy: MatchPolicy) -> bool:
     )
 
 
+def _blocking_reason(attempt: Attempt) -> DecisionReason | None:
+    """Why this attempt's evidence is incomplete, if it is: a recoverable provider
+    failure (primary) or a retriever failure, including a search that lost some
+    retrievers but still returned hits."""
+    if attempt.reason in _BLOCKING_REASONS:
+        return attempt.reason
+    if attempt.retrieval_failures:
+        return DecisionReason.RETRIEVER_FAILURE
+    return None
+
+
 def derive_status(
     attempts: Sequence[Attempt],
     policy: MatchPolicy,
 ) -> tuple[MatchStatus, DecisionReason, Attempt | None]:
-    """Reduce a list of attempts to one status, one reason, and the winning attempt."""
+    """Reduce a list of attempts to one status, one reason, and the winning attempt.
+
+    Precedence, highest first (docs/reference/core-types.md, "Status precedence"):
+    a fatal failure; an acceptable attempt; every attempt failed; candidate budget
+    exceeded; a review from the fallback ranking; a negative outcome with any failure
+    or degraded search (failed,
+    so a resumed run retries it); then the clean negatives.
+    """
     if not attempts:
         return MatchStatus.FAILED, DecisionReason.PROVIDER_FAILURE, None
 
@@ -129,15 +161,42 @@ def derive_status(
         # be complete, and a batch run stops on it.
         return MatchStatus.FAILED, DecisionReason.FATAL_PROVIDER_FAILURE, None
 
+    acceptable = [a for a in attempts if is_acceptable(a, policy)]
+    if acceptable:
+        # The attempt the loop stopped on. Only one exists in a loop-built list; for
+        # any other list, the highest score, then the earlier attempt.
+        winner = min(acceptable, key=lambda a: (-(a.primary_score or 0.0), a.index))
+        return MatchStatus.MATCHED, DecisionReason.ACCEPT_THRESHOLD, winner
+
     if all(_is_failure(a) for a in attempts):
         reason = attempts[-1].reason or DecisionReason.PROVIDER_FAILURE
         return MatchStatus.FAILED, reason, None
 
+    for attempt in reversed(attempts):
+        if attempt.reason is DecisionReason.CANDIDATE_BUDGET_EXCEEDED:
+            return MatchStatus.NEEDS_REVIEW, DecisionReason.CANDIDATE_BUDGET_EXCEEDED, attempt
+
+    status, reason, best = _fallback(attempts, policy)
+    if status is MatchStatus.UNMATCHED:
+        # A no-match is settled only on complete evidence. Any core failure or degraded
+        # search in this result, even before a later clean negative, leaves it open.
+        for attempt in reversed(attempts):
+            blocking = _blocking_reason(attempt)
+            if blocking is not None:
+                return MatchStatus.FAILED, blocking, None
+    return status, reason, best
+
+
+def _fallback(
+    attempts: Sequence[Attempt],
+    policy: MatchPolicy,
+) -> tuple[MatchStatus, DecisionReason, Attempt | None]:
+    """The ranking used when no attempt is acceptable, unchanged from 0.2.0rc1 except
+    that it can no longer produce `matched`."""
     scored = [a for a in attempts if _has_choice(a)]
     if scored:
         # Highest score wins. On a tie, an attempt that completed beats one whose
-        # verifier call failed (a retry that re-scored and verified the same choice),
-        # then the earlier attempt wins.
+        # verifier call failed, then the earlier attempt wins.
         best = min(scored, key=lambda a: (-(a.primary_score or 0.0), _is_failure(a), a.index))
 
         if best.verifier_decision in ("disagree", "no_match"):
@@ -154,7 +213,9 @@ def derive_status(
 
         score = best.primary_score or 0.0
         if score >= policy.accept_at:
-            return MatchStatus.MATCHED, DecisionReason.ACCEPT_THRESHOLD, best
+            # Not acceptable although it clears the threshold: the attempt did not
+            # complete. The loop never builds one; it is never matched on its own.
+            return MatchStatus.NEEDS_REVIEW, DecisionReason.PROVIDER_FAILURE, best
         if score >= policy.review_floor:
             return MatchStatus.NEEDS_REVIEW, DecisionReason.BELOW_ACCEPT_THRESHOLD, best
         return MatchStatus.UNMATCHED, DecisionReason.BELOW_REVIEW_FLOOR, best

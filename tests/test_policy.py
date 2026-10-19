@@ -276,3 +276,17 @@ def test_a_verified_retry_beats_an_unverified_tie():
     verified = matched(0.7, index=1, verifier_decision="support")
     status, _, best = derive_status([unverified, verified], POLICY)
     assert status is MatchStatus.MATCHED and best is verified
+
+
+def test_budget_exhaustion_cannot_be_reduced_to_a_clean_negative():
+    budget = attempt(candidate_count=2, reason=DecisionReason.CANDIDATE_BUDGET_EXCEEDED)
+    for prior in (attempt(), matched(0.1), attempt(reason=DecisionReason.PROVIDER_FAILURE)):
+        status, reason, best = derive_status([prior, budget], POLICY)
+        assert status is MatchStatus.NEEDS_REVIEW
+        assert reason is DecisionReason.CANDIDATE_BUDGET_EXCEEDED
+        assert best is budget
+    assert derive_status([matched(0.95), budget], POLICY)[0] is MatchStatus.MATCHED
+    assert (
+        derive_status([attempt(reason=DecisionReason.FATAL_PROVIDER_FAILURE), budget], POLICY)[0]
+        is MatchStatus.FAILED
+    )

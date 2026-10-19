@@ -1,0 +1,1024 @@
+{
+  "P3": {
+    "requests": [
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are matching a mention to at most one term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Candidates\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Choose the single best candidate, or abstain.\n- Answer with the bracketed key exactly as shown (for example C01), or null to abstain.\n- Never invent a key. Never answer with an identifier, a name, or a position number.\n- Abstain when no candidate is the same entity as the source record.\n\n## Output\nReturn only a JSON object of exactly this shape, where `chosen_key` is one of the keys\nabove or null, and `confidence_score` is between 0.0 and 1.0:\n{\"chosen_key\": \"C01\", \"confidence_score\": 0.9, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "chosen_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chosen_key",
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "selection",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates that were available\n[C02] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C02] ID: T2 Label: fructose\n## Other candidates that were available\n[C01] ID: T1 Label: glucose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates that were available\n[C02] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C02] ID: T2 Label: fructose\n## Other candidates that were available\n[C01] ID: T1 Label: glucose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      }
+    ],
+    "queries": [
+      "glucose"
+    ],
+    "chosen": [
+      "T1",
+      "T2",
+      "T1",
+      "T2"
+    ],
+    "status": "needs_review",
+    "reason": "below_accept_threshold",
+    "matched_id": "T1",
+    "confidence": 0.5
+  },
+  "P6": {
+    "requests": [
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are matching a mention to at most one term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Candidates\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Choose the single best candidate, or abstain.\n- Answer with the bracketed key exactly as shown (for example C01), or null to abstain.\n- Never invent a key. Never answer with an identifier, a name, or a position number.\n- Abstain when no candidate is the same entity as the source record.\n\n## Output\nReturn only a JSON object of exactly this shape, where `chosen_key` is one of the keys\nabove or null, and `confidence_score` is between 0.0 and 1.0:\n{\"chosen_key\": \"C01\", \"confidence_score\": 0.9, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "chosen_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chosen_key",
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "selection",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates that were available\n[C02] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are independently verifying a proposed match. Do not assume the proposal is correct.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates\n[C02] ID: T2 Label: fructose\n## Rules\n- Answer \"support\" if the proposed match is the same entity as the source record.\n- Answer \"disagree\" if a different listed candidate is the correct match, and name its key.\n- Answer \"no_match\" if no listed candidate is the correct match.\n\n## Output\nReturn only a JSON object of exactly this shape. `decision` is one of support, disagree,\nor no_match; `preferred_key` is one of the keys above or null:\n{\"decision\": \"support\", \"preferred_key\": null, \"confidence_score\": 0.8, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": [
+                "support",
+                "disagree",
+                "no_match"
+              ]
+            },
+            "preferred_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "decision",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "verification",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are improving a search query used to find a term for a\nmention.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Queries already tried\n- glucose\n## Best candidates those queries returned\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Propose up to 2 new search queries that are materially different from\n  the queries already tried.\n- Expand abbreviations, use the full formal name, or drop qualifiers that are not part of\n  the entity name.\n- Do not repeat a query that has already been tried.\n\n## Output\nReturn only this JSON object:\n{\"queries\": [\"first alternative\", \"second alternative\"], \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "queries"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "rewrite",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are matching a mention to at most one term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Candidates\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Choose the single best candidate, or abstain.\n- Answer with the bracketed key exactly as shown (for example C01), or null to abstain.\n- Never invent a key. Never answer with an identifier, a name, or a position number.\n- Abstain when no candidate is the same entity as the source record.\n\n## Output\nReturn only a JSON object of exactly this shape, where `chosen_key` is one of the keys\nabove or null, and `confidence_score` is between 0.0 and 1.0:\n{\"chosen_key\": \"C01\", \"confidence_score\": 0.9, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "chosen_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chosen_key",
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "selection",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates that were available\n[C02] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are independently verifying a proposed match. Do not assume the proposal is correct.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates\n[C02] ID: T2 Label: fructose\n## Rules\n- Answer \"support\" if the proposed match is the same entity as the source record.\n- Answer \"disagree\" if a different listed candidate is the correct match, and name its key.\n- Answer \"no_match\" if no listed candidate is the correct match.\n\n## Output\nReturn only a JSON object of exactly this shape. `decision` is one of support, disagree,\nor no_match; `preferred_key` is one of the keys above or null:\n{\"decision\": \"support\", \"preferred_key\": null, \"confidence_score\": 0.8, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": [
+                "support",
+                "disagree",
+                "no_match"
+              ]
+            },
+            "preferred_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "decision",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "verification",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are improving a search query used to find a term for a\nmention.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Queries already tried\n- glucose\n- q2\n## Best candidates those queries returned\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Propose up to 2 new search queries that are materially different from\n  the queries already tried.\n- Expand abbreviations, use the full formal name, or drop qualifiers that are not part of\n  the entity name.\n- Do not repeat a query that has already been tried.\n\n## Output\nReturn only this JSON object:\n{\"queries\": [\"first alternative\", \"second alternative\"], \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "queries"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "rewrite",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are matching a mention to at most one term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Candidates\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Choose the single best candidate, or abstain.\n- Answer with the bracketed key exactly as shown (for example C01), or null to abstain.\n- Never invent a key. Never answer with an identifier, a name, or a position number.\n- Abstain when no candidate is the same entity as the source record.\n\n## Output\nReturn only a JSON object of exactly this shape, where `chosen_key` is one of the keys\nabove or null, and `confidence_score` is between 0.0 and 1.0:\n{\"chosen_key\": \"C01\", \"confidence_score\": 0.9, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "chosen_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chosen_key",
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "selection",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C02] ID: T2 Label: fructose\n## Other candidates that were available\n[C01] ID: T1 Label: glucose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are independently verifying a proposed match. Do not assume the proposal is correct.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C02] ID: T2 Label: fructose\n## Other candidates\n[C01] ID: T1 Label: glucose\n## Rules\n- Answer \"support\" if the proposed match is the same entity as the source record.\n- Answer \"disagree\" if a different listed candidate is the correct match, and name its key.\n- Answer \"no_match\" if no listed candidate is the correct match.\n\n## Output\nReturn only a JSON object of exactly this shape. `decision` is one of support, disagree,\nor no_match; `preferred_key` is one of the keys above or null:\n{\"decision\": \"support\", \"preferred_key\": null, \"confidence_score\": 0.8, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": [
+                "support",
+                "disagree",
+                "no_match"
+              ]
+            },
+            "preferred_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "decision",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "verification",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      }
+    ],
+    "queries": [
+      "glucose",
+      "q2",
+      "q3"
+    ],
+    "chosen": [
+      "T1",
+      "T1",
+      "T2"
+    ],
+    "status": "matched",
+    "reason": "accept_threshold",
+    "matched_id": "T2",
+    "confidence": 0.7
+  },
+  "P8": {
+    "requests": [
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are matching a mention to at most one term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Candidates\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Choose the single best candidate, or abstain.\n- Answer with the bracketed key exactly as shown (for example C01), or null to abstain.\n- Never invent a key. Never answer with an identifier, a name, or a position number.\n- Abstain when no candidate is the same entity as the source record.\n\n## Output\nReturn only a JSON object of exactly this shape, where `chosen_key` is one of the keys\nabove or null, and `confidence_score` is between 0.0 and 1.0:\n{\"chosen_key\": \"C01\", \"confidence_score\": 0.9, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "chosen_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chosen_key",
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "selection",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates that were available\n[C02] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T1 Label: glucose\n## Other candidates that were available\n[C02] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C02] ID: T2 Label: fructose\n## Other candidates that were available\n[C01] ID: T1 Label: glucose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are improving a search query used to find a term for a\nmention.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Queries already tried\n- glucose\n## Best candidates those queries returned\n[C01] ID: T1 Label: glucose\n\n[C02] ID: T2 Label: fructose\n## Rules\n- Propose up to 2 new search queries that are materially different from\n  the queries already tried.\n- Expand abbreviations, use the full formal name, or drop qualifiers that are not part of\n  the entity name.\n- Do not repeat a query that has already been tried.\n\n## Output\nReturn only this JSON object:\n{\"queries\": [\"first alternative\", \"second alternative\"], \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "queries"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "rewrite",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      }
+    ],
+    "queries": [
+      "glucose"
+    ],
+    "chosen": [
+      "T1",
+      "T1",
+      "T2"
+    ],
+    "status": "needs_review",
+    "reason": "below_accept_threshold",
+    "matched_id": "T1",
+    "confidence": 0.5
+  },
+  "A8": {
+    "requests": [
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are matching a mention to at most one term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Candidates\n[C01] ID: T2 Label: fructose\n\n[C02] ID: T3 Label: sucrose\n## Rules\n- Choose the single best candidate, or abstain.\n- Answer with the bracketed key exactly as shown (for example C01), or null to abstain.\n- Never invent a key. Never answer with an identifier, a name, or a position number.\n- Abstain when no candidate is the same entity as the source record.\n\n## Output\nReturn only a JSON object of exactly this shape, where `chosen_key` is one of the keys\nabove or null, and `confidence_score` is between 0.0 and 1.0:\n{\"chosen_key\": \"C01\", \"confidence_score\": 0.9, \"explanation\": \"one sentence\"}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "chosen_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chosen_key",
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "selection",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T2 Label: fructose\n## Other candidates that were available\n[C02] ID: T3 Label: sucrose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C02] ID: T3 Label: sucrose\n## Other candidates that were available\n[C01] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C01] ID: T2 Label: fructose\n## Other candidates that were available\n[C02] ID: T3 Label: sucrose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      },
+      {
+        "system": "You return JSON only. No prose, no code fences.",
+        "user": "You are judging a proposed match between a mention and a term.\nDomain: test\n\n## Source record\n- mention: glucose\n- context_left: blood\n- context_right: levels\n## Context\nblood [glucose] levels\n## Proposed match\n[C02] ID: T3 Label: sucrose\n## Other candidates that were available\n[C01] ID: T2 Label: fructose\n## Rubric\n| Score | Name | Applies when |\n|---|---|---|\n| 1.0 | Certain | exact |\n| 0.4 | Weak | vague |\n## Rules\n- Judge the proposed match against the whole source record above, not against any search string.\n- If the score is below 0.4, you may propose better options.\n- Propose a candidate key only if it appears in \"Other candidates that were available\".\n- Propose a search query only for an entity that is not present in any listed candidate.\n\n## Output\nReturn only a JSON object of exactly this shape. `confidence_score` is between 0.0 and\n1.0; both lists may be empty:\n{\"confidence_score\": 0.7, \"explanation\": \"one sentence\", \"better_candidate_keys\": [\"C03\"], \"better_queries\": [\"alternative search string\"]}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confidence_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "better_candidate_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "better_queries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "confidence_score",
+            "explanation"
+          ],
+          "additionalProperties": false
+        },
+        "schema_name": "score",
+        "temperature": null,
+        "max_tokens": null,
+        "seed": null,
+        "extra": {}
+      }
+    ],
+    "queries": [
+      "glucose"
+    ],
+    "chosen": [
+      "T2",
+      "T3",
+      "T2",
+      "T3"
+    ],
+    "status": "unmatched",
+    "reason": "below_review_floor",
+    "matched_id": null,
+    "confidence": 0.2
+  }
+}

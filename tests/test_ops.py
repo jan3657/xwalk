@@ -81,6 +81,67 @@ def test_validate_reports_a_missing_credential(monkeypatch):
     assert ops.validate(JOB, check_credentials=False).exit_code == 0
 
 
+def test_a_missing_credential_is_not_called_an_invalid_job(monkeypatch):
+    """The file is fine; the environment is not (review dx F7e)."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    result = ops.validate(JOB)
+    headline = result.lines[0]
+    assert "invalid" not in headline
+    assert headline.startswith("job 'tiny' is valid")
+    assert "OPENAI_API_KEY is not set" in headline
+    assert "--no-credentials" in headline
+
+
+def test_a_missing_extra_is_named_in_the_headline(tmp_path, monkeypatch):
+    real = ops.importlib.util.find_spec
+    monkeypatch.setattr(
+        ops.importlib.util,
+        "find_spec",
+        lambda name, *a: None if name == "litellm" else real(name, *a),
+    )
+    path = _job_file(tmp_path, lambda d: d["llm"].__setitem__("kind", "litellm"))
+    result = ops.validate(path, check_credentials=False)
+    assert result.exit_code == 2
+    assert result.lines[0].startswith("job 'tiny' is valid")
+    assert "xwalk[litellm]" in result.lines[0]
+
+
+def test_a_template_naming_an_absent_column_is_named_with_the_file(tmp_path):
+    """A typo in a template used to validate with only "N records render an empty
+    query text" (review dx F7a)."""
+    path = _job_file(tmp_path, lambda d: d["templates"].__setitem__("query", "{{ mentoin }}"))
+    result = ops.validate(path, check_credentials=False)
+    unknown = [w for w in result.warnings if w.code == "template_unknown_field"]
+    assert len(unknown) == 1, result.warnings
+    message = unknown[0].message
+    assert "templates.query" in message and "'mentoin'" in message
+    assert "sources_tiny.csv" in message and "'mention'" in message
+
+
+def test_a_target_template_is_checked_against_the_target_columns(tmp_path):
+    def edit(data):
+        data["templates"]["doc"] = "{{ label }} {{ synonym | default('') }}"
+
+    result = ops.validate(_job_file(tmp_path, edit), check_credentials=False)
+    (unknown,) = [w for w in result.warnings if w.code == "template_unknown_field"]
+    assert "templates.doc" in unknown.message and "'synonym'" in unknown.message
+    assert "targets_tiny.csv" in unknown.message
+
+
+@pytest.mark.parametrize("job", [JOB, ops.bundled_example() / "job.yaml"])
+def test_shipped_templates_reference_only_real_columns(job):
+    result = ops.validate(job, check_credentials=False)
+    assert not [w for w in result.warnings if w.code == "template_unknown_field"]
+
+
+def test_a_job_with_real_errors_is_still_invalid(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = _job_file(tmp_path)
+    sources = tmp_path / "sources_tiny.csv"
+    sources.write_text(sources.read_text(encoding="utf-8") + "s1,again,,\n", encoding="utf-8")
+    assert ops.validate(path).lines[0] == "job 'tiny' is invalid"
+
+
 def test_a_misspelled_key_fails_preflight(tmp_path):
     path = _job_file(tmp_path, lambda d: d["policy"].__setitem__("acept_at", 0.9))
     result = ops.validate(path, check_credentials=False)
@@ -216,6 +277,27 @@ def test_an_index_built_before_component_metadata_is_refused(tmp_path):
     with pytest.raises(ops.OpError) as info:
         ops.index(job, tmp_path / "idx")
     assert info.value.code == "index_mismatch"
+
+
+def test_an_index_from_the_previous_exact_normaliser_is_refused_then_rebuilt(tmp_path):
+    """Normalisation version 2 changed the exact forms; an older index answers
+    differently, so it is refused (exit 3) by name until rebuilt explicitly."""
+    from xwalk.retrieval.bm25 import NORMALIZATION_VERSION
+
+    job = _job_file(tmp_path)
+    ops.index(job, tmp_path / "idx")
+    meta_path = tmp_path / "idx" / "bm25" / "xwalk_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["components"]["normalization_version"] = 1
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(ops.OpError) as info:
+        ops.index(job, tmp_path / "idx")
+    assert info.value.result.exit_code == 3
+    assert info.value.result.data["differences"]["bm25"] == {
+        "normalization_version": {"stored": 1, "expected": NORMALIZATION_VERSION}
+    }
+    rebuilt = ops.index(job, tmp_path / "idx", rebuild=True)
+    assert rebuilt.data["retrievers"][0]["action"] == "rebuilt"
 
 
 # --- run ----------------------------------------------------------------------------

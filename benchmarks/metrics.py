@@ -30,6 +30,7 @@ from statistics import mean
 from typing import Any
 
 from xwalk.evaluate import GoldSet
+from xwalk.evaluate.metrics import predicts_no_match
 
 STATUSES = ("matched", "needs_review", "unmatched", "failed")
 
@@ -72,7 +73,7 @@ def matching_metrics(
     no_gold = [p for p in rows if not gold.get(p.source_id)]
     accepted = [p for p in rows if p.status == "matched"]
     accepted_correct = [p for p in accepted if correct(p, p.predicted_id)]
-    predicted_nomatch = [p for p in rows if p.status == "unmatched"]
+    predicted_nomatch = [p for p in rows if predicts_no_match(p.status)]
 
     precision = _ratio(len(accepted_correct), len(accepted))
     recall = _ratio(len(accepted_correct), len(with_gold))
@@ -95,7 +96,7 @@ def matching_metrics(
         "no_match_precision": _ratio(
             sum(1 for p in predicted_nomatch if not gold.get(p.source_id)), len(predicted_nomatch)
         ),
-        "no_match_recall": _ratio(sum(1 for p in no_gold if p.status == "unmatched"), len(no_gold)),
+        "no_match_recall": _ratio(sum(1 for p in no_gold if predicts_no_match(p.status)), len(no_gold)),
         "false_accept_on_no_match": sum(1 for p in no_gold if p.status == "matched"),
     }
 

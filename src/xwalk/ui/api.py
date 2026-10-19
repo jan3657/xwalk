@@ -35,6 +35,7 @@ from typing import Any
 import yaml
 
 from xwalk import __version__, ops
+from xwalk.review import COLUMNS as REVIEW_COLUMNS
 from xwalk.ui import offline
 
 DEFAULT_MAX_CALLS_CAP = 500
@@ -332,6 +333,7 @@ class Workspace:
         lookup_cache: Path | None = None,
         task_gate: Callable[[], None] | None = None,
         retrieval_heads: Sequence[Mapping[str, Any]] = (),
+        allow_local_downloads: bool = False,
     ) -> None:
         self.root = Path(root).resolve()
         if not self.root.is_dir():
@@ -351,6 +353,9 @@ class Workspace:
         self.lookup_cache = lookup_cache
         self.task_gate = task_gate
         self.retrieval_heads = tuple(dict(r) for r in retrieval_heads)
+        # Library downloads over http or from private addresses (an intranet mirror).
+        # Local mode only; public mode downloads nothing a visitor names.
+        self.allow_local_downloads = allow_local_downloads and not public
         # A visitor's model keys, by variable name: memory only, never os.environ.
         self.session_keys: dict[str, str] = {}
         from xwalk.ui.chatgpt import ChatGPTAuth
@@ -892,12 +897,14 @@ class Workspace:
         decisions = params.get("decisions")
         if not isinstance(decisions, list) or not decisions:
             raise ApiError(400, "missing_parameter", "decisions must be a non-empty list")
+        keys = [str(item.get("result_key") or "") for item in decisions if isinstance(item, dict)]
+        # Only the decided rows, looked up one by one: exporting the whole worksheet per
+        # decision made each save cost a pass over every result in the run.
+        found = _envelope("review export", lambda: ops.review_rows(run_dir, keys))
+        if found["status"] == "error":
+            return found
+        worksheet: dict[str, dict[str, str]] = found["data"]["rows"]
         with tempfile.TemporaryDirectory() as scratch:
-            sheet = Path(scratch) / "review.csv"
-            exported = _envelope("review export", lambda: ops.review_export(run_dir, sheet))
-            if exported["status"] == "error":
-                return exported
-            worksheet = {row["result_key"]: row for row in _csv_rows(sheet)}
             stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             filled: list[dict[str, str]] = []
             for item in decisions:
@@ -917,15 +924,31 @@ class Workspace:
                     {
                         **worksheet[key],
                         "decision": decision,
-                        "corrected_target_id": str(item.get("corrected_target_id") or ""),
+                        "corrected_target_id": str(item.get("corrected_target_id") or "").strip(),
                         "reviewer": reviewer,
                         "review_note": str(item.get("review_note") or ""),
                         "reviewed_at": stamp,
                     }
                 )
+            # A typed replacement must name a record of the reference: the review library
+            # only checks that one is given, and an unknown id would become the final
+            # answer. Exact ids, as everywhere else.
+            corrected = [r["corrected_target_id"] for r in filled if r["decision"] == "replace"]
+            if any(corrected):
+                known = _envelope("targets", lambda: ops.find_targets(job, corrected))
+                if known["status"] == "error":
+                    return known
+                missing = known["data"]["missing"]
+                if missing:
+                    raise ApiError(
+                        422,
+                        "unknown_target",
+                        f"{', '.join(repr(m) for m in missing)} is not in this job's target "
+                        "collection; pick a candidate or check the id",
+                    )
             reviewed = Path(scratch) / "reviewed.csv"
             with reviewed.open("w", encoding="utf-8", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=list(next(iter(worksheet.values()))))
+                writer = csv.DictWriter(handle, fieldnames=list(REVIEW_COLUMNS))
                 writer.writeheader()
                 writer.writerows(filled)
             return _envelope("review apply", lambda: ops.review_apply(run_dir, reviewed, job))
@@ -943,7 +966,7 @@ class Workspace:
             from xwalk.ledger import Ledger
 
             labels = load_gold_csv(gold)
-            ledger = Ledger.open(run_dir / "ledger.sqlite")
+            ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
             try:
                 report = evaluate(ledger, str(manifest["run_fingerprint"]), labels)
             finally:

@@ -120,6 +120,7 @@
 .facts { margin: 12px 0 0; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 12px; font: 400 13px/1.5 var(--font-sans); color: var(--text-body); }
 .facts dt { font: 500 10px/20px var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-faint); }
 .facts dd { margin: 0; text-wrap: pretty; }
+.factsLoading { display: block; margin-top: 16px; max-width: 360px; }
 .pillSq { width: 6px; height: 6px; background: var(--status-review-dot); flex-shrink: 0; }
 .pillDiamond { width: 6px; height: 6px; background: currentColor; transform: rotate(45deg); flex-shrink: 0; }
 

@@ -44,7 +44,7 @@ load_gold_csv(
     source_column: str = "source_id",
     gold_column: str = "gold_ids",
     separator: str = "|",
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
     normalize: Normalizer | None = None,
     expand: Expander | None = None,
 ) -> GoldSet
@@ -54,7 +54,7 @@ load_gold_jsonl(
     *,
     source_field: str = "source_id",
     gold_field: str = "gold_ids",
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
     normalize: Normalizer | None = None,
     expand: Expander | None = None,
 ) -> GoldSet
@@ -103,8 +103,8 @@ render identically.
 | `unmatched_rate` | UNMATCHED / labelled | Confident abstentions |
 | `error_rate` | FAILED / labelled | Infrastructure failures, not model judgement |
 | `unresolved_rate` | Results with reason `UNRESOLVED_OUTPUT` / labelled | Model output that would not parse — a prompt-contract problem |
-| `recall_at_any_status` | Of labelled results with a non-empty gold set, the fraction whose `matched_id` is correct at *any* status | The ceiling perfect threshold tuning could reach |
-| `no_match_precision` | Of results predicted no-match (`matched_id is None`, not FAILED), the fraction whose gold set is empty | Whether abstention is trustworthy |
+| `recall_at_any_status` | Of labelled results with a non-empty gold set, the fraction whose `matched_id` is correct at *any* status | Proposal recall; verification and other gates can still prevent acceptance |
+| `no_match_precision` | Of results predicted no-match (`status == UNMATCHED`), the fraction whose gold set is empty | Whether abstention is trustworthy |
 | `no_match_recall` | Of results whose gold set is empty, the fraction predicted no-match | Whether true negatives are being found |
 | `duplicate_target_conflicts` | Target ids selected by more than one source record (an `int`, over **all** results) | Possible many-to-one collisions worth auditing |
 | `mean_llm_calls` | Mean `usage.calls` per completed (non-FAILED) result, over all results | Cost per record |
@@ -121,18 +121,101 @@ render identically.
 
 ```python
 def threshold_curve(
-    results: Iterable[MatchResult], gold: GoldSet, *, steps: int = 21
+    results: Iterable[MatchResult], gold: GoldSet, *, steps: int = 21,
+    policy: MatchPolicy | DecisionPolicy | None = None
 ) -> list[ThresholdPoint]
 ```
 
-What precision and coverage would be if `accept_at` were set differently. Re-derived
-from recorded confidences, so it costs nothing and needs no re-run. Thresholds are
-`i / (steps - 1)` for `i` in `0..steps-1`; a labelled result contributes when it has
-both a confidence and a `matched_id`, at any status.
+Replays each stored attempt through the appropriate production reducer. Verifier
+verdicts, property/rubric gates, unresolved outputs and failures remain effective.
+Every point is **conditional on the recorded attempts**: a fresh run could stop
+sooner or buy more evidence. It is not a prediction of a fresh run's performance.
 
-`ThresholdPoint` fields: `threshold`, `coverage` (accepted / all labelled — `0.0` when
-nothing is labelled), `precision` (correct / accepted, `None` when nothing clears the
-threshold), `accepted`, `correct`.
+Pass `policy=MatchPolicy(...)` or `policy=DecisionPolicy(...)` from the recorded run.
+The standalone helper defaults to MatchPolicy (DecisionPolicy when numeric signals
+identify that path); callers must supply the policy for non-default or ambiguous runs.
+The full report reads the manifest instead and omits the curve if policy is unavailable.
+
+Thresholds are `i / (steps - 1)` for `i` in `0..steps-1`. Matcher points below the
+recorded review floor lower that classification floor too. Decider points below
+`shortlist_floor` are omitted because changing the shortlist requires new calls.
+Rows without attempts cannot contribute accepts; `FullReport.threshold_context`
+reports their count as `unavailable_rows` so missing evidence is visible.
+
+`ThresholdPoint` fields: `threshold`, `coverage` (accepted / all labelled — `0.0`
+when nothing is labelled), `precision` (correct / accepted, `None` when nothing is
+accepted), `accepted`, `correct`, `conditional_on_recorded_attempts=True`.
+
+## Policy replay
+
+```python
+from xwalk.evaluate import replay_results
+
+replay = replay_results(
+    results, gold,
+    recorded_policy=recorded_policy,
+    policy=proposed_policy,
+    recorded_semantics_version=2,
+)
+print(replay.as_dict())
+```
+
+`replay_result(result, policy)` returns an in-memory replacement; `replay_results`
+validates policy compatibility and returns a `ReplayReport`. Neither writes the ledger
+nor calls a model, retriever, encoder or matcher. Missing attempts are refused.
+The policy type identifies the matcher path, including decider failures with no
+numeric signals. Matcher uses `policy.derive_status`; DecisionMatcher restores its
+numeric signals and provider-failure wrapper around `decide.policy.derive_status`.
+
+Supported classification changes are `accept_at` and `review_floor` for Matcher;
+`accept_at`, `choose_at`, `none_at`, `rubric_floor`, `property_floor` for DecisionMatcher.
+Concurrency may differ. Verification/audit, retrieval timeout/depth/budget, screening,
+shortlisting, legacy resolution and attempt-bound changes are refused when present
+in the policy. Changed acceptance/stopping and scorer proposal routing are flagged:
+all replay is conditional on recorded evidence, including attempts a new run might
+never have reached. Unknown or historical `status_semantics` is flagged separately,
+so reducer corrections are not attributed solely to a threshold change.
+
+`ReplayReport` contains:
+
+- `status_transitions`: recorded status → replayed status → count (all rows).
+- `gold_transitions`: recorded gold outcome → replayed gold outcome → count.
+  Outcomes are `accepted_correct`, `accepted_wrong`, `correct_no_match`,
+  `incorrect_no_match`, `review`, `failed`, `unlabelled`.
+- `misjudged`: overlapping counts on gold-positive rows without a final accepted gold
+  target. `selector_wrong`: gold was shown and another shown candidate was chosen
+  (on the decider path, shown means the chooser shortlist, not the full screen slate);
+  `scorer_below`: a chosen gold target scored below `accept_at`;
+  `verifier_disagreed`: a chosen gold target received `disagree` or `no_match`;
+  `lost_by_retry`: an earlier attempt chose gold, there are multiple attempts, and
+  the final proposal is not gold. These diagnostics are separate from retrieval
+  ceiling: a correct reviewed proposal is still `FOUND` there.
+- `retry_metrics`: descriptive comparisons matching the benchmark definitions.
+  `recovered`: first choice was wrong/absent and the final answer is accepted gold.
+  `broken_by_retry`: first choice was gold, there are multiple attempts, and the
+  final answer is not accepted gold (including a correct review). The first-choice
+  baseline ignores its confidence/status; counts are **not causal retry effects**.
+  Only labelled rows with attempts count; no such rows gives `None`.
+- `results`: replayed results in Python; the JSON view includes id, status, reason,
+  confidence and proposal. `warnings`, current and recorded semantics versions and
+  `conditional_on_recorded_attempts` explain the interpretation.
+
+CLI and ops:
+
+```sh
+xwalk eval --run run/ --gold gold.csv --replay-policy proposed.yaml --json
+xwalk eval --run run/ --gold gold.csv --job original.yaml --replay-policy proposed.yaml
+```
+
+`ops.evaluate_run(run_dir, gold, *, job=None, replay_policy=None, out=None)` returns
+the standard JSON envelope: `data.report` is the recorded run's evaluation and
+`data.replay` is the conditional replay. Only the proposed job's policy is applied;
+all acquisition stays fixed. Without `--job`, unverifiable changes to other job
+fields are explicitly flagged. With `--job`, changes to acquisition blocks are
+refused. `--job` supplies target ids for `gold_unreachable`; the target fingerprint
+must match the manifest when available. A manifest `target_ids` list is also used.
+`--out` includes replay in both report artifacts. Missing policy/attempts or
+unsupported changes produce `replay_unavailable` with exit code 2.
 
 ### Calibration warning
 
@@ -167,23 +250,29 @@ nothing.
 | `MISJUDGED` | A gold record was presented to the model and it chose otherwise | Prompts, not retrieval |
 | `TRUNCATED` | A gold record was retrieved but the selector budget cut it before the model saw it | Raise `SelectorPolicy.max_candidates` |
 | `NEVER_RETRIEVED` | No gold record ever appeared in any attempt's candidates | The `doc` template, the retriever set, or retrieval depth |
+| `UNAVAILABLE` | Missing or incomplete traces/searches cannot prove a retrieval miss | Collect complete evidence |
+| `GOLD_UNREACHABLE` | No gold alternative belongs to the supplied target ids | Repair gold/catalogue alignment |
 | `NO_GOLD` | The correct answer is no match — not a ceiling question | — |
 | `UNLABELLED` | Excluded from every total | — |
 
-### `classify_ceiling(result, gold) -> CeilingBucket`
+### `classify_ceiling(result, gold, *, target_ids=None) -> CeilingBucket`
 
-Precedence matters: presented beats retrieved beats absent. The checks run in order —
-unlabelled, then empty gold set, then `matched_id` in the gold set (`FOUND`), then gold
-∩ ids actually issued to the model (`MISJUDGED`), then gold ∩ ids retrieved in any
-attempt (`TRUNCATED`), else `NEVER_RETRIEVED`. So a record that reached the model is
-never reported as a budget miss, and a record the budget cut is never reported as a
-retrieval miss.
+Checks run in order: unlabelled, empty gold, unreachable gold (when target ids are
+supplied), correct proposal (`FOUND`), gold shown (`MISJUDGED`), gold retrieved
+(`TRUNCATED`), incomplete evidence (`UNAVAILABLE`), otherwise `NEVER_RETRIEVED`.
+Missing candidate traces, clipped decider slates and failed searches cannot prove
+absence. A complete Matcher trace remains usable even when selection was truncated.
 
-### `ceiling_report(results, gold) -> CeilingReport`
+### `ceiling_report(results, gold, *, target_ids=None) -> CeilingReport`
+
+Unreachable gold and unavailable evidence are reported separately and excluded from
+`evaluable`. Positive evidence (found, shown, retrieved) remains usable with partial
+traces. Empty attempts cannot prove absence. `target_ids` is optional; without it
+unreachable gold cannot be diagnosed.
 
 | Field | Meaning |
 |---|---|
-| `evaluable` | Results in a ceiling bucket — labelled, non-empty gold set |
+| `evaluable` | Labelled, non-empty gold; excludes `UNAVAILABLE` and `GOLD_UNREACHABLE` |
 | `buckets` | `{CeilingBucket: count}` including `NO_GOLD` and `UNLABELLED` |
 | `by_retriever` | For evaluable results, how many times each retriever's evidence surfaced a gold candidate (once per result) |
 | `by_attempt` | Index of the first attempt in which a gold candidate appeared, counted |
@@ -200,13 +289,16 @@ evaluate(
     partitioner: Partitioner | None = None,
     partition_overrides: Mapping[str, Partition] | None = None,
     threshold_steps: int = 21,
+    policy: MatchPolicy | DecisionPolicy | None = None,
+    target_ids: Collection[str] | None = None,
 ) -> FullReport
 ```
 
 One call, one printable summary. `FullReport` bundles `metrics: EvalReport`,
 `ceiling: CeilingReport`, `thresholds: tuple[ThresholdPoint, ...]`, and
 `partition_sizes: Mapping[str, int]` (labelled results per partition; empty when no
-partitioner is given), plus `as_dict()`.
+partitioner is given), `threshold_context` (availability, policy source, conditional
+interpretation), plus `as_dict()`.
 
 `render_report(report) -> str` emits sections in this order, with the ceiling
 recommendation first — "where should I spend effort?" is the question this phase
@@ -216,11 +308,12 @@ exists to answer, and it must not be buried:
 2. `## Headline` — precision, coverage, review/unmatched/error/unresolved rates,
    recall at any status
 3. `## No-match handling` — no-match precision and recall
-4. `## Failure decomposition` — found / misjudged / truncated / never_retrieved
-   counts, and which retrievers surfaced gold
-5. `## Cost` — model calls, tokens, cost, seconds per record, duplicate targets
-6. `## Partitions` — only when a partitioner was given
-7. `## Calibration warning` — only when it fired
+4. `## Failure decomposition` — found / misjudged / truncated / never_retrieved,
+   unavailable and gold_unreachable counts, and which retrievers surfaced gold
+5. `## Threshold replay` — conditional interpretation and missing evidence
+6. `## Cost` — model calls, tokens, cost, seconds per record, duplicate targets
+7. `## Partitions` — only when a partitioner was given
+8. `## Calibration warning` — only when it fired
 
 `None` metrics render as `n/a` with the reason (`n/a (nothing matched)`), never as 0.
 

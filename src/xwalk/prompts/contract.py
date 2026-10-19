@@ -15,11 +15,14 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, Template
+from jinja2 import FileSystemLoader, StrictUndefined, Template
+from jinja2.exceptions import SecurityError
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from xwalk.fingerprint import hash_value
 from xwalk.llm.parsing import parse_json_object
+from xwalk.templates import UnsafeTemplateError, checked_parse
 
 BASE_DIR = Path(__file__).parent / "base"
 
@@ -69,7 +72,9 @@ REWRITE_SCHEMA: Mapping[str, Any] = {
 }
 
 
-_ENV = Environment(
+# Sandboxed like the record templates: `PromptSet.from_slots(base_dir=...)` reads
+# skeletons from any directory, so a skeleton is untrusted input too.
+_ENV = ImmutableSandboxedEnvironment(
     loader=FileSystemLoader(str(BASE_DIR)),
     undefined=StrictUndefined,
     trim_blocks=True,
@@ -82,7 +87,7 @@ _ENV = Environment(
 def _compile(skeleton: str) -> Template:
     # Compiling a skeleton dominated per-call CPU in profiling (benchmarks/results),
     # so each distinct skeleton text is compiled once per process.
-    return _ENV.from_string(skeleton)
+    return _ENV.from_string(checked_parse(_ENV, skeleton))
 
 
 class ContractError(Exception):
@@ -163,7 +168,16 @@ class PromptSet:
         return cls(slots=slots, skeletons=skeletons)
 
     def _render(self, name: str, **variables: Any) -> str:
-        return _compile(self.skeletons[name]).render(slots=self.slots, **variables).strip()
+        fields = variables.get("source_fields")
+        if isinstance(fields, Mapping):
+            # Template render version 2: a null field is a missing field, here too, so the
+            # model never reads `- aliases: None`. Covered by TEMPLATE_RENDER_VERSION in
+            # TemplateSet.fingerprint, which both run identities include.
+            variables["source_fields"] = {k: v for k, v in fields.items() if v is not None}
+        try:
+            return _compile(self.skeletons[name]).render(slots=self.slots, **variables).strip()
+        except (UnsafeTemplateError, SecurityError) as exc:
+            raise ContractError(f"{name} skeleton is unsafe: {exc}") from None
 
     def render_select(
         self,

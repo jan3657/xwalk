@@ -7,10 +7,12 @@ documents, and every answer is validated against the question that was asked.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from xwalk.llm.base import token_count
 from xwalk.records import Usage
 
 Structured = str | Mapping[str, Any] | Sequence[Any]
@@ -171,13 +173,20 @@ def question_to_dict(question: Question) -> dict[str, Any]:
     }
 
 
-def _unit(value: object, where: str) -> float:
+def _bounded(value: object, low: float, high: float, where: str) -> float:
+    """A number in [low, high], never clamped. NaN, infinities, booleans and integers
+    too large for a float are rejected before any conversion can raise."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise DecisionResponseError(f"{where}: expected a number, got {value!r}")
-    number = float(value)
-    if not 0.0 <= number <= 1.0:
-        raise DecisionResponseError(f"{where}: {number} is outside [0, 1]")
-    return number
+    # Compared before float(): a JSON integer can exceed the float range. NaN fails both
+    # comparisons, an infinity one of them.
+    if not low <= value <= high:
+        raise DecisionResponseError(f"{where}: {value!r} is outside [{low:g}, {high:g}]")
+    return float(value)
+
+
+def _unit(value: object, where: str) -> float:
+    return _bounded(value, 0.0, 1.0, where)
 
 
 def _distribution(value: object, where: str) -> dict[str, float]:
@@ -209,14 +218,15 @@ def _answer(question: Question, raw: object, name: str) -> Answer:
         )
     if kind != "score":
         raise DecisionResponseError(f"answer {name!r}: expected score, got {kind!r}")
-    score = raw.get("score")
-    if isinstance(score, bool) or not isinstance(score, (int, float)):
-        raise DecisionResponseError(f"answer {name!r}.score: expected a number, got {score!r}")
+    # The rubric offers levels 0..len(criteria)-1; a score outside them is not a grade.
+    score = _bounded(
+        raw.get("score"), 0.0, float(len(question.criteria) - 1), f"answer {name!r}.score"
+    )
     legend_raw = raw.get("legend") or {}
     if not isinstance(legend_raw, Mapping):
         raise DecisionResponseError(f"answer {name!r}.legend must be a mapping")
     return ScoreAnswer(
-        score=float(score),
+        score=score,
         probabilities=_distribution(raw.get("probabilities"), f"answer {name!r}"),
         confidence=_unit(raw.get("confidence"), f"answer {name!r}.confidence"),
         legend={str(k): str(v) for k, v in legend_raw.items()},
@@ -239,28 +249,36 @@ def parse_response(
             raise DecisionResponseError(f"response is missing an answer for {name!r}")
         answers[name] = _answer(question, raw_answers[name], name)
 
-    usage_raw = payload.get("usage")
-    input_tokens = 0
-    cost = 0.0
-    if isinstance(usage_raw, Mapping):
-        raw_tokens = usage_raw.get("input_tokens")
-        if isinstance(raw_tokens, (int, float)) and not isinstance(raw_tokens, bool):
-            input_tokens = int(raw_tokens)
-        raw_cost = usage_raw.get("cost")
-        if isinstance(raw_cost, (int, float)) and not isinstance(raw_cost, bool):
-            cost = float(raw_cost)
-    usage = Usage(
-        prompt_tokens=input_tokens,
-        completion_tokens=0,
-        calls=1,
-        cost_usd=cost,
-    )
     model = payload.get("model")
     return DecisionResponse(
         answers=answers,
         model=model if isinstance(model, str) and model else configured_model,
-        usage=usage,
+        usage=_reported_usage(payload.get("usage")),
     )
+
+
+def _reported_usage(raw: object) -> Usage:
+    """One answered call. Tokens and cost count only when reported and valid.
+
+    A missing usage block, a missing or invalid `input_tokens` (NaN, infinite, negative,
+    fractional, a string, a boolean) or an invalid `cost` makes the call's usage unknown:
+    never a known zero, never a partial trust of a malformed block, and never an
+    exception. An absent `cost` is 0.0 (not every deployment reports one).
+    """
+    if not isinstance(raw, Mapping):
+        return Usage.unreported()
+    raw_tokens = raw.get("input_tokens")
+    tokens = None if raw_tokens is None else token_count(raw_tokens)
+    raw_cost = raw.get("cost", 0.0)
+    cost_ok = (
+        isinstance(raw_cost, (int, float))
+        and not isinstance(raw_cost, bool)
+        and math.isfinite(raw_cost)
+        and raw_cost >= 0
+    )
+    if tokens is None or not cost_ok:
+        return Usage.unreported()
+    return Usage(prompt_tokens=tokens, completion_tokens=0, calls=1, cost_usd=float(raw_cost))
 
 
 def response_to_dict(response: DecisionResponse) -> dict[str, Any]:

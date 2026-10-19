@@ -25,7 +25,9 @@ from pathlib import Path
 from typing import Any
 
 from xwalk import __version__
+from xwalk.cluster.diagnostics import dedupe, run_warnings
 from xwalk.cluster.engine import FAILED, ClusterEngine, Progress
+from xwalk.cluster.exports import exported_state as export_view
 from xwalk.cluster.exports import selected_view, write_exports
 from xwalk.cluster.pool import PoolIndex
 from xwalk.cluster.prompts import ClusterPrompts
@@ -39,7 +41,10 @@ from xwalk.retrieval.base import component_differences
 from xwalk.retrieval.dense import Encoder
 from xwalk.templates import TemplateSet
 
-CLUSTER_FORMAT_VERSION = 1
+# 2: the pool's retrieval heads (lexical engine, dense encoder identity, fusion) are their
+# own `retrieval` component. In format 1 the pool settings overwrote them under `pool`,
+# so a lexical and a dense run shared a fingerprint; such directories are refused.
+CLUSTER_FORMAT_VERSION = 2
 STORE_FILE = "cluster.sqlite"
 MANIFEST_FILE = "manifest.json"
 
@@ -70,6 +75,8 @@ class ClusterReport:
     artifacts: dict[str, str] = field(default_factory=dict)
     components: dict[str, Any] = field(default_factory=dict)
     pool_updates: int = 0
+    # Factual warnings, one per code (`xwalk.cluster.diagnostics`).
+    warnings: list[dict[str, str]] = field(default_factory=list)
 
 
 def _order_key(text: str) -> str:
@@ -101,7 +108,11 @@ def fingerprint_components(
     settings: ClusterSettings,
     pool: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Everything whose change makes earlier clustering decisions invalid."""
+    """Everything whose change makes earlier clustering decisions invalid.
+
+    `pool` is the identity of the pool's retrieval heads (`PoolIndex.components()`),
+    recorded as `retrieval`; the pool *settings* (limits, evidence, expansion) come from
+    `settings.components()` as `pool`. Neither may overwrite the other."""
     snapshot = [[r.id, hash_record(r)] for r in ordered]
     return {
         "operation": "cluster",
@@ -112,7 +123,7 @@ def fingerprint_components(
         "templates": templates.fingerprint,
         "prompts": prompts.fingerprint,
         "llm": llm.fingerprint,
-        "pool": dict(pool),
+        "retrieval": dict(pool),
         **settings.components(),
     }
 
@@ -123,6 +134,29 @@ def _read_manifest(out: Path) -> dict[str, Any] | None:
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else None
+
+
+def check_format(out: Path) -> None:
+    """Refuse a clustering run directory written in an older, incompatible format.
+
+    Called before the fingerprint comparison, so the user learns *why* the directory
+    cannot be resumed (its fingerprint never recorded which retrieval heads ran) instead
+    of reading a generic mismatch. Nothing is read beyond the manifest; nothing written.
+    """
+    manifest = _read_manifest(out) if out.is_dir() else None
+    if manifest is None or manifest.get("operation") != "cluster":
+        return
+    components = manifest.get("fingerprint_components")
+    stored = components.get("format_version") if isinstance(components, dict) else None
+    if isinstance(stored, int) and stored < CLUSTER_FORMAT_VERSION:
+        raise ClusterRunError(
+            "run_format_outdated",
+            f"{out} holds a clustering run in format {stored}, whose fingerprint does not "
+            "record the pool's retrieval heads (lexical or dense, and which encoder), so "
+            "resuming it could mix retrieval configurations; nothing was overwritten -- "
+            "choose a new --out to cluster again",
+            {"stored_format_version": stored, "format_version": CLUSTER_FORMAT_VERSION},
+        )
 
 
 def default_out_dir_check(out: Path, run_fp: str, components: Mapping[str, Any]) -> None:
@@ -211,6 +245,7 @@ async def run_clustering(
         pool=pool_components,
     )
     run_fp = hash_value(components)
+    check_format(out_dir)
     check_out_dir(out_dir, run_fp, components)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -304,6 +339,11 @@ async def run_clustering(
             engine,
             stop=(stop_reason, selected, last),
         )
+        warnings = dedupe(
+            run_warnings(
+                store, components, export_view(store), run_state=run_state, run_dir=out_dir
+            )
+        )
     finally:
         store.close()
     artifacts = dict(exported["artifacts"])
@@ -322,6 +362,7 @@ async def run_clustering(
         artifacts=artifacts,
         components=components,
         pool_updates=pool_updates,
+        warnings=warnings,
     )
 
 

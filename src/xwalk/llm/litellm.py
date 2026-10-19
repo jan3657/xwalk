@@ -12,20 +12,26 @@ upstream call; a call that raises is counted as one call with unknown usage. Pas
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from xwalk._extras import require
-from xwalk.fingerprint import hash_value, without_secrets
+from xwalk.fingerprint import hash_value, redact_url, without_secrets
 from xwalk.llm.base import (
     LLMCapabilities,
     LLMFatalError,
     LLMRequest,
     LLMResponse,
     LLMRetryableError,
+    reported_usage,
+    request_capabilities,
 )
 from xwalk.records import Usage
 
 ADAPTER_VERSION = 1
+
+# Endpoint kwargs: identity, but hashed with credentials removed (`redact_url`).
+_URL_KWARGS = frozenset({"api_base", "base_url"})
 
 _RETRYABLE_MARKERS = (
     "ratelimit",
@@ -34,6 +40,11 @@ _RETRYABLE_MARKERS = (
     "internalserver",
     "apiconnection",
     "overloaded",
+    # LiteLLM's malformed-response error: recoverable (CONTRACTS section 3).
+    "responsevalidation",
+    # LiteLLM's catch-all for provider statuses it does not map one by one (502, 504...).
+    # "apiconnectionerror" does not contain it.
+    "apierror",
 )
 _FATAL_MARKERS = (
     "authentication",
@@ -41,15 +52,78 @@ _FATAL_MARKERS = (
     "notfound",
     "badrequest",
     "invalidrequest",
+    "unprocessable",
+    # Per-request rejections; fatal on both adapters today. A per-record class for
+    # them needs a CONTRACTS section 3 amendment.
+    "contextwindow",
+    "contentpolicy",
+    "rejectedrequest",
+    "budgetexceeded",
 )
 
 
-def _reported_usage(raw: Any) -> Usage:
-    prompt = getattr(raw, "prompt_tokens", None)
-    completion = getattr(raw, "completion_tokens", None)
-    if prompt is None and completion is None:
-        return Usage.unreported()
-    return Usage(prompt_tokens=int(prompt or 0), completion_tokens=int(completion or 0), calls=1)
+def _classify(exc: Exception) -> type[LLMFatalError] | type[LLMRetryableError]:
+    """Fatal or retryable, by LiteLLM's public class names first, then the message.
+
+    The class name decides when it is one we know, so a message that mentions a
+    transient word cannot turn a request that will never succeed into a retry. An
+    error we do not recognise at all stays fatal.
+    """
+    name = type(exc).__name__.lower().replace("_", "")
+    for markers, kind in ((_FATAL_MARKERS, LLMFatalError), (_RETRYABLE_MARKERS, LLMRetryableError)):
+        if any(m in name for m in markers):
+            return kind
+    text = f"{name}{exc}".lower().replace("_", "")
+    if any(m in text for m in _FATAL_MARKERS):
+        return LLMFatalError
+    if any(m in text for m in _RETRYABLE_MARKERS):
+        return LLMRetryableError
+    return LLMFatalError
+
+
+def _field(obj: object, name: str) -> Any:
+    """`obj.name` or `obj[name]`: LiteLLM objects support both, plain dicts only one."""
+    if isinstance(obj, Mapping):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _reported_usage(raw: object) -> Usage:
+    """Tokens count only if reported and valid; otherwise the call's usage is unknown."""
+    return reported_usage(_field(raw, "prompt_tokens"), _field(raw, "completion_tokens"))
+
+
+def litellm_fingerprint(
+    model: str,
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    seed: int | None = None,
+    capabilities: LLMCapabilities | None = None,
+    **kwargs: Any,
+) -> str:
+    """The fingerprint `LiteLLMClient` would have, computed from its settings alone
+    (pure: no client, no litellm import)."""
+    sent = request_capabilities(capabilities or LLMCapabilities())
+    return hash_value(
+        {
+            "adapter": "litellm",
+            "adapter_version": ADAPTER_VERSION,
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            **({"seed": seed} if seed is not None else {}),
+            # Credentials passed as kwargs (api_key, extra_headers...) are not identity,
+            # and neither is userinfo or a key in an endpoint URL's query string.
+            "kwargs": {
+                k: redact_url(str(v)) if k in _URL_KWARGS else str(v)
+                for k, v in sorted(without_secrets(kwargs).items())
+            },
+            # Capabilities that change the request, only when not the all-false
+            # default, so a job-built client keeps its fingerprint.
+            **({"capabilities": sent} if sent != request_capabilities(LLMCapabilities()) else {}),
+        }
+    )
 
 
 class LiteLLMClient:
@@ -80,18 +154,19 @@ class LiteLLMClient:
         return self._capabilities
 
     @property
+    def generation_defaults(self) -> Mapping[str, Any]:
+        """What a request that leaves `temperature`/`max_tokens` unset is sent with."""
+        return {"temperature": self._temperature, "max_tokens": self._max_tokens}
+
+    @property
     def fingerprint(self) -> str:
-        return hash_value(
-            {
-                "adapter": "litellm",
-                "adapter_version": ADAPTER_VERSION,
-                "model": self._model,
-                "temperature": self._temperature,
-                "max_tokens": self._max_tokens,
-                **({"seed": self._seed} if self._seed is not None else {}),
-                # Credentials passed as kwargs (api_key, extra_headers...) are not identity.
-                "kwargs": {k: str(v) for k, v in sorted(without_secrets(self._kwargs).items())},
-            }
+        return litellm_fingerprint(
+            self._model,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            seed=self._seed,
+            capabilities=self._capabilities,
+            **self._kwargs,
         )
 
     async def _acompletion(self, **kwargs: Any) -> Any:
@@ -130,24 +205,41 @@ class LiteLLMClient:
         try:
             completion = await self._acompletion(**body)
         except Exception as exc:  # LiteLLM raises many provider-specific types
-            marker = f"{type(exc).__name__}{exc}".lower().replace("_", "")
-            unknown = Usage.unreported()
-            if any(m in marker for m in _FATAL_MARKERS):
-                raise LLMFatalError(str(exc), usage=unknown) from exc
-            if any(m in marker for m in _RETRYABLE_MARKERS):
-                raise LLMRetryableError(str(exc), usage=unknown) from exc
             # An error we do not recognise is treated as fatal: retrying a permanent
             # failure burns the budget without ever succeeding.
-            raise LLMFatalError(str(exc), usage=unknown) from exc
+            raise _classify(exc)(str(exc), usage=Usage.unreported()) from exc
 
-        usage = _reported_usage(getattr(completion, "usage", None))
-        choices = getattr(completion, "choices", None) or []
+        return self._parse(completion, structured=structured)
+
+    def _parse(self, completion: object, *, structured: bool) -> LLMResponse:
+        """Reduce a completion to a response. Anything malformed is a retryable error.
+
+        A malformed envelope says nothing about credentials or the request, so it is
+        recoverable (CONTRACTS.md section 3), booked as one call with unknown usage.
+        """
+
+        def malformed(what: str) -> LLMRetryableError:
+            return LLMRetryableError(f"malformed response: {what}", usage=Usage.unreported())
+
+        choices = _field(completion, "choices")
         if not choices:
-            raise LLMFatalError("provider returned no choices", usage=usage)
+            raise malformed("provider returned no choices")
+        if not isinstance(choices, (list, tuple)):
+            raise malformed("choices is not a list")
+        message = _field(choices[0], "message")
+        if message is None or isinstance(message, (str, bytes)):
+            raise malformed("choice has no message object")
+        text = _field(message, "content")
+        if text is None:
+            text = ""
+        if not isinstance(text, str):
+            raise malformed(f"content is a {type(text).__name__}, not a string")
+        finish_reason = _field(choices[0], "finish_reason")
+        model = _field(completion, "model")
         return LLMResponse(
-            text=getattr(choices[0].message, "content", "") or "",
-            usage=usage,
-            model=str(getattr(completion, "model", self._model)),
+            text=text,
+            usage=_reported_usage(_field(completion, "usage")),
+            model=str(model) if model is not None else self._model,
             structured=structured,
-            finish_reason=getattr(choices[0], "finish_reason", None),
+            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
         )

@@ -185,6 +185,45 @@ async def test_a_snapshot_defines_the_current_view_and_its_pending_entries(ledge
     assert [r.source_id for r in ledger.iter_results("fp1")] == ["s1"]
 
 
+_ONE_SOURCE = (
+    "SELECT e.source_id FROM snapshot_entries e WHERE e.snapshot_id = ? AND e.source_id = ?"
+)
+
+
+def _plan(led):
+    rows = led._conn.execute("EXPLAIN QUERY PLAN " + _ONE_SOURCE, (1, "s1")).fetchall()
+    return " ".join(str(r["detail"]) for r in rows)
+
+
+async def test_a_snapshot_lookup_by_source_uses_an_index(ledger):
+    await ledger.put_result(sample_result())
+    ledger.put_snapshot("fp1", [("s1", "sh1"), ("s0", "sh0")])
+    assert "snapshot_entries_by_source" in _plan(ledger)
+    assert ledger.current_entry("fp1", "s1").result is not None
+
+
+async def test_a_ledger_without_the_index_reads_the_same_and_gains_it_on_its_next_snapshot(
+    tmp_path,
+):
+    path = tmp_path / "run.sqlite"
+    led = Ledger.open(path)
+    await led.put_result(sample_result())
+    led.put_snapshot("fp1", [("s1", "sh1"), ("s0", "sh0")])
+    led._conn.execute("DROP INDEX snapshot_entries_by_source")  # a ledger written before it
+    led.close()
+
+    reader = Ledger.open(path)
+    try:
+        assert "snapshot_entries_by_source" not in _plan(reader)  # opening adds nothing
+        assert reader.current_entry("fp1", "s1").result is not None
+        assert reader.current_entry("fp1", "s0").result is None
+        assert reader.current_entry("fp1", "zz") is None
+        reader.put_snapshot("fp1", [("s1", "sh1"), ("s0", "sh0")])  # an unchanged rerun adds it
+        assert "snapshot_entries_by_source" in _plan(reader)
+    finally:
+        reader.close()
+
+
 async def test_writing_after_close_is_an_error_not_a_silent_loss(tmp_path):
     from xwalk.ledger import LedgerClosedError
 

@@ -18,7 +18,8 @@ def _result(sid, matched, screen, prop=0.9):
         "p_choice": 0.8,
         "p_none": 0.05,
         "choice_confidence": 0.7,
-        "rubric": 2.5,
+        # On the offered scale 0..2 and above the default floor (levels - 2 = 1).
+        "rubric": 1.5,
         "rubric_levels": 3.0,
         "rubric_confidence": 0.8,
         "prop_form": prop,

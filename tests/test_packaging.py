@@ -207,6 +207,94 @@ def test_the_sdist_excludes_developer_scaffolding():
     assert '"_env.sh"' in PYPROJECT
 
 
+@pytest.fixture(scope="module")
+def extracted_sdist(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The sdist built from this checkout, extracted; its top-level directory."""
+    import tarfile
+
+    pytest.importorskip("hatchling", reason="building the sdist needs hatchling (dev extra)")
+    out = tmp_path_factory.mktemp("sdist")
+    built = subprocess.run(
+        [sys.executable, "-c", "import sys, hatchling.build as b; b.build_sdist(sys.argv[1])"]
+        + [str(out)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert built.returncode == 0, built.stderr[-2000:]
+    (sdist,) = out.glob("xwalk-*.tar.gz")
+    with tarfile.open(sdist) as archive:
+        try:
+            archive.extractall(out / "x", filter="data")
+        except TypeError:  # pragma: no cover - Python without extraction filters
+            archive.extractall(out / "x")  # noqa: S202 - our own freshly built archive
+    (top,) = (out / "x").iterdir()
+    return top
+
+
+def test_the_sdist_leaves_out_process_notes_research_scripts_and_web_sources(
+    extracted_sdist: Path,
+):
+    """The sdist is a public artefact: no Claude task notes or superseded plans, no
+    scripts that only run on one cluster account, no TypeScript sources (the built
+    workbench ships inside the package). The contracts the docs cite stay."""
+    names = {
+        p.relative_to(extracted_sdist).as_posix() for p in extracted_sdist.rglob("*") if p.is_file()
+    }
+    for prefix in (
+        "docs/superpowers/",
+        "docs/claude-upgrade/tasks/",
+        "docs/claude-upgrade/START_HERE.md",
+        "docs/claude-upgrade/STATUS.md",
+        "web/",
+        "benchmarks/results/",
+        "scripts/run_pipeline.sh",
+        "scripts/run_jev_eval.sh",
+        "scripts/compare_runs.py",
+        "scripts/hop_headroom.py",
+        "tests/test_hop_headroom.py",
+        "CLAUDE.md",
+    ):
+        assert not any(n.startswith(prefix) for n in names), prefix
+    for name in (
+        "docs/claude-upgrade/CONTRACTS.md",
+        "docs/claude-upgrade/REVIEW.md",
+        "docs/claude-upgrade/CLUSTERING_DECISIONS.md",
+        "docs/architecture.md",
+        "scripts/check_readme_quickstart.py",
+        "src/xwalk/ops.py",
+        "src/xwalk/ui/static/app/index.html",
+        "tests/test_packaging.py",
+        "README.md",
+        "LICENSE",
+    ):
+        assert name in names, name
+
+
+def test_the_sdist_documentation_links_resolve_inside_the_sdist(extracted_sdist: Path):
+    """A page that links to an excluded file is a broken page for whoever reads the
+    sdist; tests/test_docs.py checks the same links in the repository."""
+    from tests.test_docs import LINK
+
+    pages = [extracted_sdist / n for n in ("README.md", "CONTRIBUTING.md", "CHANGELOG.md")]
+    pages += sorted((extracted_sdist / "docs").rglob("*.md"))
+    broken = []
+    for page in pages:
+        for target in LINK.findall(page.read_text(encoding="utf-8")):
+            path = target.split("#", 1)[0]
+            if not path or target.startswith(("http://", "https://", "mailto:")):
+                continue
+            if not (page.parent / path).resolve().exists():
+                broken.append(f"{page.relative_to(extracted_sdist)} -> {target}")
+    assert broken == []
+
+
+def test_no_script_hardcodes_one_machine_s_paths():
+    for path in (ROOT / "scripts").iterdir():
+        if path.is_file():
+            assert "/ceph/" not in path.read_text("utf-8"), path.name
+
+
 def test_the_wheel_ships_the_bundled_example_and_prompt_skeletons(tmp_path):
     """`xwalk init` and `ops.bundled_example()` read package data; a wheel without it
     would install a CLI whose first suggested command fails."""

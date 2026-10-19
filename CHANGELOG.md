@@ -14,8 +14,128 @@ Merged after 0.2.0rc1 was cut: the decider path, developed on the `jev-decider` 
 before the merge; nothing was re-measured for this entry, and the merged tree was tested
 offline only (FakeDecider, no paid calls).
 
+### Fixed
+
+- Jev and ChatGPT settle each budget dispatch once after interpreting its outcome,
+  including malformed responses and transport failures. Call-limit diagnostics name
+  the latest provider failure; a later successful dispatch clears it.
+
+- Decider traces retain the rewritten retrieval union before the second screen,
+  including when that screen fails. Serialized traces preserve retrieval evidence
+  without claiming that failed screening produced a presentation map.
+
+- Evaluation reports budget truncation only with explicit clipping evidence.
+  Retrieved gold with unknown presentation after selector failure is unavailable,
+  excluded from the ceiling denominator, rather than a recommendation to raise budgets.
+
+- Clustering read-only views resolve database symlinks before finding WAL sidecars,
+  include committed log updates, and never assume an immutable database. Clean
+  writable stores use query-only connections; active stores retain consistent snapshots.
+
+- Jev adapter identity version 2 hashes the redacted full endpoint (scheme, host,
+  path and non-secret query parameters, including blank values), excluding userinfo
+  and credentials. This deliberately invalidates prior Jev cache/run identities;
+  resume in a fresh run directory. Credential rotation keeps the new identity stable.
+
+- MCP directory confinement follows allowed directory symlinks and checks their
+  descendants, using directory identities to terminate cycles.
+
 ### Added
 
+- Attempts store validated `selector_confidence`, including abstentions, separately
+  from the scoring confidence. It is advisory and does not affect classification.
+  Old serialized attempts read as `None`; skipped or failed selection also stores `None`.
+
+- Opt-in `MatchPolicy` / job policy flags `deduplicate_candidates`, `alternate_queues`
+  and `chase_verifier_leads` bound repeated scoring, let queued queries run, and score
+  eligible verifier preferences. Candidate work retains its original key map and
+  provenance. Deduplication includes scoring context and excludes incomplete work;
+  infrastructure retries bypass it. All flags default off and add identity only when
+  enabled; they do not change classification thresholds or permit acceptance on a verdict.
+
+- Forced candidate proposals now retry provider failures with their original live
+  candidate state and provenance, skipping retrieval and selection on the retry.
+
+- FoodOn LLM example jobs retain a `[0.6, 0.8]` verify band and audit 10% of
+  above-band scores, so confident pilot errors can receive a second opinion.
+
+- Selector budgets count rendered keyed blocks and separators, retaining a ranked prefix
+  without slicing text. Rendering stops at the first overflow, so discarded later
+  candidates cannot raise template errors. An oversized first block becomes `needs_review` with reason
+  `candidate_budget_exceeded` and zero model calls. Rendered-budget version 2 deliberately
+  invalidates old LLM run identities. `apply_budget` now takes `templates` and returns
+  `(KeyedCandidates, dropped_count)` so rendering is reused.
+
+- LLM jobs accept multi-query retrieval: initial queries receive separate RRF votes;
+  retries keep the real list and new proposals search one query each. Existing single-query
+  requests and the legacy `query` plus one alternate behavior are preserved.
+
+- Zero-call, conditional policy replay for both matcher paths, exposed through
+  `ops.evaluate_run` and `xwalk eval --replay-policy JOB.yaml`. Reports recorded/gold
+  transitions, historical reducer versions, stage suppression diagnostics and
+  descriptive recovered/broken-by-retry counts. Acquisition changes are refused or
+  explicitly flagged. Threshold curves use production reducers, preserving verifier,
+  property and failure gates; reports omit curves without recorded policy metadata.
+
+- Evaluation separates unavailable retrieval evidence and `gold_unreachable` (when
+  target ids are supplied), excluding both from the ceiling denominator. No-match
+  metrics now share the benchmark definition: only `unmatched` predicts no match.
+
+- `xwalk cluster eval --run DIR --gold CSV [--out FILE] [--json]` and
+  `ops.cluster_eval`: score a clustering run against a gold partition. Pairwise and
+  B-cubed precision, recall and F1 with records outside the accepted clusters as
+  singletons and over the accepted records only, false merges, splits, outcome
+  counts, usage summed over the run's invocations, and `gold_pairs_co_exposed`, the
+  gold pairs whose records were in one judge prompt together (a diagnostic that
+  separates search misses from judge misses; not an upper bound on recall, since
+  joins see a cluster's first members only and merges link records no prompt
+  showed together). Reads the exports and the store read-only: no model or
+  retriever call, no data written in the run directory (a run in progress is
+  snapshotted with SQLite's backup API). Exit `0` scored, `2` unknown
+  or non-clustering run directory or unreadable gold, `3` unreadable store. The
+  metric functions moved from `benchmarks/clustering.py` to
+  `xwalk.evaluate.clustering` (re-exported by the benchmark), which also reads
+  `pending` outcomes and `source_id` columns.
+- `xwalk cluster inspect --run DIR` and `xwalk cluster explain --run DIR SOURCE_ID
+  [--full]` (`ops.cluster_inspect`, `ops.cluster_explain`): read-only, call-free views
+  of a clustering run. `inspect` reports the exported outcome counts, clusters by size,
+  merges, decisions by kind, usage summed over every invocation (with
+  `invocations_without_usage` and a `usage_incomplete` warning when the totals are a
+  lower bound), the selected versus the last state revision, how many records changed
+  after the exported revision (`selected_not_last` warning), and exits with the code
+  the run produced. `explain` reports a record's exported membership, the decisions
+  that placed it with the members each prompt listed, the merge ancestry of its
+  cluster, later changes that went against it or its cluster (for instance a failed
+  reverification that revision selection set aside: `superseded_by_selection`), its
+  assignment history, and the state of `pending` and `failed` records. New error codes
+  `manifest_unreadable` and `store_mismatch` (exit `3`). The `cluster_run` refusal of
+  the matching-run commands now names these commands. `members.csv` is computed by the
+  same function (`exports.exported_state`), so the views match the exports.
+- `xwalk cluster` and `xwalk cluster inspect` warn, once per code, about the limits a
+  run worked within: `retrieval_bounded` (the pool grew past `pool.scan_below` with
+  lexical retrieval only, so synonyms sharing no word may never have been compared),
+  `evidence_bounded` (an exported cluster has more than `pool.member_evidence`
+  members, so later members were not checked against every member),
+  `resume_determinism` (a resumed run matches an uninterrupted one only if the model
+  answers identical prompts identically) and `selected_not_last` (the exports hold an
+  earlier state revision than the last). `ClusterReport.warnings` carries them.
+  Thresholds are in the clustering guide. Decisions, ordering and retrieval defaults
+  are unchanged.
+- Clustering documentation corrected (guide "Limits", the decision record): a join is
+  verified against a cluster's first `pool.member_evidence` members, not "all of
+  them"; "A-B, B-C cannot force A-C" holds within that bound; resume reproduces an
+  uninterrupted run only for identical model answers; `order: label` makes a run
+  independent of input permutation but processing order still changes results; plural
+  and suffix variants share no token with the lexical head (hyphen variants do); and
+  measurements made with scripted judges on generated data are labelled SYNTHETIC.
+- The benchmark's clustering track runs `xwalk cluster` itself (`xwalk_clustering`,
+  default settings) beside the baselines and reports its scores, usage and gold-pair
+  co-exposure. In `--smoke` the judge is the offline lexical stand-in and the numbers
+  are SYNTHETIC; `--real` uses the variant's model under `--max-calls`.
+- `inspect`, `explain`, `results`, `export`, `review`, `eval`, `fit` and `compare`
+  given a clustering run directory exit `2` with `cluster_run`, naming the exports and
+  `xwalk cluster eval`, instead of `run_not_found` ("no manifest.json" although
+  there was one); `eval` and `compare` no longer create an empty `ledger.sqlite` there.
 - `xwalk ui` serves a workbench at `/app`: Runs, Results with a record inspector, and a
   Review queue with a fixed decision bar, built in React from the xwalk design system
   (`web/`, committed as `xwalk/ui/static/app`, so installs still need no Node; CI checks
@@ -90,6 +210,15 @@ offline only (FakeDecider, no paid calls).
 
 ### Changed
 
+- The sdist leaves out the 0.2 effort's working notes (`docs/superpowers/` and
+  `docs/claude-upgrade/` except `CONTRACTS.md`, `REVIEW.md` and
+  `CLUSTERING_DECISIONS.md`, which the docs cite), `CLAUDE.md`, the React sources in
+  `web/` (the built workbench still ships in the package), `benchmarks/results/`, and
+  the Ref_zivila research scripts with the two tests that need them.
+  `tests/test_packaging.py` builds the sdist and checks its contents.
+  `scripts/run_pipeline.sh` no longer hard-codes one cluster account's checkout: it
+  takes the checkout as an argument or `XWALK_ROOT` (default: its own) and sources
+  `_env.sh` only when present.
 - Decider jobs run through `xwalk.ops` like LLM jobs: strict validation of the
   `decider:` block and the decider `policy:` (unknown keys with did-you-mean, ranges,
   `shortlist_floor <= accept_at`), `--json` envelopes, run states, exit codes, run
@@ -105,12 +234,334 @@ offline only (FakeDecider, no paid calls).
 - `--max-calls` covers the decider path: Jev requests (each HTTP retry counts) and
   rewrite LLM requests share one limit. A failed decision request counts as a call with
   unknown usage instead of nothing; cache replays count as `cache_hits`.
-- A job needs exactly one of `llm:` or `decider:`. A decider job refuses `selector:`; an
-  `llm:` job refuses `templates.queries` with more than one entry (the LLM matcher
-  searches one query per attempt). `xwalk ablate` and `xwalk prompts` refuse decider
-  jobs (exit 2).
-- `TemplateSet.fingerprint` and `PromptSet.fingerprint` are unchanged for jobs that do
-  not use `queries` or slot `properties`, so 0.2.0rc1 runs keep resuming.
+- A job needs exactly one of `llm:` or `decider:`. A decider job refuses `selector:`.
+  Since engine batch 5, LLM jobs accept multiple `templates.queries`, with separate
+  RRF votes for initial queries and the original query list retained on retries.
+  Existing single-query requests and the legacy `query` plus one alternate behavior
+  are preserved. `xwalk ablate` and `xwalk prompts` refuse decider jobs (exit 2).
+- `PromptSet.fingerprint` is unchanged for jobs that do not use slot `properties`.
+  **Compatibility:** `TemplateSet.fingerprint` now includes `TEMPLATE_RENDER_VERSION`
+  (2), because null fields render differently (see Fixed), so every run fingerprint
+  changes and a run directory started before this change is refused on resume; start a
+  new run directory. A BM25 or dense index changes identity only when some target
+  record has a null field, and is then refused until rebuilt with `--rebuild-index`.
+
+### Fixed
+
+- `xwalk cluster explain --full` includes stored prompts, retrieval and usage for
+  later decisions as well as admission decisions, in both human and JSON output.
+- `xwalk cluster explain` reports missing historical cluster revisions as
+  `store_inconsistent` (exit `3`), instead of silently showing empty member evidence.
+- `xwalk cluster explain` restores merge ancestry with the selected state during
+  failed-record resume, so discarded merges no longer appear in exported ancestry.
+- A malformed HTTP 200 from an OpenAI-compatible endpoint (an HTML error page, a JSON
+  array, no or empty `choices`, list `content`, a string token count) raised
+  `JSONDecodeError`, `AttributeError`, `TypeError` or `ValueError` out of
+  `Matcher.match`, and `run_batch` then cancelled every sibling record. Both
+  `OpenAICompatClient` and `LiteLLMClient` now raise only `LLMError` subclasses for
+  anything in a response: malformed envelopes and empty choices are retryable (they
+  were fatal), counted as calls with unknown usage. A 200 carrying an `error` object
+  is fatal for auth, billing, model and request codes (400, 401, 402, 403, 404, 413,
+  422) and retried otherwise; an `error` inside the choice is retryable with its
+  message. Invalid or half-reported token counts (only `prompt_tokens`, say) make
+  usage unknown, never a known zero, and keep the answer. Programming errors still raise. LiteLLM exceptions are classified by
+  LiteLLM's public class names first: `APIResponseValidationError` (a malformed
+  response) and `APIError` (its catch-all for unmapped statuses) are now retryable
+  instead of aborting the run as unrecognised; `UnprocessableEntityError`,
+  `ContextWindowExceededError`, `ContentPolicyViolationError`, `RejectedRequestError`
+  and `BudgetExceededError` are fatal by name. Truly unrecognised exceptions stay fatal.
+- A Jev rubric `score` outside the offered levels (`99`, `inf` on a two-level rubric)
+  became an automatic match. Scores must be finite and in `[0, len(criteria) - 1]`,
+  never clamped, or the response is a `DecisionResponseError`; the decider policy
+  re-checks the range before accepting.
+- A selector reply without `chosen_key` (`{}`, or only a confidence) was a confident
+  `unmatched / selector_abstained`. Only an explicit `null` abstains; a missing key is
+  unresolved output with an error, routed to review. The experimental clusterer
+  follows the same rule.
+- The rewriter iterated whatever `queries` held: an integer raised `TypeError` out of
+  `Matcher.match` and a string became one-letter queries. Anything but a list of
+  strings yields no queries and an error on the attempt.
+- A `null` field in a source or target (for example `"aliases": null` in JSONL) raised
+  `TemplateError` in `{{ aliases | join(' ') }}` or rendered as the text `None`, which
+  the decider then searched for. Null fields now render exactly like missing ones in
+  both matchers, in indexed text, in the source block of the four base prompts (no more
+  `- aliases: None`) and in the state the Jev decider is sent; real template bugs still
+  raise. A null inside a list (`["a", null]`) is not removed.
+- The decider screen kept only the first failed chunk: a retryable failure in an
+  earlier chunk could hide a fatal one, and further failed or cancelled-after-dispatch
+  requests went unbilled. Every failure is collected, a fatal one wins regardless of
+  chunk order, and every dispatched request is counted. A Jev response with a missing
+  or invalid usage block (missing, `NaN`, infinite or fractional `input_tokens`, an
+  invalid cost) is now a call with unknown usage, not a known zero or an exception.
+- A `kind: litellm` job validated `api_key_env` and then never sent the key, and
+  accepted `base_url` and then dropped it, so a job aimed at a local proxy quietly
+  called the public provider. The key is passed as `api_key` and stays out of the run
+  fingerprint; `base_url` is passed as `api_base` and enters the fingerprint with any
+  userinfo or credential-like query parameter removed (`LiteLLMClient` now redacts
+  `api_base`/`base_url` kwargs that way).
+- **Run identity follows the requests a run sends.** Two configurations that sent
+  different requests could share a run fingerprint, so a resume reused results produced
+  under other settings: a per-stage override (`Scorer(max_tokens=256)`,
+  `Selector(temperature=...)`, a selector `system` message, a scorer `review_floor` or
+  rewriter `max_queries` unlike the policy's, a stage on another client) never reached
+  `build_run_fingerprint`, and an explicit `capabilities=` that turns on a JSON schema,
+  a strict schema or a seed was hashed by neither adapter. Now every stage exposes an
+  `identity` (its client fingerprint, prompts, templates, effective
+  `temperature`/`max_tokens` and behavioural settings, never a credential);
+  `build_run_fingerprint` and `build_decision_run_fingerprint` take the stages
+  (`selector=`, `scorer=`, `verifier=`, `rewriter=`; `screener=`, `chooser=`, `gate=`,
+  `rewriter=`) and record, under a `stages` component, only the settings that differ
+  from the stages a job file would build. `OpenAICompatClient`, `LiteLLMClient` and
+  `FakeLLM` hash request-affecting capabilities when they differ from the profile (or
+  the all-false default). Clients and the `BudgetedLLM`/`CachingLLM` wrappers report
+  `generation_defaults`, so an explicit override equal to the client's value keeps the
+  identity. A decider job's rewrite is identified by its job block plus whatever the
+  client `ops.run` actually hands it differs in. Credentials, timeouts, retries,
+  concurrency and wrappers stay out. The stage arguments are **required** (on the
+  decider path `rewriter=None` says there is none): an omitted stage used to count as
+  the default, so a changed stage that was not passed resumed the old run with zero
+  calls. **Breaking for Python callers** of `build_run_fingerprint`,
+  `run_fingerprint_components`, `build_decision_run_fingerprint` and
+  `decision_run_fingerprint_components`, which now raise `TypeError` without them. A
+  decider job's `decider.rewrite.llm.base_url` is hashed with userinfo and key
+  parameters removed (it used to be hashed as written), and comparing an injected
+  rewrite client with the block no longer builds a client
+  (`openai_compat_fingerprint`, `litellm_fingerprint`). The stage hashing alone leaves
+  a job-file run's fingerprint as it was (a job cannot express a stage or capability
+  override; checked on the test fixtures), but the status-semantics version (below)
+  changes every run fingerprint anyway, so existing run directories are refused on
+  resume regardless. Python-API runs whose stages carry an override, or whose client
+  has a request-affecting capability override, get a new fingerprint: `xwalk match
+  --out` refuses to resume such a run directory (exit 3), and `run_batch` starts a new
+  run in the same ledger rather than reusing the old results.
+- **`xwalk cluster` run identity includes the pool's retrieval heads.** The fingerprint
+  components stored the retrieval identity (lexical engine, dense encoder name,
+  dimension and settings, fusion) under `pool` and then overwrote it with the pool
+  settings, so a lexical run and a dense run of the same job shared a fingerprint and
+  adding `dense:` resumed a lexical run with zero calls. The heads are now their own
+  `retrieval` component, and a changed head (lexical to dense or back, another encoder,
+  other encoder settings) is refused with `run_fingerprint_mismatch` naming
+  `retrieval.*`, before anything is written or called. The clustering format goes to 2:
+  a run directory written by an earlier version is refused with `run_format_outdated`
+  (exit 3) because its fingerprint cannot say which heads ran; cluster again into a new
+  `--out`.
+- `xwalk cluster` exports describe a cluster the same way in both files after its seed
+  leaves it (a failed reverification or a switch during reassignment). The member left
+  alone was exported `assigned` with `cluster_size` 1 while `clusters.csv` called the
+  cluster `singleton` and named the departed seed as `seed_id`. Both files now decide
+  singleton-ness by the exported cluster size: the lone member is `singleton` with reason
+  `sole_remaining_member` (its `decision_id` still names the decision that admitted it),
+  and `seed_id` is the cluster's first current member. Stored runs are unchanged; only
+  the exports are regenerated differently.
+- `xwalk cluster` no longer claims mint provenance `retrieval_exhausted` after a full
+  page of hits. The test "fewer hits than asked for" compared the hits of the last
+  search with the depth of the next page, which was already doubled, so with
+  `shown_limit >= retrieve_limit` and the expansion pages exhausted a record could mint
+  under `mint_requires: retrieval_exhausted` while retrievable clusters were never shown.
+  It now compares with the depth actually searched. The defaults are not affected (the
+  last page reaches `expand_limit`, where doubling is capped).
+- `xwalk validate` names a template field that no record has: `{{ mentoin }}` used to
+  validate with only "4 source record(s) render an empty query text". The new
+  `template_unknown_field` warning reads `templates.query references 'mentoin', which
+  no source record in sources.csv has (it renders empty); fields are [...]`, checking
+  `query`, `context` and `queries` against the sources and `doc` and `candidate`
+  against the targets.
+- CSV/TSV, JSONL and OBO sources and gold files read UTF-8 with a byte-order mark
+  (every Excel "CSV UTF-8" export): the default encoding is `utf-8-sig`, so the first
+  column is `mention_id`, not `\ufeffmention_id`. Such a file used to fail with
+  `id_column 'mention_id' not found`; one whose first column was not the id loaded
+  with a misnamed field, and loads under the right name now (its record digests, and
+  so its index, change once).
+- `xwalk validate` no longer calls a job "invalid" when the file is fine and only the
+  environment lacks something: a missing credential variable or optional extra prints
+  `job 'x' is valid; the environment is not ready: OPENAI_API_KEY is not set (use
+  --no-credentials to check the file alone)`. The exit code (`2`) and error codes are
+  unchanged.
+- Every CLI flag and positional has help text in `--help` (40 had none, among them
+  `--job`, `--run`, `--out`, `--gold`, `--view` and every flag of `prompts` and
+  `review`), and `xwalk review --help` / `xwalk prompts --help` describe their
+  subcommands. `docs/reference/cli.md` documents `ui --chatgpt-login`, `--dense` and
+  `--dense-device`.
+- Read-only commands no longer migrate a run's ledger. `inspect`, `explain`, `results`,
+  `export`, `eval`, `fit`, `compare`, `review export` and the UI's reads opened the
+  ledger for writing, so pointing one at a 0.1.1 run upgraded `ledger.sqlite` in place
+  and left a `ledger.sqlite.v1-backup` beside it. They now open it read-only
+  (`Ledger.open(path, read_only=True)`): a 0.1.1 ledger is read through an upgraded copy
+  on disk (a temporary file, removed afterwards) and the directory stays
+  byte-identical; a reader's memory does not grow with the ledger. `match` and `review apply` still
+  migrate (after the backup), and the new `xwalk upgrade --run DIR` (`ops.upgrade`)
+  does it explicitly. `ledger.sqlite.v1-backup*` is now gitignored.
+- A run against a failing provider says why. A call limit spent on retries against a
+  dead endpoint was reported only as `call_limit_reached` with the advice to raise
+  `--max-calls`; the message now names the provider's last error (`call limit of 5
+  reached while the provider was failing: ... ConnectError: ...`) and advises fixing
+  the endpoint instead. `CallBudget.acquire` now returns a dispatch index and clients
+  report each request's outcome with `CallBudget.settle` (`BudgetedLLM`,
+  `BudgetedDecider`, and per HTTP retry the OpenAI-compatible and Jev clients); the
+  refusal names the error of the latest-dispatched settled request, so a failure that
+  a later success overtook is not blamed, and `run_batch` used directly reports the
+  same message. The one run-level message is what the
+  ledger records, so `match`, `inspect` and `manifest.json` agree. A run (and
+  `inspect`) with `failed` rows lists their errors,
+  deduplicated with counts and most common first, as `provider_failure` /
+  `retriever_failure` errors in the envelope, on stderr and in the summary. A run
+  without `--max-calls` whose records fail adds the `uncapped_failures` warning, and
+  `xwalk match` warns once on stderr when three records in a row fail uncapped.
+- BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
+  forms were `strip().lower()`, but the query's exact term was built from the
+  *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat
+  milk`, `D-glucose` or `glucose (D-)` never earned the exact boost, and a query that
+  sanitising emptied (`IN`, `-`) returned nothing before the exact lookup ran. Both
+  sides now go through one normaliser, `xwalk.retrieval.bm25.exact_form` (Unicode NFC,
+  casefold, strip, internal whitespace collapsed to one space), applied to the
+  original query text; punctuation and accents are kept, so `IL-2` does not match
+  `IL 2` and `Gruyere` does not match `Gruyère`. Sanitising still applies to the
+  tokenised text query only, and an emptied text query leaves the exact lookup running
+  alone.
+- **Rebuild BM25 indexes.** The fix bumps the BM25 `normalization_version` from 1 to 2,
+  which changes every BM25 index's components and fingerprint, so run fingerprints for
+  jobs with a BM25 retriever change too. An index built earlier is refused rather than
+  reused: `xwalk match` and `xwalk index` exit 3 naming `normalization_version`
+  (rerun with `--rebuild-index`), and `BM25Retriever.open` raises `IndexMismatchError`
+  even without `expected`, since searching it would silently miss exact hits.
+- The matching loop stopped on an acceptable attempt, but `derive_status` then picked
+  the highest score regardless of the verifier: a candidate the verifier rejected
+  (0.75, `disagree`) or could not check (0.75, verifier call failed) was proposed for
+  review and the verified retry that stopped the loop (0.65, `support`) was thrown
+  away. An acceptable attempt (completed, exact key, valid score at or above
+  `accept_at`, verdict `support` or none) is now always the match. When no attempt is
+  acceptable the previous ranking is unchanged, so an unverified 0.7 is still proposed
+  for review ahead of an unchallenged 0.3.
+- A provider or retriever outage could settle as a no-match. A scorer failure after an
+  empty first search was reported as `unmatched / selector_abstained`; one retriever
+  down and the other returning nothing was `unmatched / no_candidates`; an abstention
+  followed by a provider failure was a settled abstention. Now, on both matchers:
+  no surviving hits with any retriever failed is `failed / retriever_failure` (`Matcher`
+  retries the same query within `max_attempts`; failed results on either path retry on
+  resume); a negative outcome with any provider failure or failed
+  retriever search anywhere in the result is `failed` with the latest blocking reason
+  (provider before retriever within one attempt), which a resumed run retries; a match
+  or a review on the surviving evidence still stands. Optional rewriter and
+  audit-verifier errors stay notes. `DecisionMatcher` now counts a failed search of the
+  rewrite's queries too (it was only a note). Each failed search is stored on the
+  attempt as `Attempt.retrieval_failures`, with or without the candidate trace; older
+  ledger blobs read it as empty. **Compatibility:** the run fingerprint's `policy`
+  component gains `status_semantics: 2` on both paths
+  (`xwalk.policy.STATUS_SEMANTICS_VERSION`,
+  `xwalk.decide.policy.STATUS_SEMANTICS_VERSION`), so a run directory started before
+  this change is refused on resume; start a new one.
+
+### Security
+
+- `xwalk mcp` confines paths. Every tool path (`job`, `out`, `index_dir`, `run`) must
+  resolve, with `..` collapsed and symlinks followed, inside the server's roots: the
+  working directory, or the directories given with the new repeatable `--root DIR`.
+  The files a job refers to (`source.path`, `target.path`, `prompts.slots`, a dense
+  `model` given as a local path, a sqlite database) are checked the same way before the
+  job is compiled or read; network database URLs are refused in MCP mode. An `out`,
+  `index_dir` or `run` directory that already holds a symlink leading out of the roots
+  is refused too, and a differently cased spelling of a root on a case-insensitive
+  filesystem is accepted (compared by file identity). A refusal is a
+  tool error with code `path_outside_roots` (exit `2`). Before, an agent could name any
+  job file the user could read, and so compile its templates, and write run and index
+  directories anywhere writable. New module `xwalk.confine` (`Roots`, `PathRefused`);
+  `build_server` and `serve` take `roots=`. Relative paths still resolve against the
+  working directory, so a server launched in its project directory works as before; a
+  host that starts it elsewhere (Claude Desktop) now needs `--root`.
+- `xwalk ui --public` no longer lets a request's own `X-Forwarded-Proto` header decide
+  whether the session cookie is `Secure`. The header counts only with the new
+  `--trust-proxy` flag, for deployments where every request comes through an HTTPS
+  proxy (the `Dockerfile` sets it). `--trust-proxy` without `--public` is refused.
+- `xwalk ui --public`: a page view no longer creates a session. It sets a signed cookie
+  only; the workspace is made by the page's first API request. Previously every
+  cookieless `GET /` made a session directory, so about 500 requests filled the pool
+  and new visitors got `503` for up to `--session-hours`. New sessions are limited per
+  client address (`--sessions-per-ip`, 20 per 10 minutes, then `429
+  too_many_sessions`), unused sessions are deleted after 10 minutes idle, and a full
+  pool drops the longest-idle unused session before refusing anyone.
+- `xwalk ui --public`: model-endpoint requests now connect to the addresses that passed
+  the public-address check (new `xwalk.ui.egress`), instead of resolving the host again
+  when connecting. A host with a short-TTL record (DNS rebinding) could pass the check
+  with a public address and then be reached at a private or cloud-metadata one. TLS
+  still verifies the certificate for the host name (SNI and `Host` are unchanged), the
+  client follows no redirects, and proxy variables in the server's environment are
+  ignored for these requests. `OpenAICompatClient` gains a `trust_env` argument
+  (default `True`, unchanged).
+- `xwalk ui` (local mode) ontology downloads are `https` only, to hosts that resolve to
+  public addresses, connected at the checked addresses, with at most 5 redirects, each
+  checked again. Before, any `http(s)` URL was fetched and redirects were followed
+  freely, so the server could be pointed at its own network or a cloud metadata
+  address. `--allow-local-downloads` (refused with `--public`) restores `http` and
+  private addresses for an intranet mirror; `scripts/build_ontology_library.py` has
+  `--allow-local-urls` for the same. The catalog now names its OBO PURLs by `https`
+  (`https://purl.obolibrary.org/obo/...`), except ChEBI, whose PURL redirects to plain
+  `http`: it is downloaded from
+  `https://ftp.ebi.ac.uk/pub/databases/chebi/ontology/chebi.obo`. The other nine PURLs
+  redirect to `https` targets according to the PURL service's configuration (not
+  fetched end to end here). `library.download` gains `allow_local` and
+  `max_redirects`.
+- Templates are sandboxed. The four record templates (and `queries`) of a job file ran
+  in a plain Jinja environment, so a template such as
+  `{{ ''.__class__.__mro__[1].__subclasses__() }}` reached arbitrary Python objects, and
+  `xwalk validate` alone compiled it; an MCP client can name any job path. Record
+  templates and prompt skeletons now compile in Jinja's `ImmutableSandboxedEnvironment`.
+  A constant dunder attribute or subscript (`x.__class__`, `x['__globals__']`) is refused
+  when the templates are built (`UnsafeTemplateError`, a `TemplateError`; `validate`
+  reports `template_invalid`); a computed one (`attr(...)`, `x[key]`) is refused by the
+  sandbox at render, as a per-record template error. A refused attribute raises rather
+  than rendering as an empty field. A hostile skeleton is a `ContractError`. Every bundled
+  template, example job and prompt renders byte for byte as before, so template, prompt
+  and run fingerprints are unchanged. Compiled record templates are now cached per
+  process, so building a `TemplateSet` again no longer recompiles.
+- The workbench can be rebuilt from the repository again. The unanchored `data/` rule
+  in `.gitignore` (meant for the private inputs in the root `data/`) also ignored
+  `web/src/components/data/`, so `DataTable`, `Identifier`, `ScoreMeter`, `KeyValue`,
+  `FilterChip` and `CommandLine` were never committed and `npm run typecheck`, `npm
+  test` and `npm run build` failed on a clean checkout. The rule is now `/data/`, and
+  the six components were rewritten from the committed bundle: the rebuilt JavaScript
+  and CSS match the previous build except for CSS-module hashes. `FilterChip`, unused
+  by the screens and absent from the bundle, follows the design system's version.
+  `web/tsconfig.tsbuildinfo`, a compiler cache, is no longer tracked.
+- `/app` no longer goes blank on a clustering run's URL. `/api/run` returns a manifest
+  and no `inspect` for clustering runs, which the Results screen read unguarded; with no
+  error boundary React unmounted the whole page. Results and Review now say that
+  clustering runs open in the classic explorer and link there, `RunView` is typed as a
+  matching or clustering run so the compiler checks the difference, and an error
+  boundary (inside the shell, and around it) shows the error with links to the classic
+  explorer and the runs list.
+- Reviewing a large run no longer waits seconds per record. `ops.explain` decoded every
+  current result, the whole history and the adjudicated view to answer for one source;
+  it now reads that source's rows through indexed lookups (`Ledger.current_entry`,
+  `Ledger.iter_source_history`, `Ledger.iter_reviews_for`, all read-only), and a test
+  pins it to the previous answers for reviewed, re-reviewed, stale, edited and removed
+  sources. Recording one decision in `xwalk ui` (`POST /api/review`) looks up the
+  decided result instead of exporting the whole worksheet (`ops.review_rows`), and
+  `GET /api/reviews` derives the reviewed answers from the ledger's summary columns
+  (`review.adjudicated_reviewed`) without decoding results. The Review screen fetches the
+  next record's explanation while the current one is read. On a generated 2,000-row run
+  (`scripts/bench_review_step.py`, FakeLLM, in-process) the medians went from 749 ms to
+  7 ms for explain, 382 ms to 28 ms for a decision and 379 ms to 25 ms for the overlay;
+  over HTTP on a 2,189-row run, 798 to 4 ms, 379 to 12 ms and 373 to 24 ms.
+- While a record's explanation loads, the Review screen's proposal shows the label the
+  queue already has and a placeholder for the rest, instead of "Label not available",
+  "None recorded" and "Not in the reference collection", which read as facts about the
+  reference.
+- Review keyboard and queue fixes in `/app`: the queue opens on the first record still to
+  decide instead of the first record, and scrolls to follow J/K; Escape leaves a text
+  field (it used to stay in the Reviewer or Note field, where A P R N D were typed as
+  text); J/K and ↵ work on Runs and Results from a fresh page, not only after tabbing
+  into the table.
+- A corrected target id typed in the Review screen is checked against the job's target
+  collection before it can be saved: new read route `GET /api/target` (exact id,
+  `ops.find_targets`), and `POST /api/review` refuses a `replace` to an id the
+  collection does not have (422 `unknown_target`) instead of recording an answer that
+  names no record. `xwalk review apply` and `review.apply_review` are unchanged.
+- Workbench text meets WCAG AA contrast. Faint ink (`#85837C`, 3.2 to 3.6:1 on the
+  workbench surfaces) is now `#66645E`, orange text uses `--orange-700`, and the review
+  count and *Save and next* put ink rather than white on signal orange. axe-core's
+  `color-contrast` rule found 272 failing text elements across Runs, Results and Review
+  before, and none after. The design language (archival neutrals, one signal orange for
+  marks) is unchanged; there is still no dark theme.
 
 ## [0.2.0rc1] — 2026-10-05
 

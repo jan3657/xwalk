@@ -8,6 +8,7 @@ import type { Info, MappingRow, ReviewEntry, ReviewsData, RunView, TaskView, Wor
 import { STATUSES, cli, fmt, statusLabel } from './format';
 import { useLoad, useSlashFocus, useWidth } from './hooks';
 import { CandidateList, AttemptTree, HistoryList, HumanLayer, ModelLayer, SectionLabel, candidatesOf, labelOf, reviewFor } from './RecordParts';
+import { ClusterRunNotice } from './ClusterRunNotice';
 import { ExportDialog } from './ExportDialog';
 import { ResumeDialog } from './ResumeDialog';
 import type { Route } from './router';
@@ -141,12 +142,13 @@ export function ResultsScreen({ go, dir, sel, info, jobs, onRunLoaded, onTaskSta
   const idx = shown.findIndex((x) => x.source_id === sel);
   const selectedRow = rows.rows.find((x) => x.source_id === sel) ?? null;
 
-  const inspect = run.data?.inspect;
+  const matchRun = run.data?.kind === 'match' ? run.data : null;
+  const inspect = matchRun?.inspect;
   const counts = inspect?.counts ?? {};
   const policy = inspect?.data?.fingerprint_components?.policy ?? {};
   const runState = inspect?.run?.run_state ?? null;
   const fingerprint = inspect?.run?.run_fingerprint ?? null;
-  const shared = run.data?.duplicate_targets ?? {};
+  const shared = matchRun?.duplicate_targets ?? {};
   const allLoaded = rows.next == null && rows.state !== 'loading';
   const metricCount = (st: RecordStatus) => (reviewed
     ? (allLoaded ? fmt(rows.rows.filter((x) => finalStatus(x) === st).length) : '…')
@@ -208,6 +210,7 @@ export function ResultsScreen({ go, dir, sel, info, jobs, onRunLoaded, onTaskSta
   const isStaleOnly = sel ? history.some((h) => h.source_id === sel && h.state === 'stale') : false;
   const crumbs = [{ label: 'Runs', onClick: () => go({ screen: 'runs' }) }, { label: dir, mono: true }];
 
+  if (run.data?.kind === 'cluster') return <ClusterRunNotice run={run.data} go={go} screen="Results" />;
   if (run.state === 'error' && !run.data) {
     return (
       <>
@@ -309,6 +312,7 @@ export function ResultsScreen({ go, dir, sel, info, jobs, onRunLoaded, onTaskSta
             <div className={r.tableMin}>
               <DataTable
                 label="Results"
+                pageKeys
                 rowKey={(x) => x.source_id}
                 rows={shown}
                 selectedKey={sel ?? null}
