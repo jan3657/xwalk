@@ -94,6 +94,20 @@ def test_litellm_credentials_are_not_part_of_the_run_identity():
     assert a.fingerprint != c.fingerprint
 
 
+def test_credentials_in_a_litellm_api_base_are_not_part_of_the_run_identity():
+    from xwalk.llm.litellm import LiteLLMClient
+
+    a = LiteLLMClient("gpt-4o", api_base="https://user:secret1@host/v1")
+    b = LiteLLMClient("gpt-4o", api_base="https://host/v1?key=secret2")
+    c = LiteLLMClient("gpt-4o", api_base="https://other/v1")
+    assert (
+        a.fingerprint
+        == b.fingerprint
+        == LiteLLMClient("gpt-4o", api_base="https://host/v1").fingerprint
+    )
+    assert a.fingerprint != c.fingerprint
+
+
 def test_credentials_in_a_base_url_are_not_part_of_the_run_identity():
     from xwalk.llm.openai_compat import OpenAICompatClient
 

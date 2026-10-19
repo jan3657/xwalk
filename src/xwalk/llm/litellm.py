@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from xwalk._extras import require
-from xwalk.fingerprint import hash_value, without_secrets
+from xwalk.fingerprint import hash_value, redact_url, without_secrets
 from xwalk.llm.base import (
     LLMCapabilities,
     LLMFatalError,
@@ -28,6 +28,9 @@ from xwalk.llm.base import (
 from xwalk.records import Usage
 
 ADAPTER_VERSION = 1
+
+# Endpoint kwargs: identity, but hashed with credentials removed (`redact_url`).
+_URL_KWARGS = frozenset({"api_base", "base_url"})
 
 _RETRYABLE_MARKERS = (
     "ratelimit",
@@ -95,8 +98,12 @@ class LiteLLMClient:
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
                 **({"seed": self._seed} if self._seed is not None else {}),
-                # Credentials passed as kwargs (api_key, extra_headers...) are not identity.
-                "kwargs": {k: str(v) for k, v in sorted(without_secrets(self._kwargs).items())},
+                # Credentials passed as kwargs (api_key, extra_headers...) are not identity,
+                # and neither is userinfo or a key in an endpoint URL's query string.
+                "kwargs": {
+                    k: redact_url(str(v)) if k in _URL_KWARGS else str(v)
+                    for k, v in sorted(without_secrets(self._kwargs).items())
+                },
             }
         )
 

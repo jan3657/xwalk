@@ -151,8 +151,12 @@ offline only (FakeDecider, no paid calls).
   chunk order, and every dispatched request is counted. A Jev response with a missing
   or invalid usage block (missing, `NaN`, infinite or fractional `input_tokens`, an
   invalid cost) is now a call with unknown usage, not a known zero or an exception.
-- A `kind: litellm` job validated `api_key_env` and then never sent the key. It is now
-  passed to LiteLLM, and stays out of the run fingerprint.
+- A `kind: litellm` job validated `api_key_env` and then never sent the key, and
+  accepted `base_url` and then dropped it, so a job aimed at a local proxy quietly
+  called the public provider. The key is passed as `api_key` and stays out of the run
+  fingerprint; `base_url` is passed as `api_base` and enters the fingerprint with any
+  userinfo or credential-like query parameter removed (`LiteLLMClient` now redacts
+  `api_base`/`base_url` kwargs that way).
 - BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
   forms were `strip().lower()`, but the query's exact term was built from the
   *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat

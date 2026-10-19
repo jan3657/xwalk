@@ -115,6 +115,55 @@ async def test_a_litellm_job_sends_the_key_it_required_but_keeps_it_out_of_ident
     assert fingerprints[0] == fingerprints[1]
 
 
+async def test_a_litellm_job_sends_its_base_url_as_api_base_and_redacts_it_in_identity(
+    tmp_path, monkeypatch
+):
+    """`base_url` on a litellm job used to be validated and dropped, so a job aimed at a
+    local proxy quietly called the public provider. It is identity (the endpoint changes
+    what a result means), but credentials in it are not."""
+    import json
+
+    import xwalk.llm.litellm as litellm_adapter
+    from xwalk.config import LLMSpec
+    from xwalk.llm.base import LLMRequest
+
+    sent: list[dict] = []
+
+    class FakeLiteLLM:
+        @staticmethod
+        async def acompletion(**kwargs):
+            sent.append(kwargs)
+            message = type("M", (), {"content": "{}"})()
+            choice = type("C", (), {"message": message, "finish_reason": "stop"})()
+            return type("R", (), {"choices": [choice], "usage": None, "model": "m"})()
+
+    monkeypatch.setattr(litellm_adapter, "require", lambda *a, **k: FakeLiteLLM)
+    base = load_job(JOB)
+    store = base.build_store()
+    retrievers = base.build_retrievers(
+        list(base.build_target_records()), base.build_templates(), tmp_path / "idx"
+    )
+
+    def fingerprint_for(url):
+        spec = LLMSpec(kind="litellm", model="openai/gpt-4o-mini", base_url=url)
+        job = base.model_copy(update={"llm": spec})
+        llm = job.build_llm()
+        components = job.run_fingerprint_components(store=store, retrievers=retrievers, llm=llm)
+        assert "pw-secret" not in json.dumps(components)
+        assert "pw-secret" not in llm.fingerprint
+        return llm, job.run_fingerprint(store=store, retrievers=retrievers, llm=llm)
+
+    llm, local = fingerprint_for("http://localhost:8000/v1")
+    await llm.complete(LLMRequest(system="s", user="u"))
+    assert sent[-1]["api_base"] == "http://localhost:8000/v1"
+
+    _, with_userinfo = fingerprint_for("http://user:pw-secret@localhost:8000/v1")
+    _, with_query_key = fingerprint_for("http://localhost:8000/v1?api_key=pw-secret")
+    _, elsewhere = fingerprint_for("http://other-host:8000/v1")
+    assert local == with_userinfo == with_query_key
+    assert local != elsewhere
+
+
 def test_a_missing_api_key_env_var_is_a_clear_error(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):

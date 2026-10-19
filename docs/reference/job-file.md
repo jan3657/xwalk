@@ -217,7 +217,7 @@ backend that declares no depth of its own; it does feed the run fingerprint.
 |---|---|---|---|---|---|
 | `kind` | `openai_compat \| litellm` | no | `openai_compat` | both | which adapter |
 | `model` | `str` | yes | — | both | model identifier |
-| `base_url` | `str \| None` | required for `openai_compat` | `None` | openai_compat | endpoint root, without `/chat/completions` |
+| `base_url` | `str \| None` | required for `openai_compat` | `None` | both | endpoint root, without `/chat/completions`; sent to LiteLLM as `api_base` |
 | `api_key_env` | `str \| None` | no | `None` | both | **name** of the environment variable holding the key |
 | `api_key` | — | never | `None` | — | present only so it can be rejected |
 | `profile` | `str` | no | `"unknown"` | openai_compat | capability profile, below |
@@ -230,9 +230,11 @@ Valid `profile` values are `openai`, `anthropic-compat`, `google-compat`, `vllm`
 seeding, `Retry-After` — never whether it trusts the answer; every response is parsed and
 validated regardless. `unknown` asks for nothing, which always works.
 
-`kind: litellm` needs `xwalk[litellm]` and ignores `base_url` and `profile`; only `model`,
-`temperature`, `max_tokens` and `seed` reach `LiteLLMClient`, and its capabilities default to
-all-false.
+`kind: litellm` needs `xwalk[litellm]` and ignores `profile`. `model`, `temperature`,
+`max_tokens`, `seed`, the key named by `api_key_env` (as `api_key`) and `base_url` (as
+`api_base`) reach `LiteLLMClient`; its capabilities default to all-false. The endpoint is
+part of the run fingerprint with any userinfo or credential-like query parameter removed;
+the key never is.
 
 ## `decider`
 
