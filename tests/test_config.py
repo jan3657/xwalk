@@ -71,6 +71,50 @@ def test_the_api_key_is_read_from_the_environment(monkeypatch):
     assert load_job(JOB).build_llm().model == "gpt-4o-mini"
 
 
+async def test_a_litellm_job_sends_the_key_it_required_but_keeps_it_out_of_identity(
+    tmp_path, monkeypatch
+):
+    """The key named by `api_key_env` must reach LiteLLM's completion call (it used to
+    be validated and then dropped), and must never enter the run fingerprint."""
+    import json
+
+    import xwalk.llm.litellm as litellm_adapter
+    from xwalk.llm.base import LLMRequest
+
+    sent: list[dict] = []
+
+    class FakeLiteLLM:
+        @staticmethod
+        async def acompletion(**kwargs):
+            sent.append(kwargs)
+            message = type("M", (), {"content": "{}"})()
+            choice = type("C", (), {"message": message, "finish_reason": "stop"})()
+            return type("R", (), {"choices": [choice], "usage": None, "model": "m"})()
+
+    # Intercept the module the adapter loads lazily: no litellm import, no network.
+    monkeypatch.setattr(litellm_adapter, "require", lambda *a, **k: FakeLiteLLM)
+    from xwalk.config import LLMSpec
+
+    base = load_job(JOB)
+    llm_spec = LLMSpec(kind="litellm", model="openai/gpt-4o-mini", api_key_env="LL_KEY")
+    job = base.model_copy(update={"llm": llm_spec})
+    store = job.build_store()
+    retrievers = job.build_retrievers(
+        list(job.build_target_records()), job.build_templates(), tmp_path / "idx"
+    )
+
+    fingerprints = []
+    for secret in ("sk-litellm-one", "sk-litellm-two"):
+        monkeypatch.setenv("LL_KEY", secret)
+        llm = job.build_llm()
+        await llm.complete(LLMRequest(system="s", user="u"))
+        assert sent[-1]["api_key"] == secret
+        components = job.run_fingerprint_components(store=store, retrievers=retrievers, llm=llm)
+        assert secret not in json.dumps(components)
+        fingerprints.append(job.run_fingerprint(store=store, retrievers=retrievers, llm=llm))
+    assert fingerprints[0] == fingerprints[1]
+
+
 def test_a_missing_api_key_env_var_is_a_clear_error(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):

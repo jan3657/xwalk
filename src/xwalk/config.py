@@ -715,11 +715,15 @@ def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
         )
     from xwalk.llm.litellm import LiteLLMClient
 
+    # The key the job required must also be sent. LiteLLMClient keeps it out of its
+    # fingerprint (`without_secrets`), so it never reaches a manifest.
+    credentials: dict[str, Any] = {"api_key": api_key} if api_key else {}
     return LiteLLMClient(
         spec.model,
         temperature=spec.temperature,
         max_tokens=spec.max_tokens,
         seed=spec.seed,
+        **credentials,
     )
 
 
