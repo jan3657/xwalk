@@ -109,8 +109,48 @@ offline only (FakeDecider, no paid calls).
   `llm:` job refuses `templates.queries` with more than one entry (the LLM matcher
   searches one query per attempt). `xwalk ablate` and `xwalk prompts` refuse decider
   jobs (exit 2).
-- `TemplateSet.fingerprint` and `PromptSet.fingerprint` are unchanged for jobs that do
-  not use `queries` or slot `properties`, so 0.2.0rc1 runs keep resuming.
+- `PromptSet.fingerprint` is unchanged for jobs that do not use slot `properties`.
+  **Compatibility:** `TemplateSet.fingerprint` now includes `TEMPLATE_RENDER_VERSION`
+  (2), because null fields render differently (see Fixed), so every run fingerprint
+  changes and a run directory started before this change is refused on resume; start a
+  new run directory. A BM25 or dense index changes identity only when some target
+  record has a null field, and is then refused until rebuilt with `--rebuild-index`.
+
+### Fixed
+
+- A malformed HTTP 200 from an OpenAI-compatible endpoint (an HTML error page, a JSON
+  array, no or empty `choices`, list `content`, a string token count) raised
+  `JSONDecodeError`, `AttributeError`, `TypeError` or `ValueError` out of
+  `Matcher.match`, and `run_batch` then cancelled every sibling record. Both
+  `OpenAICompatClient` and `LiteLLMClient` now raise only `LLMError` subclasses for
+  anything in a response: malformed envelopes and empty choices are retryable (they
+  were fatal), counted as calls with unknown usage. A 200 carrying an `error` object
+  is fatal for auth, billing, model and request codes (400, 401, 402, 403, 404, 413,
+  422) and retried otherwise. Invalid token counts make usage unknown and keep the
+  answer. Programming errors still raise.
+- A Jev rubric `score` outside the offered levels (`99`, `inf` on a two-level rubric)
+  became an automatic match. Scores must be finite and in `[0, len(criteria) - 1]`,
+  never clamped, or the response is a `DecisionResponseError`; the decider policy
+  re-checks the range before accepting.
+- A selector reply without `chosen_key` (`{}`, or only a confidence) was a confident
+  `unmatched / selector_abstained`. Only an explicit `null` abstains; a missing key is
+  unresolved output with an error, routed to review. The experimental clusterer
+  follows the same rule.
+- The rewriter iterated whatever `queries` held: an integer raised `TypeError` out of
+  `Matcher.match` and a string became one-letter queries. Anything but a list of
+  strings yields no queries and an error on the attempt.
+- A `null` field in a source or target (for example `"aliases": null` in JSONL) raised
+  `TemplateError` in `{{ aliases | join(' ') }}` or rendered as the text `None`, which
+  the decider then searched for. Null fields now render exactly like missing ones in
+  both matchers and in indexed text; real template bugs still raise.
+- The decider screen kept only the first failed chunk: a retryable failure in an
+  earlier chunk could hide a fatal one, and further failed or cancelled-after-dispatch
+  requests went unbilled. Every failure is collected, a fatal one wins regardless of
+  chunk order, and every dispatched request is counted. A Jev response with a missing
+  or invalid usage block (missing, `NaN`, infinite or fractional `input_tokens`, an
+  invalid cost) is now a call with unknown usage, not a known zero or an exception.
+- A `kind: litellm` job validated `api_key_env` and then never sent the key. It is now
+  passed to LiteLLM, and stays out of the run fingerprint.
 
 ### Fixed
 
