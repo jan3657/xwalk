@@ -387,6 +387,25 @@ def _cmd_cluster(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
     if getattr(args, "cluster_command", None) == "eval":
+        # Flags typed before `eval` belong to the run parser; ignoring them would let
+        # `xwalk cluster --out report.json eval ...` exit 0 and write no report.
+        stray = [
+            flag
+            for flag, value in (
+                ("--job", args.job),
+                ("--out", args.out),
+                ("--max-calls", args.max_calls),
+            )
+            if value is not None
+        ]
+        if stray:
+            raise OpError(
+                "cluster eval",
+                "usage",
+                f"{', '.join(stray)} before `eval` belong to running a job; `xwalk cluster "
+                "eval` takes --run, --gold and --out (the report file) after `eval`",
+                exit_code=EXIT_USAGE,
+            )
         return ops.cluster_eval(args.run, args.gold, out=args.report_out)
     missing = [flag for flag, value in (("--job", args.job), ("--out", args.out)) if not value]
     if missing:

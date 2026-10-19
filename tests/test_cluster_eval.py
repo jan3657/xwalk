@@ -202,6 +202,21 @@ def test_usage_errors_exit_2(tmp_path, chocolate_run, capsys):
         assert envelope["errors"][0]["code"] == expected, args
 
 
+@pytest.mark.parametrize(
+    "before", [["--out", "report.json"], ["--job", "job.yaml"], ["--max-calls", "5"]]
+)
+def test_run_flags_before_eval_are_refused_not_ignored(tmp_path, chocolate_run, capsys, before):
+    # `xwalk cluster --out X eval ...` used to exit 0 and write nothing to X.
+    gold = _gold(tmp_path / "gold.csv", CHOCOLATE)
+    argv = ["cluster", *before, "eval", "--run", str(chocolate_run), "--gold", str(gold)]
+    code = main([*argv, "--json"])
+    envelope = json.loads(capsys.readouterr().out)
+    assert code == envelope["exit_code"] == 2
+    error = envelope["errors"][0]
+    assert error["code"] == "usage" and before[0] in error["message"]
+    assert not (tmp_path / "report.json").exists()
+
+
 def test_cluster_without_job_and_out_is_a_usage_error(capsys):
     code = main(["cluster", "--json"])
     envelope = json.loads(capsys.readouterr().out)

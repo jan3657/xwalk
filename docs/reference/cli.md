@@ -287,7 +287,7 @@ retriever and writes nothing in the run directory.
 |---|---|---|---|
 | `--run` | yes | — | clustering run directory |
 | `--gold` | yes | — | gold partition: CSV with a header `item_id,cluster_id` (or `source_id,cluster_id`), or JSONL objects with those keys. Records with the same `cluster_id` are equivalent; give every gold record a row, a singleton its own id |
-| `--out` | no | none | also write the report as JSON to this file |
+| `--out` | no | none | also write the report as JSON to this file. Give it after `eval`: run flags (`--job`, `--out`, `--max-calls`) before `eval` are refused with `usage` (exit `2`) |
 
 ```console
 $ xwalk cluster eval --run runs/food --gold food_gold.csv
