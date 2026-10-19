@@ -15,7 +15,6 @@ from xwalk.stages.keying import (
     KeyedCandidates,
     Resolution,
     ResolvedChoice,
-    assign_keys,
     resolve_key,
 )
 from xwalk.templates import TemplateSet
@@ -62,23 +61,29 @@ def apply_budget(
     assigned to the count-capped slate, even if the text budget later trims it.
     """
     ordered = sorted(candidates, key=lambda c: (-c.fused_score, c.id))
-    keyed = assign_keys(ordered[: policy.max_candidates], templates)
+    capped = ordered[: policy.max_candidates]
+    width = max(2, len(str(len(capped))))
     budget_chars = policy.max_candidate_tokens * _CHARS_PER_TOKEN
     total = 0
     kept: list[str] = []
-    for key in keyed.order:
-        size = len(keyed.blocks[key]) + (len(BLOCK_SEPARATOR) if kept else 0)
+    by_key: dict[str, Candidate] = {}
+    issued: dict[str, str] = {}
+    blocks: dict[str, str] = {}
+    for index, candidate in enumerate(capped, start=1):
+        key = f"C{index:0{width}d}"
+        block = f"[{key}] {templates.render_candidate(candidate.record)}"
+        size = len(block) + (len(BLOCK_SEPARATOR) if kept else 0)
         if total + size > budget_chars:
             break
         kept.append(key)
+        by_key[key] = candidate
+        issued[key] = candidate.id
+        blocks[key] = block
         total += size
 
-    return KeyedCandidates(
-        order=tuple(kept),
-        by_key={key: keyed.by_key[key] for key in kept},
-        issued={key: keyed.issued[key] for key in kept},
-        blocks={key: keyed.blocks[key] for key in kept},
-    ), len(candidates) - len(kept)
+    return KeyedCandidates(order=tuple(kept), by_key=by_key, issued=issued, blocks=blocks), len(
+        candidates
+    ) - len(kept)
 
 
 class Selector:

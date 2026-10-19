@@ -20,7 +20,8 @@ offline only (FakeDecider, no paid calls).
   above-band scores, so confident pilot errors can receive a second opinion.
 
 - Selector budgets count rendered keyed blocks and separators, retaining a ranked prefix
-  without slicing text. An oversized first block becomes `needs_review` with reason
+  without slicing text. Rendering stops at the first overflow, so discarded later
+  candidates cannot raise template errors. An oversized first block becomes `needs_review` with reason
   `candidate_budget_exceeded` and zero model calls. Rendered-budget version 2 deliberately
   invalidates old LLM run identities. `apply_budget` now takes `templates` and returns
   `(KeyedCandidates, dropped_count)` so rendering is reused.

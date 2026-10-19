@@ -338,3 +338,12 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - No paid calls or push. Balances unreported. This worktree refuses Git's index lock;
   separate commits and mail patches are prepared in `/private/tmp/xwalk-b4-review-commits`
   without changing this branch's ref. Source fixes remain in this worktree.
+
+## Engine batch 5 review follow-up (19 October 2026)
+
+- Finding 1: selector budgeting renders sequentially and stops on the first overflow,
+  retaining the count-capped key width. Three regressions failed before the fix;
+  selector, keying and matcher tests now pass (110 tests).
+- First-fix gates: 2,174 passed, 40 skipped, 4 deselected; 8 failures and 40 setup
+  errors are sandbox socket-bind denials. Ruff check/format and mypy pass.
+- No paid calls. Balances unreported.

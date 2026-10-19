@@ -266,8 +266,30 @@ async def test_expanding_template_stops_at_a_ranked_prefix_and_renders_once(monk
     assert list(outcome.keyed.issued.values()) == ["A"]
     assert outcome.keyed.rendered == "[C01] " + "a" * 100
     assert outcome.truncated == 2
-    assert rendered.count("A") == 1
-    assert len(rendered) == len(set(rendered))
+    assert rendered == ["A", "B"]
+
+
+@pytest.mark.parametrize("keep_first", [True, False])
+async def test_budget_never_renders_invalid_candidates_after_overflow(keep_first):
+    templates = TemplateSet(query="q", context="", doc="", candidate="{{ label * 2 }}")
+    candidates = ([cand("A", "a", 3)] if keep_first else []) + [
+        cand("B", "b" * 100, 2),
+        Candidate(record=Record(id="C", fields={}), fused_score=1, evidence=()),
+    ]
+    llm = FakeLLM([reply(chosen_key="C01", confidence_score=0.9)])
+    outcome = await Selector(
+        llm, PROMPTS, templates, policy=SelectorPolicy(max_candidate_tokens=10)
+    ).select(SOURCE, "", candidates)
+    assert outcome.truncated == 2
+    if keep_first:
+        assert outcome.keyed.issued == {"C01": "A"}
+        assert outcome.choice.record_id == "A"
+        assert len(llm.requests) == 1
+    else:
+        assert outcome.keyed.issued == {}
+        assert outcome.reason.value == "candidate_budget_exceeded"
+        assert outcome.usage.calls == 0
+        assert llm.requests == []
 
 
 async def test_oversized_first_block_never_calls_selector():
