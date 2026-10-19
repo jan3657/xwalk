@@ -36,6 +36,27 @@ and download. Sessions live in the server's memory: after a restart, visitors st
 again with a new session (and old session directories are deleted). For the same
 reason, run **one instance**.
 
+### Sessions and their limits
+
+Loading the page costs the server nothing: it only sets a signed cookie. The visitor's
+workspace (a directory under `<root>/sessions/`) is made by the page's first API
+request, so crawlers and scripted page views allocate nothing. Further bounds:
+
+- **New sessions per address:** one client address may open `--sessions-per-ip` (20)
+  sessions per 10 minutes. Past that, the API answers `429 too_many_sessions` until the
+  window passes; visitors who already have a session are not affected.
+- **Pool size:** at most 500 sessions at once. When the pool is full, the longest-idle
+  session nobody has used (no file, run or model key in it) is dropped to make room;
+  if every session is in use, new visitors get `503 busy`.
+- **Idle expiry:** an unused session is deleted after 10 minutes idle, any other after
+  `--session-hours`. A cookie the page set is good for its first API request for an
+  hour; after that, or after a restart, the page asks the visitor to reload.
+
+Behind a proxy every request comes from the proxy's address, so the per-address limit
+counts the whole site as one visitor unless the server is told to read the address
+from the proxy (`--trust-proxy`, below). Use `--sessions-per-ip 0` to turn the limit
+off.
+
 It is still a small demo server (Python's `http.server`), not hardened multi-tenant
 infrastructure. Put it behind the platform's HTTPS. Tell visitors not to upload
 confidential data; the start page says so.
@@ -190,18 +211,25 @@ xwalk ui --public --host 0.0.0.0 --port 8080 --root site \
 | `--session-hours` | `24` | delete a visitor's workspace after this long idle |
 | `--max-tasks` | `4` | runs at once across all visitors |
 | `--frame-ancestors` | — | origins allowed to show the page in a frame |
-| `--trust-proxy` | off | believe `X-Forwarded-Proto` from the proxy in front |
+| `--sessions-per-ip` | `20` | new sessions one address may open per 10 minutes (`0`: no limit) |
+| `--trust-proxy` | off | believe `X-Forwarded-Proto` and `X-Forwarded-For` from the proxy in front |
 
 ### Behind an HTTPS proxy: `--trust-proxy`
 
 Python's `http.server` cannot tell a header set by your proxy from one the visitor sent.
-So by default the server ignores `X-Forwarded-Proto`: the session cookie is not marked
-`Secure` (unless `--frame-ancestors` is set, which always needs `Secure`).
+So by default the server ignores `X-Forwarded-*` headers: the session cookie is not
+marked `Secure` (unless `--frame-ancestors` is set, which always needs `Secure`), and a
+visitor's address, for the per-address session limit, is the connection's.
 
 Add `--trust-proxy` when, and only when, every request reaches the server through a
-proxy that terminates HTTPS and sets the header itself: Cloud Run, Hugging Face
+proxy that terminates HTTPS and sets those headers itself: Cloud Run, Hugging Face
 Spaces, or Caddy/nginx in front of a container published on `127.0.0.1`. The cookie is
-then `Secure` whenever the proxy says the visitor used `https`. The `Dockerfile` sets it,
+then `Secure` whenever the proxy says the visitor used `https`, and the visitor's
+address is the **last** entry of `X-Forwarded-For`, the one the proxy appended (earlier
+entries come from the client and are ignored). If your platform adds its own address
+after the client's, every visitor shares one address; raise `--sessions-per-ip` or set
+it to `0`. The header formats of the platforms above were not checked for this
+release. The `Dockerfile` sets `--trust-proxy`,
 because each deployment described here has such a proxy. If you run the image with its
 port open to the internet directly, drop `--trust-proxy` from the command: otherwise
 visitors could choose what the server believes.

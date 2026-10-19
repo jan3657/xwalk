@@ -118,6 +118,13 @@ offline only (FakeDecider, no paid calls).
   whether the session cookie is `Secure`. The header counts only with the new
   `--trust-proxy` flag, for deployments where every request comes through an HTTPS
   proxy (the `Dockerfile` sets it). `--trust-proxy` without `--public` is refused.
+- `xwalk ui --public`: a page view no longer creates a session. It sets a signed cookie
+  only; the workspace is made by the page's first API request. Previously every
+  cookieless `GET /` made a session directory, so about 500 requests filled the pool
+  and new visitors got `503` for up to `--session-hours`. New sessions are limited per
+  client address (`--sessions-per-ip`, 20 per 10 minutes, then `429
+  too_many_sessions`), unused sessions are deleted after 10 minutes idle, and a full
+  pool drops the longest-idle unused session before refusing anyone.
 
 ## [0.2.0rc1] — 2026-10-05
 

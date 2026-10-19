@@ -86,6 +86,11 @@ class ChatGPTAuth:
         if self.storage:
             _save(self.storage, {"profiles": self._profiles, "active": self._active})
 
+    def holds_state(self) -> bool:
+        """Whether a sign-in is in progress or an account is known (in memory)."""
+        with self._lock:
+            return self._pending is not None or bool(self._profiles)
+
     def status(self) -> dict[str, Any]:
         with self._lock:
             profile = self._profiles.get(self._active or "", {})

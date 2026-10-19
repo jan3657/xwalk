@@ -46,9 +46,11 @@ from xwalk.ui.api import (
 )
 from xwalk.ui.hosting import (
     DEFAULT_MAX_TASKS,
+    DEFAULT_NEW_PER_CLIENT,
     DEFAULT_SESSION_TTL,
     SESSION_COOKIE,
     PublicRefusal,
+    SessionRateLimited,
     Sessions,
     library_dirs,
 )
@@ -261,10 +263,27 @@ class _Handler(BaseHTTPRequestHandler):
             return cookie + "; SameSite=None; Secure"
         return cookie + "; SameSite=Lax" + ("; Secure" if secure else "")
 
+    def _client_address(self) -> str:
+        """The visitor's address: the connection's, or with `--trust-proxy` the last
+        `X-Forwarded-For` entry (the one the proxy in front appended)."""
+        if self.server.trust_proxy:
+            forwarded = (self.headers.get("X-Forwarded-For") or "").split(",")[-1].strip()
+            if forwarded:
+                return forwarded
+        return str(self.client_address[0])
+
     def _visitor(self) -> Workspace:
-        if self.server.sessions is None:
+        """The visitor's workspace. A request (API or sign-in callback) with a key the
+        page handed out opens the session the first time; a page view never does."""
+        sessions = self.server.sessions
+        if sessions is None:
             return self.server.workspace
-        workspace = self.server.sessions.get(self._cookie_session())
+        try:
+            workspace = sessions.open(self._cookie_session(), client=self._client_address())
+        except SessionRateLimited as exc:
+            raise ApiError(429, "too_many_sessions", str(exc)) from None
+        except PublicRefusal as exc:
+            raise ApiError(503, "busy", str(exc)) from None
         if workspace is None:
             raise ApiError(401, "session_expired", "your session has ended; reload the page")
         assert isinstance(workspace, Workspace)
@@ -306,11 +325,12 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             }
         sessions = self.server.sessions
-        if sessions is not None and sessions.get(self._cookie_session()) is None:
-            try:
-                extra["Set-Cookie"] = self._session_cookie(sessions.create())
-            except PublicRefusal as exc:
-                raise ApiError(503, "busy", str(exc)) from None
+        if sessions is not None:
+            # Only a signed key: the session itself waits for the page's first API
+            # request, so a crawler or a flood of page views allocates nothing.
+            key = self._cookie_session()
+            if sessions.get(key) is None and not sessions.genuine(key):
+                extra["Set-Cookie"] = self._session_cookie(sessions.issue())
         self._send(200, body, "text/html; charset=utf-8", extra=extra)
 
     def _api(self, method: str, path: str, query: dict[str, str]) -> None:
@@ -384,6 +404,7 @@ def make_server(
     dense: bool = False,
     dense_device: str | None = None,
     trust_proxy: bool = False,
+    sessions_per_ip: int = DEFAULT_NEW_PER_CLIENT,
 ) -> UIServer:
     from xwalk.ui.retrieval import heads
 
@@ -455,6 +476,7 @@ def make_server(
         make_workspace=visitor,
         ttl=session_ttl,
         max_tasks=max_tasks,
+        new_per_client=sessions_per_ip,
     )
     sessions.sweep(force=True)
     server = UIServer(
@@ -506,6 +528,7 @@ def serve(
     dense: bool = False,
     dense_device: str | None = None,
     trust_proxy: bool = False,
+    sessions_per_ip: int = DEFAULT_NEW_PER_CLIENT,
 ) -> None:
     """Serve until interrupted (`xwalk ui`). Status lines go to stderr."""
     server = make_server(
@@ -526,6 +549,7 @@ def serve(
         dense=dense,
         dense_device=dense_device,
         trust_proxy=trust_proxy,
+        sessions_per_ip=sessions_per_ip,
     )
     print(f"xwalk ui: serving {server.workspace.root}", file=sys.stderr)
     print(f"xwalk ui: open {server.url}  (Ctrl-C to stop)", file=sys.stderr)
