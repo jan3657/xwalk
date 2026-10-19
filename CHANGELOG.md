@@ -90,6 +90,15 @@ offline only (FakeDecider, no paid calls).
 
 ### Changed
 
+- The sdist leaves out the 0.2 effort's working notes (`docs/superpowers/` and
+  `docs/claude-upgrade/` except `CONTRACTS.md`, `REVIEW.md` and
+  `CLUSTERING_DECISIONS.md`, which the docs cite), `CLAUDE.md`, the React sources in
+  `web/` (the built workbench still ships in the package), `benchmarks/results/`, and
+  the Ref_zivila research scripts with the two tests that need them.
+  `tests/test_packaging.py` builds the sdist and checks its contents.
+  `scripts/run_pipeline.sh` no longer hard-codes one cluster account's checkout: it
+  takes the checkout as an argument or `XWALK_ROOT` (default: its own) and sources
+  `_env.sh` only when present.
 - Decider jobs run through `xwalk.ops` like LLM jobs: strict validation of the
   `decider:` block and the decider `policy:` (unknown keys with did-you-mean, ranges,
   `shortlist_floor <= accept_at`), `--json` envelopes, run states, exit codes, run

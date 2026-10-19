@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
+# The Ref_zivila pilot pipeline: two model runs, an ensemble, the merged table.
+#
+# Usage: scripts/run_pipeline.sh [CHECKOUT]
+# CHECKOUT (or $XWALK_ROOT) is the xwalk checkout holding .venv, data/ and runs/;
+# default: the checkout this script is in. An `_env.sh` there (gitignored: endpoint
+# variables, cluster paths) is sourced when present.
 set -euo pipefail
-cd /ceph/grid/home/jd3099/projects/xwalk
-source ./_env.sh
+cd "${1:-${XWALK_ROOT:-$(dirname "$0")/..}}"
+if [ -f ./_env.sh ]; then
+  # shellcheck disable=SC1091
+  source ./_env.sh
+fi
 
 echo "========================================================="
 echo "Stage 1: Full Qwen Run (2,030 records, concurrency 8)..."
