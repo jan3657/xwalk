@@ -44,7 +44,7 @@ load_gold_csv(
     source_column: str = "source_id",
     gold_column: str = "gold_ids",
     separator: str = "|",
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
     normalize: Normalizer | None = None,
     expand: Expander | None = None,
 ) -> GoldSet
@@ -54,7 +54,7 @@ load_gold_jsonl(
     *,
     source_field: str = "source_id",
     gold_field: str = "gold_ids",
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
     normalize: Normalizer | None = None,
     expand: Expander | None = None,
 ) -> GoldSet

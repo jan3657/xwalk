@@ -123,6 +123,12 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- CSV/TSV, JSONL and OBO sources and gold files read UTF-8 with a byte-order mark
+  (every Excel "CSV UTF-8" export): the default encoding is `utf-8-sig`, so the first
+  column is `mention_id`, not `\ufeffmention_id`. Such a file used to fail with
+  `id_column 'mention_id' not found`; one whose first column was not the id loaded
+  with a misnamed field, and loads under the right name now (its record digests, and
+  so its index, change once).
 - `xwalk validate` no longer calls a job "invalid" when the file is fine and only the
   environment lacks something: a missing credential variable or optional extra prints
   `job 'x' is valid; the environment is not ready: OPENAI_API_KEY is not set (use
