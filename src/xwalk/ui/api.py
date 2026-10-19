@@ -920,7 +920,7 @@ class Workspace:
                     {
                         **worksheet[key],
                         "decision": decision,
-                        "corrected_target_id": str(item.get("corrected_target_id") or ""),
+                        "corrected_target_id": str(item.get("corrected_target_id") or "").strip(),
                         "reviewer": reviewer,
                         "review_note": str(item.get("review_note") or ""),
                         "reviewed_at": stamp,

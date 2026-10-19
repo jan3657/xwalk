@@ -172,6 +172,35 @@ def test_a_replacement_outside_the_reference_is_refused_and_nothing_recorded(
     assert dispatch(ws, "GET", "/api/reviews", {"dir": review_run})["data"]["history"] == []
 
 
+def test_a_padded_replacement_id_is_trimmed_before_it_is_checked_and_recorded(
+    ws: Workspace, demo: str, review_run: str
+) -> None:
+    rows = {r["source_id"]: r for r in ws.review_rows({"dir": review_run})["data"]["rows"]}
+
+    def replace(source_id: str, target: str) -> dict[str, Any]:
+        return ws.review_apply(
+            {
+                "dir": review_run,
+                "job": demo,
+                "reviewer": "jan",
+                "decisions": [
+                    {
+                        "result_key": rows[source_id]["result_key"],
+                        "decision": "replace",
+                        "corrected_target_id": target,
+                    }
+                ],
+            }
+        )
+
+    assert replace("s2", "  CHEBI:17992 ")["status"] == "ok"
+    history = dispatch(ws, "GET", "/api/reviews", {"dir": review_run})["data"]["history"]
+    assert [h["corrected_target_id"] for h in history] == ["CHEBI:17992"]
+    with pytest.raises(ApiError) as caught:
+        replace("s1", " CHEBI:99999 ")
+    assert caught.value.code == "unknown_target" and "'CHEBI:99999'" in caught.value.message
+
+
 def test_reviews_route_refuses_a_directory_that_is_not_a_run(ws: Workspace, demo: str) -> None:
     with pytest.raises(ApiError) as caught:
         dispatch(ws, "GET", "/api/reviews", {"dir": "demo"})
