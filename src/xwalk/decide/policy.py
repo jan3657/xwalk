@@ -15,6 +15,10 @@ from xwalk.stages.keying import Resolution
 
 _PROP = "prop_"
 
+# Bumped when the same signals can reduce to a different status (it enters the run
+# fingerprint). 2: a negative outcome from a degraded search is failed, not unmatched.
+STATUS_SEMANTICS_VERSION = 2
+
 
 @dataclass(frozen=True)
 class DecisionPolicy:
@@ -69,6 +73,9 @@ class Signals:
     rubric_levels: int | None = None
     rubric_confidence: float | None = None
     properties: Mapping[str, float] = field(default_factory=dict)
+    # Some retriever search failed, in the first pass or the rewrite's: the
+    # candidate list may be incomplete, so a negative outcome cannot settle.
+    retrieval_degraded: bool = False
 
     _NUMERIC = (
         "screen_best",
@@ -124,6 +131,15 @@ def effective_rubric_floor(policy: DecisionPolicy, levels: int) -> float:
 
 
 def derive_status(signals: Signals, policy: DecisionPolicy) -> tuple[MatchStatus, DecisionReason]:
+    """One status and reason. A match or a review stands on a degraded search; a
+    negative outcome from one is `failed` / `retriever_failure`, so resume retries it."""
+    status, reason = _derive(signals, policy)
+    if status is MatchStatus.UNMATCHED and signals.retrieval_degraded:
+        return MatchStatus.FAILED, DecisionReason.RETRIEVER_FAILURE
+    return status, reason
+
+
+def _derive(signals: Signals, policy: DecisionPolicy) -> tuple[MatchStatus, DecisionReason]:
     if signals.retrieval_failed:
         return MatchStatus.FAILED, DecisionReason.RETRIEVER_FAILURE
     if signals.candidate_count == 0 or signals.screen_best is None:

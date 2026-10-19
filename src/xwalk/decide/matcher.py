@@ -8,6 +8,10 @@ worth choosing from (no candidates, or a best probability below `screen_floor`) 
 second retrieve-and-screen with queries an LLM proposes. The LLM only writes query
 strings; it never sees the screened candidates and never decides anything.
 
+A retriever search that raises or times out, in either pass, is kept on the attempt
+(`retrieval_failures`). A match or review may stand on the surviving candidates; a
+negative outcome is `failed` / `retriever_failure` instead of `unmatched`.
+
 Provider errors follow CONTRACTS.md section 3, as on the LLM path: `match` never raises
 for them. A recoverable one (retries exhausted, a malformed response) makes the record
 `failed` with `provider_failure`; a fatal one (auth, unknown model, a spent call limit),
@@ -197,6 +201,9 @@ class DecisionMatcher:
         signals = Signals(
             candidate_count=len(candidates),
             retrieval_failed=all_failed,
+            # Every failed search counts, the rewrite's included: a negative outcome
+            # from an incomplete candidate list must not settle as unmatched.
+            retrieval_degraded=bool(notes),
             screen_best=None if screen is None else screen.best,
             screen_chosen=(
                 None if screen is None or chosen_key is None else screen.probabilities[chosen_key]
@@ -269,6 +276,7 @@ class DecisionMatcher:
             elapsed_seconds=time.perf_counter() - started,
             finish_reason=None,
             signals=flat,
+            retrieval_failures=tuple(notes),
         )
 
         record = None

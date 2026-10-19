@@ -229,6 +229,32 @@ offline only (FakeDecider, no paid calls).
   reused: `xwalk match` and `xwalk index` exit 3 naming `normalization_version`
   (rerun with `--rebuild-index`), and `BM25Retriever.open` raises `IndexMismatchError`
   even without `expected`, since searching it would silently miss exact hits.
+- The matching loop stopped on an acceptable attempt, but `derive_status` then picked
+  the highest score regardless of the verifier: a candidate the verifier rejected
+  (0.75, `disagree`) or could not check (0.75, verifier call failed) was proposed for
+  review and the verified retry that stopped the loop (0.65, `support`) was thrown
+  away. An acceptable attempt (completed, exact key, valid score at or above
+  `accept_at`, verdict `support` or none) is now always the match. When no attempt is
+  acceptable the previous ranking is unchanged, so an unverified 0.7 is still proposed
+  for review ahead of an unchallenged 0.3.
+- A provider or retriever outage could settle as a no-match. A scorer failure after an
+  empty first search was reported as `unmatched / selector_abstained`; one retriever
+  down and the other returning nothing was `unmatched / no_candidates`; an abstention
+  followed by a provider failure was a settled abstention. Now, on both matchers:
+  no surviving hits with any retriever failed is `failed / retriever_failure` (`Matcher`
+  retries the same query within `max_attempts`; failed results on either path retry on
+  resume); a negative outcome with any provider failure or failed
+  retriever search anywhere in the result is `failed` with the latest blocking reason
+  (provider before retriever within one attempt), which a resumed run retries; a match
+  or a review on the surviving evidence still stands. Optional rewriter and
+  audit-verifier errors stay notes. `DecisionMatcher` now counts a failed search of the
+  rewrite's queries too (it was only a note). Each failed search is stored on the
+  attempt as `Attempt.retrieval_failures`, with or without the candidate trace; older
+  ledger blobs read it as empty. **Compatibility:** the run fingerprint's `policy`
+  component gains `status_semantics: 2` on both paths
+  (`xwalk.policy.STATUS_SEMANTICS_VERSION`,
+  `xwalk.decide.policy.STATUS_SEMANTICS_VERSION`), so a run directory started before
+  this change is refused on resume; start a new one.
 
 ### Security
 
