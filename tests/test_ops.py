@@ -218,6 +218,27 @@ def test_an_index_built_before_component_metadata_is_refused(tmp_path):
     assert info.value.code == "index_mismatch"
 
 
+def test_an_index_from_the_previous_exact_normaliser_is_refused_then_rebuilt(tmp_path):
+    """Normalisation version 2 changed the exact forms; an older index answers
+    differently, so it is refused (exit 3) by name until rebuilt explicitly."""
+    from xwalk.retrieval.bm25 import NORMALIZATION_VERSION
+
+    job = _job_file(tmp_path)
+    ops.index(job, tmp_path / "idx")
+    meta_path = tmp_path / "idx" / "bm25" / "xwalk_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["components"]["normalization_version"] = 1
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(ops.OpError) as info:
+        ops.index(job, tmp_path / "idx")
+    assert info.value.result.exit_code == 3
+    assert info.value.result.data["differences"]["bm25"] == {
+        "normalization_version": {"stored": 1, "expected": NORMALIZATION_VERSION}
+    }
+    rebuilt = ops.index(job, tmp_path / "idx", rebuild=True)
+    assert rebuilt.data["retrievers"][0]["action"] == "rebuilt"
+
+
 # --- run ----------------------------------------------------------------------------
 
 

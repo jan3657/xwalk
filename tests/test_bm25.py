@@ -304,3 +304,173 @@ def test_a_fuzzy_distance_outside_0_to_2_is_refused_at_build(tmp_path, distance)
 async def test_a_query_the_parser_rejects_falls_back_to_plain_words(retriever):
     """An apostrophe survives `sanitise_query` and trips tantivy's parser."""
     assert isinstance(await retriever.search(SearchRequest(text="sodium's", limit=5)), list)
+
+
+# --- One exact normaliser for both sides --------------------------------------------
+#
+# The indexed exact form and the query's exact term go through the same `exact_form`:
+# NFC, casefold, strip, collapse internal whitespace. Punctuation and accents are kept,
+# so "IL-2" is not "IL 2" and "Gruyere" is not "Gruyère". Lexical sanitisation applies to
+# the tokenised `text` query only.
+
+LABEL_AND_DEFINITION = TemplateSet(
+    query="{{ mention }}", context="", doc="{{ label }} {{ definition }}", candidate=""
+)
+
+
+def _labelled_index(path, labels, *, exact=True, **options):
+    from xwalk.records import Record
+
+    records = [
+        Record(id=rid, fields={"label": label, "definition": definition})
+        for rid, label, definition in labels
+    ]
+    exact_fields = ("label",) if exact else ()
+    return BM25Retriever.build(
+        records, LABEL_AND_DEFINITION, path, exact_fields=exact_fields, **options
+    )
+
+
+async def _score(retriever, text, record_id):
+    hits = await retriever.search(SearchRequest(text=text, limit=50))
+    return next((h.raw_score for h in hits if h.record_id == record_id), None)
+
+
+FILLER = [("F1", "unrelated filler", ""), ("F2", "another record", "")]
+
+
+async def _exact_fires(path, label, query):
+    """Whether `query` earns the exact clause on a record labelled `label`: its score with
+    `exact_fields` exceeds its score on the same index built without them. The exact
+    clause is a boosted BM25 term query, so its absolute contribution varies with the
+    collection; the comparison does not."""
+    labels = [("T", label, ""), *FILLER]
+    with_exact = await _score(_labelled_index(path / "exact", labels), query, "T")
+    without = await _score(_labelled_index(path / "plain", labels, exact=False), query, "T")
+    return with_exact is not None and with_exact > (without or 0.0)
+
+
+def test_exact_form_preserves_punctuation_and_accents():
+    from xwalk.retrieval.bm25 import exact_form
+
+    assert exact_form("  IL-2 ") == "il-2"
+    assert exact_form("IL-2") != exact_form("IL 2")
+    assert exact_form("C++") != exact_form("C")
+    assert exact_form("low-fat   milk") == "low-fat milk"
+    assert exact_form("low-fat\tmilk") == "low-fat milk"
+    assert exact_form("Gruyère") == exact_form("gruyère")
+    assert exact_form("Gruyère") != exact_form("Gruyere")
+    assert exact_form("Gruyère") == exact_form("Gruyère")
+
+
+async def test_a_hyphenated_exact_label_outranks_many_distractors(tmp_path):
+    """The reviewers' case: before one shared normaliser the query side stripped the
+    hyphen, the exact term was "il 2", and it never met the indexed "il-2"."""
+    labels = [
+        (
+            "T0",
+            "IL-2",
+            "a cytokine signalling molecule of the immune system that regulates the "
+            "activity of white blood cells responsible for immunity",
+        )
+    ]
+    labels += [
+        (f"D{i:02d}", f"IL-2 receptor subunit {i}", "IL-2 IL-2 binding protein") for i in range(30)
+    ]
+    retriever = _labelled_index(tmp_path / "idx", labels)
+    hits = await retriever.search(SearchRequest(text="IL-2", limit=25))
+    assert hits[0].record_id == "T0"
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["IL-2", "low-fat milk", "D-glucose", "glucose (D-)", "pH: 7", "and/or", "5-HT2A", "Ca2+"],
+)
+async def test_punctuated_labels_get_the_exact_boost(tmp_path, label):
+    assert await _exact_fires(tmp_path / "same", label, label)
+    assert await _exact_fires(tmp_path / "upper", label, f"  {label.upper()}  ")
+
+
+async def test_a_hyphen_is_not_a_space_for_the_exact_match(tmp_path):
+    assert not await _exact_fires(tmp_path / "hyphen", "IL 2", "IL-2")
+    assert await _exact_fires(tmp_path / "spaces", "IL 2", "il   2")
+
+
+async def test_case_folds_but_accents_do_not(tmp_path):
+    assert await _exact_fires(tmp_path / "lower", "Gruyère", "gruyère")
+    assert await _exact_fires(tmp_path / "upper", "Gruyère", "GRUYÈRE")
+    assert not await _exact_fires(tmp_path / "ascii", "Gruyère", "Gruyere")
+
+
+async def test_nfc_and_nfd_are_the_same_exact_form(tmp_path):
+    nfc, nfd = "Gruy\u00e8re", "Gruye\u0300re"
+    assert await _exact_fires(tmp_path / "nfd", nfd, nfc)
+    assert await _exact_fires(tmp_path / "nfc", nfc, nfd)
+
+
+async def test_a_query_sanitisation_empties_still_runs_the_exact_lookup(tmp_path):
+    """`IN` is query syntax, so the lexical query is empty; the exact label still hits."""
+    retriever = _labelled_index(
+        tmp_path / "idx", [("T", "IN", "indium"), ("X", "tin", "")], fuzzy_distance=1
+    )
+    hits = await retriever.search(SearchRequest(text="IN", limit=5))
+    assert [h.record_id for h in hits] == ["T"]
+
+
+async def test_a_query_sanitisation_empties_without_exact_fields_returns_empty(tmp_path):
+    retriever = _spellings_index(tmp_path / "idx")
+    assert await retriever.search(SearchRequest(text="( - )", limit=5)) == []
+
+
+def test_the_normalisation_version_is_part_of_the_index_identity():
+    from xwalk.retrieval.bm25 import NORMALIZATION_VERSION, index_components
+
+    components = index_components([], LABEL_ONLY, exact_fields=("label",))
+    assert components["normalization_version"] == NORMALIZATION_VERSION == 2
+
+
+def _age_the_index(index_dir, version=1):
+    """Rewrite the stored components as an index built by the previous normaliser."""
+    import json
+
+    meta_path = index_dir / "xwalk_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["components"]["normalization_version"] = version
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+
+def test_an_index_from_the_previous_normaliser_is_refused(tmp_path):
+    from xwalk.records import Record
+    from xwalk.retrieval.base import IndexMismatchError
+    from xwalk.retrieval.bm25 import NORMALIZATION_VERSION, index_components
+
+    records = [Record(id=rid, fields={"label": label}) for rid, label in SPELLINGS]
+    BM25Retriever.build(records, LABEL_ONLY, tmp_path / "idx", exact_fields=("label",))
+    _age_the_index(tmp_path / "idx")
+    expected = index_components(records, LABEL_ONLY, exact_fields=("label",))
+    with pytest.raises(IndexMismatchError, match="normalization_version") as info:
+        BM25Retriever.open(tmp_path / "idx", expected=expected)
+    assert info.value.differences == {"normalization_version": (1, NORMALIZATION_VERSION)}
+    assert "--rebuild-index" in str(info.value)
+
+
+def test_an_index_from_the_previous_normaliser_is_refused_without_expected(tmp_path):
+    """A library caller that opens without `expected` must not silently get the old
+    exact semantics either."""
+    from xwalk.retrieval.base import IndexMismatchError
+
+    _spellings_index(tmp_path / "idx", exact_fields=("label",))
+    _age_the_index(tmp_path / "idx")
+    with pytest.raises(IndexMismatchError, match="normalization_version"):
+        BM25Retriever.open(tmp_path / "idx")
+
+
+async def test_rebuilding_an_aged_index_makes_it_usable_again(tmp_path):
+    from xwalk.records import Record
+
+    records = [Record(id=rid, fields={"label": label}) for rid, label in SPELLINGS]
+    BM25Retriever.build(records, LABEL_ONLY, tmp_path / "idx", exact_fields=("label",))
+    _age_the_index(tmp_path / "idx")
+    BM25Retriever.build(records, LABEL_ONLY, tmp_path / "idx", exact_fields=("label",))
+    reopened = BM25Retriever.open(tmp_path / "idx")
+    assert await _ids(reopened, "glucose") == {"G1"}

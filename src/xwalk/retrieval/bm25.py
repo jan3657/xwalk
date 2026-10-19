@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -24,10 +25,15 @@ from xwalk.retrieval.base import IndexMismatchError, SearchRequest, component_di
 from xwalk.templates import TemplateSet
 
 _META_FILE = "xwalk_meta.json"
-# Bump when the on-disk layout changes, or when exact-form normalisation
-# (`_exact_forms`) changes: either makes an old index answer differently.
+# Bump when the on-disk layout changes, or when exact-form normalisation (`exact_form`)
+# changes: either makes an old index answer differently.
+#
+# Normalisation versions:
+#   1: indexed forms were `strip().lower()`; the query term was the sanitised query,
+#      lowercased, so punctuated labels ("IL-2", "glucose (D-)") never matched exactly.
+#   2: `exact_form` on both sides (NFC, casefold, strip, collapse whitespace).
 INDEX_FORMAT_VERSION = 1
-NORMALIZATION_VERSION = 1
+NORMALIZATION_VERSION = 2
 
 
 def index_components(
@@ -73,6 +79,18 @@ def read_components(index_dir: str | Path) -> dict[str, Any] | None:
 # BM25 over a tokenised text field does not need the operators.
 _QUERY_SYNTAX = re.compile(r"[`+\-!(){}\[\]^\"~*?:\\/]|(?<!\w)(?:AND|OR|NOT|IN)(?!\w)")
 _WS = re.compile(r"\s+")
+
+
+def exact_form(text: str) -> str:
+    """The one normaliser for exact-match terms, applied to indexed forms and to the
+    original query text alike: Unicode NFC, casefold, strip, and every internal
+    whitespace run collapsed to one space.
+
+    Punctuation and accents are kept: "IL-2" is not "IL 2", "C++" is not "C", and
+    "Gruyere" is not "Gruyère". Changing this changes what an index answers, so it
+    requires bumping `NORMALIZATION_VERSION`.
+    """
+    return _WS.sub(" ", unicodedata.normalize("NFC", text).casefold()).strip()
 
 
 def sanitise_query(text: str) -> str:
@@ -146,10 +164,22 @@ def _exact_forms(record: Record, exact_fields: Sequence[str]) -> list[str]:
             continue
         candidates = [value] if isinstance(value, str) else list(value)
         for candidate in candidates:
-            text = str(candidate).strip().lower()
+            text = exact_form(str(candidate))
             if text and text not in forms:
                 forms.append(text)
     return forms
+
+
+def _refuse_other_normalisation(index_dir: Path, meta: Mapping[str, Any]) -> None:
+    """Refuse an index whose exact forms were written by another normaliser, even when
+    the caller passed no `expected`: searching it would compare query terms normalised
+    one way against indexed terms normalised another, and silently miss exact hits."""
+    components = meta.get("components")
+    stored = components.get("normalization_version") if isinstance(components, dict) else None
+    if stored != NORMALIZATION_VERSION:
+        raise IndexMismatchError(
+            index_dir, {"normalization_version": (stored, NORMALIZATION_VERSION)}
+        )
 
 
 class BM25Retriever:
@@ -304,6 +334,7 @@ class BM25Retriever:
             differences = component_differences(meta.get("components"), expected)
             if differences:
                 raise IndexMismatchError(index_dir, differences)
+        _refuse_other_normalisation(index_dir, meta)
         built_analyzer = meta.get("analyzer", "default")
         built_fuzzy = meta.get("fuzzy_distance", 0)
         if analyzer is not None and analyzer != built_analyzer:
@@ -356,26 +387,37 @@ class BM25Retriever:
             for term in terms
         ]
 
-    def _search_sync(self, text: str, limit: int) -> list[RetrievalHit]:
-        cleaned = sanitise_query(text)
-        if not cleaned:
-            return []
-        searcher = self._index.searcher()
+    def _text_query(self, cleaned: str) -> tantivy.Query | None:
+        """The tokenised `text` query for already-sanitised text; `None` when nothing
+        parseable is left."""
         try:
-            text_query = self._index.parse_query(cleaned, ["text"])
+            return self._index.parse_query(cleaned, ["text"])
         except Exception:
             fallback = re.sub(r"[^\w\s]", " ", cleaned).strip()
-            text_query = self._index.parse_query(fallback, ["text"])
+            return self._index.parse_query(fallback, ["text"]) if fallback else None
+
+    def _search_sync(self, text: str, limit: int) -> list[RetrievalHit]:
+        # The exact term comes from the original text; sanitisation is only for the
+        # query parser, and would otherwise strip the punctuation exact labels carry.
+        exact = exact_form(text) if self._exact_fields else ""
+        cleaned = sanitise_query(text)
         clauses: list[tuple[tantivy.Occur, tantivy.Query]] = []
-        if self._exact_fields:
+        if exact:
             exact_query = tantivy.Query.boost_query(
-                tantivy.Query.term_query(self._index.schema, "exact", cleaned.lower()),
+                tantivy.Query.term_query(self._index.schema, "exact", exact),
                 _EXACT_BOOST,
             )
             clauses.append((tantivy.Occur.Should, exact_query))
-        clauses.append((tantivy.Occur.Should, text_query))
-        clauses.extend((tantivy.Occur.Should, fuzzy) for fuzzy in self._fuzzy_queries(cleaned))
-        query = tantivy.Query.boolean_query(clauses) if len(clauses) > 1 else text_query
+        # Sanitising can empty a query whose whole text is parser syntax ("IN", "-");
+        # the exact lookup above still runs alone, with no text or fuzzy clauses.
+        text_query = self._text_query(cleaned) if cleaned else None
+        if text_query is not None:
+            clauses.append((tantivy.Occur.Should, text_query))
+            clauses.extend((tantivy.Occur.Should, fuzzy) for fuzzy in self._fuzzy_queries(cleaned))
+        if not clauses:
+            return []
+        query = clauses[0][1] if len(clauses) == 1 else tantivy.Query.boolean_query(clauses)
+        searcher = self._index.searcher()
         result = searcher.search(query, limit)
         hits: list[RetrievalHit] = []
         for rank, (score, address) in enumerate(result.hits, start=1):

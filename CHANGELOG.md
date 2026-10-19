@@ -112,6 +112,26 @@ offline only (FakeDecider, no paid calls).
 - `TemplateSet.fingerprint` and `PromptSet.fingerprint` are unchanged for jobs that do
   not use `queries` or slot `properties`, so 0.2.0rc1 runs keep resuming.
 
+### Fixed
+
+- BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
+  forms were `strip().lower()`, but the query's exact term was built from the
+  *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat
+  milk`, `D-glucose` or `glucose (D-)` never earned the exact boost, and a query that
+  sanitising emptied (`IN`, `-`) returned nothing before the exact lookup ran. Both
+  sides now go through one normaliser, `xwalk.retrieval.bm25.exact_form` (Unicode NFC,
+  casefold, strip, internal whitespace collapsed to one space), applied to the
+  original query text; punctuation and accents are kept, so `IL-2` does not match
+  `IL 2` and `Gruyere` does not match `Gruyère`. Sanitising still applies to the
+  tokenised text query only, and an emptied text query leaves the exact lookup running
+  alone.
+- **Rebuild BM25 indexes.** The fix bumps the BM25 `normalization_version` from 1 to 2,
+  which changes every BM25 index's components and fingerprint, so run fingerprints for
+  jobs with a BM25 retriever change too. An index built earlier is refused rather than
+  reused: `xwalk match` and `xwalk index` exit 3 naming `normalization_version`
+  (rerun with `--rebuild-index`), and `BM25Retriever.open` raises `IndexMismatchError`
+  even without `expected`, since searching it would silently miss exact hits.
+
 ## [0.2.0rc1] — 2026-10-05
 
 Release candidate for 0.2.0. Not published: tagging and uploading are the maintainer's

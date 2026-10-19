@@ -120,6 +120,13 @@ when passed, must match what the index was built with, or `open` raises `ValueEr
 naming both values; left as `None`, the recorded ones are used. An index whose metadata
 predates these options is treated as `default` / `0`.
 
+Independently of `expected`, `open` refuses an index whose stored
+`normalization_version` is not the current one (or that has no stored components) with
+`IndexMismatchError` naming `normalization_version`: its exact forms were written by a
+different normaliser, so searching it would silently miss exact hits. Rebuild it with
+`build` (or `--rebuild-index` from the CLI). Version 2 (the current one) introduced
+`exact_form`; every index built with version 1 must be rebuilt.
+
 ### What is written to disk
 
 `index_dir` holds Tantivy's own index — its `meta.json` plus segment files, all managed
@@ -137,13 +144,29 @@ those options existed.
 
 An exact whole-string hit on a label or synonym must outrank a document that merely
 happens to contain the query term more often. When `exact_fields` is set, every value
-of those fields (strings, or each element of a list field) is stripped, lowercased,
-de-duplicated, and stored in an untokenised `exact` field — `raw` tokenisation means
-the whole field value is one term, so `"glucose"` matches the label `glucose` but not
-`beta-D-glucose`. At search time a term query on `exact` is combined with the ordinary
-`text` query under a boost of **10.0**, comfortably above any BM25 score the tokenised
-`text` field produces on a collection of this shape. Omit `exact_fields` for plain
+of those fields (strings, or each element of a list field) is passed through
+`exact_form`, de-duplicated, and stored in an untokenised `exact` field — `raw`
+tokenisation means the whole field value is one term, so `"glucose"` matches the label
+`glucose` but not `beta-D-glucose`. At search time the **original** query text (not the
+sanitised one) goes through the same `exact_form`, and a term query on `exact` is
+combined with the ordinary `text` query under a boost of **10.0**. The boost multiplies
+a BM25 term score, so its contribution grows with the collection; on collections of
+realistic size it outranks any tokenised `text` match. Omit `exact_fields` for plain
 BM25.
+
+```python
+def exact_form(text: str) -> str
+```
+
+The one exact-match normaliser, used for indexed forms and queries alike: Unicode NFC,
+`casefold`, strip, and each internal whitespace run collapsed to one space.
+Punctuation and accents are kept: `IL-2`, `glucose (D-)` and `Ca2+` match themselves
+exactly (in any case), but `IL-2` does not match `IL 2`, `C++` does not match `C`, and
+`Gruyere` does not match `Gruyère` (NFC and NFD spellings of `Gruyère` are the same
+form). Changing it changes what an index answers, so it is versioned by
+`NORMALIZATION_VERSION` in the index components (currently 2; version 1 lowercased the
+indexed forms but matched them against the sanitised query, so punctuated labels never
+matched exactly).
 
 ### `analyzer` and `fuzzy_distance`
 
@@ -168,8 +191,11 @@ Tantivy's query parser gives `+ - ! ( ) { } [ ] ^ " ~ * ? : \ /` and the bare wo
 `AND OR NOT IN` meaning. Real mentions contain them — "glucose (D-)", "IL-2", "5-HT2A",
 "Ca2+" — so they are **stripped rather than escaped**: BM25 over a tokenised text field
 does not need the operators, and escaping would keep parser semantics in play for text
-that was never a query language. Every `search` call sanitises its text first; a query
-that reduces to nothing returns zero hits without error.
+that was never a query language. Every `search` call sanitises its text for the
+tokenised `text` query (and the fuzzy terms) only; the exact lookup uses the original
+text through `exact_form`. When sanitising empties the query (`IN`, `-`, `( )`) the
+exact lookup still runs alone, so a target labelled `IN` is found; without
+`exact_fields`, or with no exact hit, such a query returns zero hits without error.
 
 ### Writer defaults
 
