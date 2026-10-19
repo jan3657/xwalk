@@ -151,9 +151,6 @@ offline only (FakeDecider, no paid calls).
   invalid cost) is now a call with unknown usage, not a known zero or an exception.
 - A `kind: litellm` job validated `api_key_env` and then never sent the key. It is now
   passed to LiteLLM, and stays out of the run fingerprint.
-
-### Fixed
-
 - BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
   forms were `strip().lower()`, but the query's exact term was built from the
   *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat
