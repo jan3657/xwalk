@@ -347,3 +347,17 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - First-fix gates: 2,174 passed, 40 skipped, 4 deselected; 8 failures and 40 setup
   errors are sandbox socket-bind denials. Ruff check/format and mypy pass.
 - No paid calls. Balances unreported.
+- Finding 2: replaced the same-implementation HTTP comparison with nine cases using
+  exact request bodies captured from an archive of `587176e` (confident, verified and
+  rewritten paths, each with three single-query configurations). Complete run and
+  stage identities allow only the two documented budget-version additions. Capture
+  provenance and reproduction commands accompany the fixtures.
+- Tests failed before fixtures were supplied. An injected selector-prompt suffix made
+  all nine oracle cases fail while the old comparison still passed; an unexpected
+  fingerprint component also failed all nine. Mutations were process-local only.
+- Final focused tests: 118 passed. Full non-integration gate: 2,182 passed, 40 skipped,
+  4 deselected; all 8 failures and 40 setup errors are sandbox socket-bind denials.
+  Ruff check/format pass (227 files); mypy passes (128 source files).
+- Worktree Git index writes were denied. Two commits with matching source changes are
+  prepared in `/private/tmp/xwalk-b5fix-commits` and exported as
+  `/private/tmp/xwalk-b5fix.mbox`; the worktree branch ref is unchanged.

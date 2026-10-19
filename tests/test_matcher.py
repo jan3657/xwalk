@@ -571,41 +571,6 @@ async def test_single_query_requests_and_fused_order_stay_identical():
     assert [c.fused_score for c in runs[0][1]] == [1 / 61, 1 / 62]
 
 
-async def test_single_query_http_bodies_are_byte_identical():
-    import httpx
-
-    from xwalk.llm.openai_compat import OpenAICompatClient
-
-    runs = []
-    for queries in ((), ("{{ mention }}",), ("alternate",)):
-        bodies = []
-        replies = iter([select_reply("C01"), score_reply(0.95)])
-
-        def handler(request, bodies=bodies, replies=replies):
-            bodies.append(request.content)
-            return httpx.Response(200, json={"choices": [{"message": {"content": next(replies)}}]})
-
-        llm = OpenAICompatClient(
-            base_url="https://llm.test/v1",
-            model="m",
-            api_key="test",
-            profile="unknown",
-            transport=httpx.MockTransport(handler),
-        )
-        try:
-            retriever = ScriptedRetriever({"glucose": ["T2", "T1"]})
-            result = await build(
-                llm,
-                retriever,
-                templates=dataclasses.replace(TEMPLATES, _compiled={}, queries=queries),
-            ).match(SOURCE)
-            runs.append((bodies, result.candidates))
-        finally:
-            await llm.aclose()
-    assert len(runs[0][0]) == 2
-    assert runs[0] == runs[1] == runs[2]
-
-
 @pytest.mark.parametrize("trace", [True, False])
 async def test_oversized_first_candidate_is_review_without_any_model_call(trace):
     templates = dataclasses.replace(TEMPLATES, _compiled={}, candidate="{{ label * 10000 }}")
