@@ -504,9 +504,13 @@ source. `HistoryEntry(result, revision, current)`.
 - `open(path, read_only=True)` is what read-only commands use (`inspect`, `explain`,
   `results`, `export`, `eval`, `fit`, `compare`, `review export`, the UI's views). The
   file must exist (`FileNotFoundError` otherwise) and is never created, upgraded or
-  written; every write raises `ReadOnlyLedgerError`. A current ledger is opened with
-  SQLite's `mode=ro`; a 0.1.1 ledger is read through an upgraded copy in memory
-  (`migrated_from == 1`, no backup) and the file and its directory stay byte-identical.
+  written; every write raises `ReadOnlyLedgerError`. A symlink is resolved first. A
+  quiescent ledger (no pending write-ahead log) is read from a copy in memory taken
+  through an immutable connection, so its directory stays byte-identical and read-only
+  files and directories work; the copy is retaken if the file changed meanwhile. A
+  ledger with an active writer is opened with `mode=ro` so its log is read too. A 0.1.1
+  ledger is read through an upgraded copy (`migrated_from == 1`, no backup). The copy
+  costs memory of the ledger's size.
 - `put_result` on an existing `result_key` moves the previous row to history and
   stores the new one as the next revision; nothing is overwritten in place.
 - The current view is the latest snapshot's entries joined to their results. Without a

@@ -180,6 +180,15 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
     }
 
 
+def _file_stamp(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return stat.st_size, stat.st_mtime_ns
+
+
+def _connect_uri(uri: str) -> sqlite3.Connection:
+    return sqlite3.connect(uri, uri=True, check_same_thread=False, isolation_level=None)
+
+
 def _free_backup_path(path: Path) -> Path:
     candidate = path.with_name(f"{path.name}.v1-backup")
     counter = 1
@@ -254,46 +263,61 @@ class Ledger:
 
     @classmethod
     def _open_read_only(cls, path: Path) -> Ledger:
+        """See `open`. Writes nothing beside the file unless a writer is active.
+
+        A quiescent ledger (no pending write-ahead log) is copied into memory through an
+        immutable connection, which creates no -wal/-shm files and needs no write
+        permission; the copy is kept only if the main file did not change while it was
+        taken (a checkpoint by a writer that started meanwhile), otherwise it is taken
+        again. A ledger with an active writer is opened with ``mode=ro`` so the log is
+        read too; SQLite then keeps its own -shm beside the file, as the writer does.
+        """
+        # The write-ahead log lives beside the real file, not beside a symlink to it.
+        path = path.resolve()
         if not path.is_file():
             raise FileNotFoundError(f"no ledger at {path}")
-        uri = path.resolve().as_uri()
+        uri = path.as_uri()
         wal = path.with_name(path.name + "-wal")
-        # With no pending write-ahead log the main file is the whole database, and an
-        # immutable connection reads it without creating -wal/-shm files beside it.
-        # A live ledger (a run still writing, or one left with a log) is opened the
-        # ordinary read-only way so its log is read too.
-        live = wal.exists() and wal.stat().st_size > 0
-        source = sqlite3.connect(
-            f"{uri}?mode=ro" if live else f"{uri}?mode=ro&immutable=1",
-            uri=True,
-            check_same_thread=False,
-            isolation_level=None,
-        )
+        for _ in range(3):
+            if wal.exists() and wal.stat().st_size > 0:
+                break
+            stamp = _file_stamp(path)
+            memory, version = cls._snapshot(f"{uri}?mode=ro&immutable=1", path)
+            if _file_stamp(path) == stamp:
+                return cls._from_copy(memory, version)
+            memory.close()
+        live = _connect_uri(f"{uri}?mode=ro")
+        try:
+            version = cls._detect_version(live, path)
+        except BaseException:
+            live.close()
+            raise
+        if version == LEDGER_SCHEMA_VERSION:
+            live.row_factory = sqlite3.Row
+            return cls(live, read_only=True)
+        live.close()
+        # An old ledger with a pending log (a writer mid-migration): copy what it reads.
+        memory, version = cls._snapshot(f"{uri}?mode=ro", path)
+        return cls._from_copy(memory, version)
+
+    @classmethod
+    def _snapshot(cls, uri: str, path: Path) -> tuple[sqlite3.Connection, int]:
+        source = _connect_uri(uri)
         try:
             version = cls._detect_version(source, path)
-            if version == LEDGER_SCHEMA_VERSION and live:
-                source.row_factory = sqlite3.Row
-                return cls(source, read_only=True)
-            if version != LEDGER_SCHEMA_VERSION:
-                # An older (or empty) file is read through a current copy in memory.
-                memory = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
-                source.backup(memory)
-        except BaseException:
+            memory = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
+            source.backup(memory)
+        finally:
             source.close()
-            raise
-        source.close()
-        if version == LEDGER_SCHEMA_VERSION:
-            # Immutable was only safe for the version probe: a run may start writing
-            # while this ledger is being read.
-            conn = sqlite3.connect(
-                f"{uri}?mode=ro", uri=True, check_same_thread=False, isolation_level=None
-            )
-            conn.row_factory = sqlite3.Row
-            return cls(conn, read_only=True)
+        return memory, version
+
+    @classmethod
+    def _from_copy(cls, memory: sqlite3.Connection, version: int) -> Ledger:
+        """A read-only ledger over an in-memory copy, brought to the current schema."""
         memory.row_factory = sqlite3.Row
         if version == 0:
             cls._create(memory)
-        else:
+        elif version == 1:
             cls._upgrade_from_v1(memory)
         return cls(memory, migrated_from=1 if version == 1 else None, read_only=True)
 

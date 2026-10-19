@@ -245,6 +245,66 @@ def test_upgrade_migrates_explicitly_and_keeps_a_backup(run_dir):
     assert len(list(run_dir.glob("ledger.sqlite.v1-backup*"))) == 1
 
 
+def _current_ledger(directory: Path) -> Path:
+    path = directory / "ledger.sqlite"
+    writer = Ledger.open(path)
+    writer.put_manifest("fp", {"job": "x"})
+    writer.close()
+    return path
+
+
+def test_a_read_only_open_through_a_symlink_sees_an_active_writer(tmp_path):
+    """The write-ahead log sits next to the real file, not next to the link."""
+    real = tmp_path / "real" / "ledger.sqlite"
+    writer = Ledger.open(real)
+    try:
+        writer.put_manifest("fp", {"job": "x"})
+        assert real.with_name("ledger.sqlite-wal").stat().st_size > 0  # still in the log
+        link_dir = tmp_path / "link"
+        link_dir.mkdir()
+        (link_dir / "ledger.sqlite").symlink_to(real)
+        reader = Ledger.open(link_dir / "ledger.sqlite", read_only=True)
+        try:
+            assert reader.get_manifest("fp") == {"job": "x"}
+        finally:
+            reader.close()
+    finally:
+        writer.close()
+
+
+def test_a_read_only_open_of_a_current_ledger_leaves_the_directory_alone(tmp_path):
+    path = _current_ledger(tmp_path / "run")
+    before = tree(path.parent)
+    ledger = Ledger.open(path, read_only=True)
+    try:
+        assert ledger.get_manifest("fp") == {"job": "x"}
+        assert ledger.schema_version == LEDGER_SCHEMA_VERSION
+    finally:
+        ledger.close()
+    assert tree(path.parent) == before  # no -wal/-shm left behind
+
+
+def test_a_read_only_open_works_on_read_only_files_and_directories(tmp_path):
+    import os
+    import stat
+
+    path = _current_ledger(tmp_path / "run")
+    path.chmod(0o444)
+    path.parent.chmod(0o555)
+    try:
+        if os.access(path.parent, os.W_OK):  # pragma: no cover - running as root
+            pytest.skip("permissions are not enforced for this user")
+        ledger = Ledger.open(path, read_only=True)
+        try:
+            assert ledger.get_manifest("fp") == {"job": "x"}
+            assert ledger.count("fp") == 0
+        finally:
+            ledger.close()
+    finally:
+        path.parent.chmod(stat.S_IRWXU)
+        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+
 def test_the_upgrade_command_reports_the_backup(run_dir, capsys):
     import json
 
