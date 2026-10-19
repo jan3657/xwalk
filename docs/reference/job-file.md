@@ -129,6 +129,13 @@ Each is Jinja source, compiled on construction so a typo fails immediately with
 100k-row run; `id` always refers to the record's identity, even if a field is also named
 `id`.
 
+Templates run in Jinja's sandbox (`ImmutableSandboxedEnvironment`), because a job file is
+input: field access, filters, tests and loops work as usual, but a template cannot reach
+Python internals or change a record. A constant dunder such as `{{ x.__class__ }}` is
+refused when the templates are built (`xwalk validate` reports `template_invalid`); an
+attribute the sandbox refuses at render time is a template error for that record. A
+mapping key starting with a single underscore (`{{ meta._id }}`) is still data.
+
 | Field | Type | Required | Default | Input | Produces |
 |---|---|---|---|---|---|
 | `query` | `str \| None` | one of `query` / `queries` | `None` | source record | the retrieval query string |

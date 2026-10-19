@@ -264,6 +264,19 @@ offline only (FakeDecider, no paid calls).
   redirect to `https` targets according to the PURL service's configuration (not
   fetched end to end here). `library.download` gains `allow_local` and
   `max_redirects`.
+- Templates are sandboxed. The four record templates (and `queries`) of a job file ran
+  in a plain Jinja environment, so a template such as
+  `{{ ''.__class__.__mro__[1].__subclasses__() }}` reached arbitrary Python objects, and
+  `xwalk validate` alone compiled it; an MCP client can name any job path. Record
+  templates and prompt skeletons now compile in Jinja's `ImmutableSandboxedEnvironment`.
+  A constant dunder attribute or subscript (`x.__class__`, `x['__globals__']`) is refused
+  when the templates are built (`UnsafeTemplateError`, a `TemplateError`; `validate`
+  reports `template_invalid`); a computed one (`attr(...)`, `x[key]`) is refused by the
+  sandbox at render, as a per-record template error. A refused attribute raises rather
+  than rendering as an empty field. A hostile skeleton is a `ContractError`. Every bundled
+  template, example job and prompt renders byte for byte as before, so template, prompt
+  and run fingerprints are unchanged. Compiled record templates are now cached per
+  process, so building a `TemplateSet` again no longer recompiles.
 
 ## [0.2.0rc1] — 2026-10-05
 

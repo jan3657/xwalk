@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
 
-from jinja2 import Environment, Template, Undefined
+from jinja2 import Environment, Template, Undefined, nodes
 from jinja2 import TemplateSyntaxError as JinjaSyntaxError
+from jinja2.exceptions import SecurityError
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from xwalk.fingerprint import hash_value
 from xwalk.records import Record
@@ -39,16 +42,63 @@ class TemplateError(Exception):
     """A template failed to compile or to render."""
 
 
+class UnsafeTemplateError(TemplateError):
+    """A template reaches for Python internals (a dunder attribute) and is refused."""
+
+
 class _EmptyUndefined(Undefined):
     """Missing fields render as an empty string.
 
     Source collections are sparse in practice. Aborting a 100k-row run because one row
     lacks an optional column is the wrong trade; a silently-empty slot is visible in the
     rendered output and in the attempt trace.
+
+    The sandbox reports an attribute it refuses as an undefined too; that one raises
+    instead of rendering as an empty slot, so a refused template is never mistaken for
+    a sparse row.
     """
 
     def __str__(self) -> str:
+        if self._undefined_exception is SecurityError:
+            self._fail_with_undefined_error()
         return ""
+
+
+def checked_parse(env: Environment, source: str) -> nodes.Template:
+    """Parse `source`, refusing a constant dunder in attribute or subscript position.
+
+    Templates come from job files, slots directories and the workbench: untrusted
+    input. Every environment that compiles them is a sandbox, which refuses unsafe
+    attribute access when the template runs. This check is the earlier, clearer half:
+    `''.__class__` never reads a record field, so `xwalk validate` names it before any
+    record is rendered, even in a branch no record would take. A computed name
+    (`attr(...)`, `x[key]`) is left to the sandbox.
+    """
+    tree = env.parse(source)
+    reads: list[tuple[object, int]] = [(n.attr, n.lineno) for n in tree.find_all(nodes.Getattr)]
+    reads += [
+        (n.arg.value, n.lineno)
+        for n in tree.find_all(nodes.Getitem)
+        if isinstance(n.arg, nodes.Const)
+    ]
+    for name, line in reads:
+        if isinstance(name, str) and name.startswith("__"):
+            raise UnsafeTemplateError(
+                f"it reads {name!r} on line {line}; templates may not reach Python internals"
+            )
+    return tree
+
+
+# Immutable: a template renders text, so it has no business calling `list.append` or
+# `dict.update` on a record's fields.
+_ENV = ImmutableSandboxedEnvironment(undefined=_EmptyUndefined, keep_trailing_newline=False)
+
+
+@lru_cache(maxsize=256)
+def _compile(source: str) -> Template:
+    # A job's templates are built more than once per process (validate, then the run;
+    # every workbench request), and compiling is the expensive part of a render.
+    return _ENV.from_string(checked_parse(_ENV, source))
 
 
 _BLANK_LINES = re.compile(r"\n\s*\n+")
@@ -76,18 +126,17 @@ class TemplateSet:
     _compiled: dict[str, Template] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        env = Environment(undefined=_EmptyUndefined, keep_trailing_newline=False)
-        for name in ("query", "context", "doc", "candidate"):
-            source = getattr(self, name)
+        named = [
+            (name, name, getattr(self, name)) for name in ("query", "context", "doc", "candidate")
+        ]
+        named += [(f"queries.{i}", f"queries[{i}]", q) for i, q in enumerate(self.queries)]
+        for key, label, source in named:
             try:
-                self._compiled[name] = env.from_string(source)
+                self._compiled[key] = _compile(source)
             except JinjaSyntaxError as exc:
-                raise TemplateError(f"{name} template failed to compile: {exc}") from exc
-        for index, source in enumerate(self.queries):
-            try:
-                self._compiled[f"queries.{index}"] = env.from_string(source)
-            except JinjaSyntaxError as exc:
-                raise TemplateError(f"queries[{index}] template failed to compile: {exc}") from exc
+                raise TemplateError(f"{label} template failed to compile: {exc}") from exc
+            except UnsafeTemplateError as exc:
+                raise UnsafeTemplateError(f"{label} template is unsafe: {exc}") from None
 
     def _render(self, name: str, record: Record) -> str:
         # A null field is a missing field: omitted, so it reaches the template as
