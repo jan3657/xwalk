@@ -1153,7 +1153,7 @@ async def run_async(
         components = spec.run_fingerprint_components(store=store, retrievers=plans, llm=budgeted)
     else:
         components = spec.decision_run_fingerprint_components(
-            store=store, retrievers=plans, decider=budgeted_decider
+            store=store, retrievers=plans, decider=budgeted_decider, rewrite_llm=rewrite_llm
         )
     run_fp = hash_value(components)
     _check_out_dir(out_dir, run_fp, components, operation=operation)

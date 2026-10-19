@@ -16,6 +16,7 @@ from xwalk.llm.base import (
     LLMResponse,
     LLMRetryableError,
     reported_usage,
+    request_capabilities,
 )
 from xwalk.llm.budget import CallBudget, CallLimitExceeded
 from xwalk.records import Usage
@@ -124,6 +125,45 @@ def _json_payload(response: httpx.Response, dispatched: int) -> object:
         ) from exc
 
 
+def openai_compat_fingerprint(
+    *,
+    base_url: str,
+    model: str,
+    profile: str = "unknown",
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    seed: int | None = None,
+    capabilities: LLMCapabilities | None = None,
+) -> str:
+    """The fingerprint `OpenAICompatClient` would have, computed from its settings alone.
+
+    Pure: it builds no client, so identity can be computed where an HTTP client cannot
+    (or need not) be constructed. The API key is deliberately absent: rotating a key
+    must not invalidate a resumable run, and a secret must never reach a manifest.
+    """
+    profile_capabilities = CAPABILITY_PROFILES[profile]
+    sent = request_capabilities(capabilities or profile_capabilities)
+    return hash_value(
+        {
+            "adapter": "openai_compat",
+            "adapter_version": ADAPTER_VERSION,
+            # Userinfo or a key in the query string is a credential, not identity.
+            "base_url": redact_url(base_url.rstrip("/")),
+            "model": model,
+            "profile": profile,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            # Only when set, so fingerprints of runs without a seed are unchanged.
+            **({"seed": seed} if seed is not None else {}),
+            # An explicit `capabilities=` that changes what is sent (a schema, a strict
+            # flag, a seed) is identity; the profile name covers the rest.
+            **(
+                {"capabilities": sent} if sent != request_capabilities(profile_capabilities) else {}
+            ),
+        }
+    )
+
+
 class OpenAICompatClient:
     """Chat Completions over httpx, with backoff and structured-output fallback."""
 
@@ -184,22 +224,20 @@ class OpenAICompatClient:
         return self._capabilities
 
     @property
+    def generation_defaults(self) -> Mapping[str, Any]:
+        """What a request that leaves `temperature`/`max_tokens` unset is sent with."""
+        return {"temperature": self._temperature, "max_tokens": self._max_tokens}
+
+    @property
     def fingerprint(self) -> str:
-        # The API key is deliberately absent: rotating a key must not invalidate a
-        # resumable run, and a secret must never reach a manifest on disk.
-        return hash_value(
-            {
-                "adapter": "openai_compat",
-                "adapter_version": ADAPTER_VERSION,
-                # Userinfo or a key in the query string is a credential, not identity.
-                "base_url": redact_url(self._base_url),
-                "model": self._model,
-                "profile": self._profile,
-                "temperature": self._temperature,
-                "max_tokens": self._max_tokens,
-                # Only when set, so fingerprints of runs without a seed are unchanged.
-                **({"seed": self._seed} if self._seed is not None else {}),
-            }
+        return openai_compat_fingerprint(
+            base_url=self._base_url,
+            model=self._model,
+            profile=self._profile,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            seed=self._seed,
+            capabilities=self._capabilities,
         )
 
     def _body(self, request: LLMRequest, *, structured: bool) -> dict[str, Any]:

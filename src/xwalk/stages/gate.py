@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
-from xwalk.llm.base import LLMClient, LLMRequest, ParseError
+from xwalk.llm.base import LLMClient, LLMRequest, ParseError, effective_generation
 from xwalk.llm.parsing import parse_confidence, parse_json_object
 from xwalk.prompts.contract import SCORE_SCHEMA, VERIFY_SCHEMA, PromptSet
 from xwalk.records import Record, RetryProposal, Usage
@@ -63,6 +63,14 @@ def _clean(values: object, kind: Literal["candidate", "query"], issued: Sequence
     return seen
 
 
+def _llm_identity(llm: LLMClient, prompts: PromptSet, templates: TemplateSet) -> dict[str, str]:
+    return {
+        "llm": llm.fingerprint,
+        "prompts": prompts.fingerprint,
+        "templates": templates.fingerprint,
+    }
+
+
 class Scorer:
     """Judges the selected match against the whole source record."""
 
@@ -84,6 +92,18 @@ class Scorer:
         self._review_floor = review_floor
         self._temperature = temperature
         self._max_tokens = max_tokens
+
+    @property
+    def identity(self) -> dict[str, Any]:
+        """What this stage sends, for the run fingerprint (see `Selector.identity`).
+        `review_floor` is rendered into the prompt."""
+        return {
+            **_llm_identity(self._llm, self._prompts, self._templates),
+            **effective_generation(
+                self._llm, temperature=self._temperature, max_tokens=self._max_tokens
+            ),
+            "review_floor": self._review_floor,
+        }
 
     async def score(
         self,
@@ -162,6 +182,16 @@ class Verifier:
         self._templates = templates
         self._temperature = temperature
         self._max_tokens = max_tokens
+
+    @property
+    def identity(self) -> dict[str, Any]:
+        """What this stage sends, for the run fingerprint (see `Selector.identity`)."""
+        return {
+            **_llm_identity(self._llm, self._prompts, self._templates),
+            **effective_generation(
+                self._llm, temperature=self._temperature, max_tokens=self._max_tokens
+            ),
+        }
 
     async def verify(
         self,

@@ -696,6 +696,20 @@ It satisfies the same `MatcherLike` protocol `run_batch` takes — `run_fingerpr
 `policy`, `store_fingerprint`, `async match` — so batching, the ledger, resume, review and
 every export work unchanged. An empty retriever list raises `ValueError`.
 
+Build `run_fingerprint` with `xwalk.batch.build_decision_run_fingerprint`, passing the
+stages you pass here (`screener=`, `chooser=`, `gate=`, `rewriter=`; all required,
+`rewriter=None` when there is none). A screener whose
+chunking differs from the policy's, or a stage on another decider, is recorded under the
+`stages` component; the rewriter is hashed whole (its client fingerprint, prompts,
+effective `temperature`/`max_tokens` and `max_queries`) as the `rewrite` component.
+Credentials, timeouts, concurrency and the budget and cache wrappers are not identity.
+A job file's rewrite is identified by its `decider.rewrite` block, plus whatever the
+client actually used differs from the one that block describes (an injected client,
+a capability override); `ops.run` passes that client. That comparison is computed
+from the block's settings (`openai_compat_fingerprint`, `litellm_fingerprint`), without
+building a client, and the block's `base_url` is hashed with userinfo and key
+parameters removed.
+
 Retrieval is the shared `xwalk.retrieve.retrieve`, which searches every retriever with
 every rendered query concurrently and fuses by reciprocal rank. A record surfaced by
 several queries accumulates several votes, which is the point of `templates.queries` being

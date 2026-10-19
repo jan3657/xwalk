@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from xwalk.llm.base import LLMClient, LLMRequest, ParseError
+from xwalk.llm.base import LLMClient, LLMRequest, ParseError, effective_generation
 from xwalk.llm.parsing import parse_confidence, parse_json_object
 from xwalk.prompts.contract import SELECT_SCHEMA, PromptSet
 from xwalk.records import Candidate, Record, Usage
@@ -90,6 +91,24 @@ class Selector:
         self._system = system
         self._temperature = temperature
         self._max_tokens = max_tokens
+
+    @property
+    def identity(self) -> dict[str, Any]:
+        """Everything about this stage that changes what it sends or how it reads the
+        answer, for the run fingerprint. Never a credential: the client contributes its
+        fingerprint."""
+        return {
+            "llm": self._llm.fingerprint,
+            "prompts": self._prompts.fingerprint,
+            "templates": self._templates.fingerprint,
+            **effective_generation(
+                self._llm, temperature=self._temperature, max_tokens=self._max_tokens
+            ),
+            "system": self._system,
+            "max_candidates": self._policy.max_candidates,
+            "max_candidate_tokens": self._policy.max_candidate_tokens,
+            "legacy_id_resolution": self._legacy,
+        }
 
     async def select(
         self,

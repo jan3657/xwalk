@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from xwalk.fingerprint import hash_value
-from xwalk.llm.base import LLMCapabilities, LLMRequest, LLMResponse, failure_usage
+from xwalk.llm.base import (
+    LLMCapabilities,
+    LLMRequest,
+    LLMResponse,
+    failure_usage,
+    request_capabilities,
+)
 from xwalk.records import Usage
 
 Scripted = str | BaseException
@@ -59,6 +65,13 @@ class FakeLLM:
                 "model": self._model,
                 "script": [s if isinstance(s, str) else type(s).__name__ for s in self._script],
                 "handler": self._handler.__name__ if self._handler else None,
+                # Only when they would change a real client's request.
+                **(
+                    {"capabilities": request_capabilities(self._capabilities)}
+                    if request_capabilities(self._capabilities)
+                    != request_capabilities(LLMCapabilities())
+                    else {}
+                ),
             }
         )
 
