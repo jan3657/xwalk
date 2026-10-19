@@ -170,6 +170,7 @@ here. Nothing an attempt learned is discarded when the loop moves on.
 | `candidate_count` | `int` | how many candidates were retrieved, even when `candidates` is empty |
 | `candidates_truncated` | `int` | candidates cut by the selector's budget before the model saw them |
 | `issued_keys` | `Mapping[str, str]` | opaque key → record id, as issued **for this attempt** |
+| `selector_confidence` | `float \| None` | validated selector confidence, including abstentions; advisory only. `None` for old blobs, skipped/failed selection or invalid confidence |
 | `raw_selection` | `str \| None` | the selector's verbatim answer, before resolution |
 | `chosen_id` | `str \| None` | resolved record id; `None` on abstention or unresolved output |
 | `resolution` | `str` | how the raw answer became an id: a `Resolution` value such as `"exact_key"`, `"abstain"`, `"unresolved"`, or a `legacy_*` variant |

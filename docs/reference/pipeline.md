@@ -103,7 +103,10 @@ Within an attempt (`Matcher._attempt`):
    key resolves directly through the retained `KeyedCandidates`, recorded as
    `EXACT_KEY`. Otherwise `Selector.select` trims the fused list, issues opaque keys,
    and asks the model for one key or null. An abstention or unresolvable answer ends
-   the attempt without a scorer call — neither is worth one.
+   the attempt without a scorer call — neither is worth one. The validated selector
+   confidence is stored as `Attempt.selector_confidence`, including on abstentions;
+   it is never used for classification. Skipped/failed selection, invalid confidence
+   and older serialized attempts have `None`.
 3. **Scoring** (LLM). `Scorer.score` judges the chosen record against the **whole
    source record**, never the retrieval query. If the gate produces no usable number,
    the attempt is downgraded to `UNRESOLVED`: falling back to the selector's

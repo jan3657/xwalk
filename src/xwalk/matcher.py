@@ -232,6 +232,7 @@ class Matcher:
         # Overwritten by each stage that talks to the provider; the last one wins,
         # which is the call that ended the attempt.
         finish_reason: str | None = None
+        selector_confidence: float | None = None
 
         if reuse is not None:
             keyed, candidates = reuse
@@ -263,6 +264,7 @@ class Matcher:
                 candidates_truncated=truncated,
                 issued_keys=dict(keyed.issued) if keyed is not None else {},
                 raw_selection=raw,
+                selector_confidence=selector_confidence,
                 chosen_id=chosen_id,
                 resolution=resolution,
                 primary_score=score,
@@ -324,6 +326,7 @@ class Matcher:
                 usage = usage + selection.usage
                 return done(build(reason=selection.reason, error=selection.note))
             usage = usage + selection.usage
+            selector_confidence = selection.confidence
             finish_reason = selection.finish_reason
             keyed = selection.keyed
             truncated = selection.truncated

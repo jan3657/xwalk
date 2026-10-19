@@ -191,6 +191,9 @@ class Attempt:
     # negative outcome from it is not settled evidence. Kept whether or not the trace
     # keeps candidates; empty for a forced re-score, which does not search.
     retrieval_failures: tuple[str, ...] = ()
+    # Advisory selector output, including abstention; never a classification score.
+    # Absent when selection was skipped/failed or its confidence was invalid.
+    selector_confidence: float | None = None
 
 
 @dataclass(frozen=True)

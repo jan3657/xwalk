@@ -634,3 +634,67 @@ async def test_infrastructure_retries_remain_bounded_with_all_flags_on():
         "score",
         "score",
     ]
+
+
+@pytest.mark.parametrize(
+    "reply, expected",
+    [
+        (select_reply("C01", 0.23), 0.23),
+        (select_reply(None, 0.95), 0.95),
+        (select_reply(None, 0.2), 0.2),
+        (select_reply("C99", 0.8), 0.8),
+        ('{"confidence_score": 0.4}', 0.4),
+        (select_reply("C01", "0.9"), None),
+        (select_reply(None, float("nan")), None),
+        ("not JSON", None),
+    ],
+)
+async def test_selector_confidence_is_stored_independently_of_scoring(reply, expected):
+    from xwalk.policy import derive_status
+    from xwalk.serde import result_from_dict, result_to_dict
+
+    llm = FakeLLM([reply, score_reply(0.95)])
+    result = await build(
+        llm, ScriptedRetriever({"glucose": ["T1"]}), policy=MatchPolicy(max_attempts=1)
+    ).match(SOURCE)
+    attempt = result.attempts[0]
+    assert attempt.selector_confidence == expected
+    blob = result_to_dict(result)
+    assert blob["attempts"][0]["selector_confidence"] == expected
+    assert result_from_dict(blob) == result
+    del blob["attempts"][0]["selector_confidence"]
+    assert result_from_dict(blob).attempts[0].selector_confidence is None
+    # Advisory storage changes no status, reason or primary confidence.
+    classifications = []
+    for confidence in (None, 0.0, 1.0):
+        status, reason, best = derive_status(
+            [dataclasses.replace(attempt, selector_confidence=confidence)],
+            MatchPolicy(max_attempts=1),
+        )
+        classifications.append((status, reason, best.primary_score if best else None))
+    assert classifications[0] == classifications[1] == classifications[2]
+
+
+async def test_selector_confidence_survives_scoring_failure_and_is_absent_on_forced_work():
+    llm = FakeLLM(
+        [
+            select_reply("C01", 0.12),
+            LLMRetryableError("503"),
+            select_reply("C01", 0.34),
+            score_reply(0.5, better_candidate_keys=["C02"]),
+            score_reply(0.95),
+        ]
+    )
+    result = await build(llm, ScriptedRetriever({"glucose": ["T1", "T2"]})).match(SOURCE)
+    assert [a.selector_confidence for a in result.attempts] == [0.12, 0.34, None]
+    assert result.confidence == 0.95
+    assert result.status is MatchStatus.MATCHED
+
+
+async def test_selector_failure_has_no_confidence():
+    result = await build(
+        FakeLLM([LLMRetryableError("503")]),
+        ScriptedRetriever({"glucose": ["T1"]}),
+        policy=MatchPolicy(max_attempts=1),
+    ).match(SOURCE)
+    assert result.attempts[0].selector_confidence is None
