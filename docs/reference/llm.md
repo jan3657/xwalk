@@ -34,8 +34,16 @@ class LLMClient(Protocol):
 ```
 
 `fingerprint` feeds the run fingerprint, so it must change whenever the client would
-produce different answers — model, endpoint, generation parameters, adapter version —
-and must never contain a secret, because it ends up in the run manifest on disk.
+produce different answers — model, endpoint, generation parameters, adapter version,
+any capability that changes the request body — and must never contain a secret,
+because it ends up in the run manifest on disk.
+
+A client may also offer `generation_defaults`, a mapping with the `temperature` and
+`max_tokens` it sends when a request leaves them unset. It is optional and not part of
+the protocol; both adapters and both wrappers have it. The run fingerprint uses it to
+hash each stage's *effective* values: `Scorer(temperature=0.0)` on a client configured
+with `0.0` sends the same request as no override, and keeps the same identity. On a
+client without it, an explicit override is hashed as given.
 
 ## Request and response types
 
@@ -56,7 +64,9 @@ All three are frozen dataclasses.
 Precedence, highest first: an explicit per-stage constructor argument (for example
 `Scorer(max_tokens=256)`, which the stage puts on the request) > the job's `llm.*`
 values > the client constructor's defaults > library defaults (`temperature=0.0`,
-`max_tokens=1024`). The stages send `None` unless given an explicit value. Changed in
+`max_tokens=1024`). The stages send `None` unless given an explicit value. The run
+fingerprint hashes the effective per-stage values (`build_run_fingerprint` takes the
+stages; see [the pipeline reference](pipeline.md#build_run_fingerprint)). Changed in
 0.2: stages used to hard-code `temperature=0.0` and `max_tokens` 512 (256 for the
 rewriter), which silently overrode the job's settings.
 | `extra` | `Mapping[str, Any]` | `{}` | Provider-specific body fields, merged into the request body last |
@@ -233,11 +243,16 @@ each failed attempt before the final one is a call with unknown usage.
 ### Fingerprint
 
 The fingerprint hashes exactly: `adapter="openai_compat"`, `adapter_version` (currently
-`1`), `base_url`, `model`, `profile`, `temperature`, `max_tokens`, and `seed` when it is
-set. The API key is
-deliberately absent: rotating a key must not invalidate a resumable run, and a secret
-must never reach a manifest on disk. Note that an explicit `capabilities=` override is
-*not* hashed — only the profile name is (see [Gotchas](#gotchas)).
+`1`), `base_url` (credentials removed), `model`, `profile`, `temperature`, `max_tokens`,
+`seed` when it is set, and `capabilities` when an explicit `capabilities=` override
+changes what is sent compared with the profile. Those are the request-affecting flags:
+`json_schema`, `strict_schema` (only with `json_schema`, since it is sent inside the
+schema) and `seed`. An override that differs only in `usage_reporting` or
+`native_retry_after` changes how an answer is accounted or retried, not the request, so
+it keeps the profile's fingerprint. The API key, `extra_headers`, `timeout`,
+`max_retries`, the backoff settings and `trust_env` are deliberately absent: rotating a
+key must not invalidate a resumable run, a secret must never reach a manifest on disk,
+and none of the others changes what the model is asked.
 
 ## LiteLLMClient
 
@@ -257,8 +272,10 @@ LiteLLMClient(
 ```
 
 `kwargs` are passed through to `litellm.acompletion` on every call, and are hashed
-(string-coerced, sorted) into the fingerprint alongside `adapter="litellm"`,
-`adapter_version=1`, `model`, `temperature`, and `max_tokens`.
+(string-coerced, sorted, credential-like names removed, `api_base`/`base_url` redacted)
+into the fingerprint alongside `adapter="litellm"`, `adapter_version=1`, `model`,
+`temperature`, `max_tokens`, `seed` when set, and the request-affecting `capabilities`
+when they are not the all-false default.
 
 The `litellm` module is imported lazily, on the **first `complete()` call**, via the
 `MissingExtra` machinery — constructing the client without the extra installed
@@ -329,7 +346,9 @@ Provide exactly one of `script` or `handler` — both or neither raises `ValueEr
 Every request is appended to `fake.requests`, and `fake.total_usage` accumulates the
 fixed per-call usage — so a test can assert on both what was asked and what it cost.
 The response's `structured` flag is `bool(request.schema and capabilities.json_schema)`,
-mirroring the real adapters.
+mirroring the real adapters. Its `fingerprint` hashes the model, the script (or the
+handler's name) and, when they are not the all-false default, the request-affecting
+capabilities.
 
 A complete offline run of the matcher — no network, no credentials, base install only:
 
@@ -419,8 +438,9 @@ CachingLLM(
 )
 ```
 
-Identity (`model`, `capabilities`, `fingerprint`) delegates to the inner client, so
-wrapping a client never changes a run fingerprint — caching changes how an answer was
+Identity (`model`, `capabilities`, `fingerprint`, `generation_defaults`) delegates to
+the inner client, as it does for `BudgetedLLM`, so wrapping a client never changes a run
+fingerprint — caching changes how an answer was
 obtained, never what it means. `read=False` makes it write-through only (refresh the
 cache); `write=False` makes it read-only. The wrapper counts `hits` and `misses`.
 
@@ -454,9 +474,10 @@ Not safe, or at least not what you meant:
   itself; with `temperature > 0` a cache hit replays the first draw forever.
 - **Provider-side model drift.** If `model` is an alias the provider re-points (a
   `-latest` tag), the key cannot see the change and stale answers persist.
-- **Capability overrides.** An `OpenAICompatClient` given explicit `capabilities=`
-  keeps the profile's fingerprint, so two clients that send different request bodies
-  can share cache keys.
+- **Clients that hide request differences.** A custom client whose `fingerprint`
+  omits something it sends shares cache keys with clients that send otherwise. The
+  shipped adapters hash every capability that changes the body (changed in 0.2: an
+  explicit `capabilities=` override used to be invisible).
 
 A cache hit also loses metadata: `usage` is `Usage(cache_hits=1)` — zero calls and
 zero tokens (the honest number: a hit spends nothing, so a resumed run's reported cost
@@ -519,10 +540,12 @@ Raises `ParseError` (with the original text on `.raw`) when:
 - **Capabilities are requests, not guarantees.** `structured=True` on a response means
   a schema was sent, not that the provider enforced it. Validate regardless — the rest
   of xwalk does.
-- **Explicit `capabilities=` is invisible to the fingerprint** on both adapters
-  (`OpenAICompatClient` hashes the profile name; `LiteLLMClient` hashes no capability
-  state). Two clients differing only in capability overrides share a fingerprint and
-  therefore cache keys and run identity. Prefer a profile when one fits.
+- **A capability override is identity only when it changes the request.** Changed in
+  0.2: an explicit `capabilities=` that asks for a schema, a strict schema or a seed
+  the profile (or LiteLLM's all-false default) does not, changes the client
+  fingerprint, so a resumed run is refused and cache entries are not shared. A run
+  whose client had such an override gets a new fingerprint; a job file cannot set
+  one, so job runs keep theirs.
 - **`request.extra` is merged into the body last**, so it can override `model`,
   `messages`, or `response_format`. It is part of the cache key, so at least a
   divergence never aliases in the cache.

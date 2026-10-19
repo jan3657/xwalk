@@ -24,6 +24,7 @@ from xwalk.llm.base import (
     LLMResponse,
     LLMRetryableError,
     reported_usage,
+    request_capabilities,
 )
 from xwalk.records import Usage
 
@@ -120,7 +121,13 @@ class LiteLLMClient:
         return self._capabilities
 
     @property
+    def generation_defaults(self) -> Mapping[str, Any]:
+        """What a request that leaves `temperature`/`max_tokens` unset is sent with."""
+        return {"temperature": self._temperature, "max_tokens": self._max_tokens}
+
+    @property
     def fingerprint(self) -> str:
+        sent = request_capabilities(self._capabilities)
         return hash_value(
             {
                 "adapter": "litellm",
@@ -135,6 +142,13 @@ class LiteLLMClient:
                     k: redact_url(str(v)) if k in _URL_KWARGS else str(v)
                     for k, v in sorted(without_secrets(self._kwargs).items())
                 },
+                # Capabilities that change the request, only when not the all-false
+                # default, so a job-built client keeps its fingerprint.
+                **(
+                    {"capabilities": sent}
+                    if sent != request_capabilities(LLMCapabilities())
+                    else {}
+                ),
             }
         )
 

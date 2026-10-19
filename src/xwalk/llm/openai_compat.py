@@ -16,6 +16,7 @@ from xwalk.llm.base import (
     LLMResponse,
     LLMRetryableError,
     reported_usage,
+    request_capabilities,
 )
 from xwalk.llm.budget import CallBudget, CallLimitExceeded
 from xwalk.records import Usage
@@ -179,9 +180,15 @@ class OpenAICompatClient:
         return self._capabilities
 
     @property
+    def generation_defaults(self) -> Mapping[str, Any]:
+        """What a request that leaves `temperature`/`max_tokens` unset is sent with."""
+        return {"temperature": self._temperature, "max_tokens": self._max_tokens}
+
+    @property
     def fingerprint(self) -> str:
         # The API key is deliberately absent: rotating a key must not invalidate a
         # resumable run, and a secret must never reach a manifest on disk.
+        sent = request_capabilities(self._capabilities)
         return hash_value(
             {
                 "adapter": "openai_compat",
@@ -194,6 +201,13 @@ class OpenAICompatClient:
                 "max_tokens": self._max_tokens,
                 # Only when set, so fingerprints of runs without a seed are unchanged.
                 **({"seed": self._seed} if self._seed is not None else {}),
+                # An explicit `capabilities=` that changes what is sent (a schema, a
+                # strict flag, a seed) is identity; the profile name covers the rest.
+                **(
+                    {"capabilities": sent}
+                    if sent != request_capabilities(CAPABILITY_PROFILES[self._profile])
+                    else {}
+                ),
             }
         )
 

@@ -147,7 +147,8 @@ is never checked against the matcher you actually built. If you hardcoded it, or
 before changing a component, resume will happily serve stale results.
 
 Always build it with `build_run_fingerprint`, passing the same objects you pass to
-`Matcher`. Also pass `retriever_limit` and `rrf_k` to both if you override them — the
+`Matcher`, including the `selector`, `scorer`, `verifier` and `rewriter` (a per-stage
+`max_tokens` or temperature is invisible otherwise). Also pass `retriever_limit` and `rrf_k` to both if you override them — the
 library does not cross-check those either.
 
 ## Two source records matched the same target

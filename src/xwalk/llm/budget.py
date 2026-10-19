@@ -20,6 +20,7 @@ call cancelled in flight), counted as a call with unknown usage -- never as free
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from xwalk.llm.base import (
@@ -28,6 +29,7 @@ from xwalk.llm.base import (
     LLMFatalError,
     LLMRequest,
     LLMResponse,
+    client_generation_defaults,
     failure_usage,
 )
 from xwalk.records import Usage
@@ -134,6 +136,10 @@ class BudgetedLLM:
     @property
     def fingerprint(self) -> str:
         return self._inner.fingerprint
+
+    @property
+    def generation_defaults(self) -> Mapping[str, Any]:
+        return client_generation_defaults(self._inner)
 
     @property
     def usage(self) -> Usage:

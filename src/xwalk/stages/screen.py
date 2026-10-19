@@ -98,6 +98,20 @@ class Screener:
         self._shortlist_floor = shortlist_floor
         self._max_state_chars = max_state_chars
 
+    @property
+    def identity(self) -> dict[str, Any]:
+        """What this stage asks and keeps, for the run fingerprint. The chunking
+        settings decide which candidates share a request; never a credential."""
+        return {
+            "decider": self._decider.fingerprint,
+            "questions": self._questions.fingerprint,
+            "templates": self._templates.fingerprint,
+            "chunk_size": self._chunk_size,
+            "shortlist_size": self._shortlist_size,
+            "shortlist_floor": self._shortlist_floor,
+            "max_state_chars": self._max_state_chars,
+        }
+
     def _chunks(
         self, keyed: list[tuple[str, str]], shared_state: Mapping[str, Any]
     ) -> tuple[list[list[tuple[str, str]]], list[str]]:

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from xwalk.llm.base import LLMClient, LLMRequest, ParseError
+from xwalk.llm.base import LLMClient, LLMRequest, ParseError, effective_generation
 from xwalk.llm.parsing import parse_json_object
 from xwalk.prompts.contract import REWRITE_SCHEMA, PromptSet
 from xwalk.records import Record, RetryProposal, Usage
@@ -44,6 +45,20 @@ class QueryRewriter:
         self._max_queries = max_queries
         self._temperature = temperature
         self._max_tokens = max_tokens
+
+    @property
+    def identity(self) -> dict[str, Any]:
+        """What this stage sends, for the run fingerprint. `max_queries` is rendered
+        into the prompt and caps the proposals kept. Never a credential."""
+        return {
+            "llm": self._llm.fingerprint,
+            "prompts": self._prompts.fingerprint,
+            "templates": self._templates.fingerprint,
+            **effective_generation(
+                self._llm, temperature=self._temperature, max_tokens=self._max_tokens
+            ),
+            "max_queries": self._max_queries,
+        }
 
     async def rewrite(
         self,

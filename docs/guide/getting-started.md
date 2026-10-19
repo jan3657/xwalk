@@ -208,15 +208,20 @@ llm = OpenAICompatClient(
 
 prompts = PromptSet.from_slots(load_slots("slots.yaml"))
 policy, selector_policy = MatchPolicy(), SelectorPolicy()
+# The stages go to the Matcher and, the same objects, to the fingerprint: a per-stage
+# setting such as Scorer(max_tokens=256) changes the requests, so it changes the run.
+stages = {
+    "selector": Selector(llm, prompts, templates, policy=selector_policy),
+    "scorer": Scorer(llm, prompts, templates, review_floor=policy.review_floor),
+    "verifier": Verifier(llm, prompts, templates),
+    "rewriter": QueryRewriter(llm, prompts, templates),
+}
 
 matcher = Matcher(
     templates=templates,
     retrievers=[retriever],
     store=store,
-    selector=Selector(llm, prompts, templates, policy=selector_policy),
-    scorer=Scorer(llm, prompts, templates, review_floor=policy.review_floor),
-    verifier=Verifier(llm, prompts, templates),
-    rewriter=QueryRewriter(llm, prompts, templates),
+    **stages,
     policy=policy,
     run_fingerprint=build_run_fingerprint(
         templates=templates,
@@ -226,6 +231,7 @@ matcher = Matcher(
         llm=llm,
         policy=policy,
         selector_policy=selector_policy,
+        **stages,
     ),
 )
 ```

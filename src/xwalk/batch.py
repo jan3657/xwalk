@@ -46,7 +46,12 @@ from xwalk.records import DecisionReason, MatchResult, MatchStatus, Record, Usag
 from xwalk.retrieval.base import Retriever
 from xwalk.review import adjudicated
 from xwalk.serde import result_to_dict
-from xwalk.stages.select import SelectorPolicy
+from xwalk.stages.choose import Chooser
+from xwalk.stages.gate import Scorer, Verifier
+from xwalk.stages.property_gate import PropertyGate
+from xwalk.stages.rewrite import QueryRewriter
+from xwalk.stages.screen import Screener
+from xwalk.stages.select import Selector, SelectorPolicy
 from xwalk.stores.base import TargetStore
 from xwalk.templates import TemplateSet
 
@@ -115,6 +120,37 @@ def usage_to_dict(usage: Usage) -> dict[str, Any]:
     }
 
 
+class _Stage(Protocol):
+    @property
+    def identity(self) -> Mapping[str, Any]: ...
+
+
+def stage_overrides(
+    stages: Mapping[str, tuple[_Stage | None, _Stage]],
+) -> dict[str, dict[str, Any]]:
+    """Per stage, the settings in which the constructed stage differs from the default.
+
+    `stages` maps a stage name to (the stage as constructed, or None when the caller did
+    not pass it; the stage a job file would build from the same client, prompts and
+    policy). Only differing settings are returned, so a run whose stages are the
+    defaults keeps the fingerprint it had before stages were hashed, and a new stage
+    setting left at its default adds no identity component.
+    """
+    overrides: dict[str, dict[str, Any]] = {}
+    for name, (stage, default) in stages.items():
+        if stage is None:
+            continue
+        actual, expected = dict(stage.identity), dict(default.identity)
+        changed = {
+            key: value
+            for key, value in sorted(actual.items())
+            if key not in expected or expected[key] != value
+        }
+        if changed:
+            overrides[name] = changed
+    return overrides
+
+
 def run_fingerprint_components(
     *,
     templates: TemplateSet,
@@ -126,6 +162,10 @@ def run_fingerprint_components(
     selector_policy: SelectorPolicy,
     retriever_limit: int = 20,
     rrf_k: int = 60,
+    selector: Selector | None = None,
+    scorer: Scorer | None = None,
+    verifier: Verifier | None = None,
+    rewriter: QueryRewriter | None = None,
 ) -> dict[str, Any]:
     """Everything whose change should invalidate prior results, as a JSON-safe dict.
 
@@ -133,6 +173,12 @@ def run_fingerprint_components(
     change what a result means. `retriever_limit` and `rrf_k` must match the values
     handed to `Matcher`, or a resumed run will reuse results produced at another depth.
     The dict is stored in the manifest so a refused resume can name what changed.
+
+    Pass the stages handed to `Matcher` (`selector`, `scorer`, `verifier`, `rewriter`):
+    their effective settings -- a per-stage `temperature`/`max_tokens`, another client,
+    a system message, a review floor or `max_queries` unlike the policy's -- change the
+    requests, so any that differ from the stages a job file would build are recorded
+    under `stages`. A stage left out is assumed to be that default.
     """
     components: dict[str, Any] = {
         "library_version": __version__,
@@ -173,6 +219,25 @@ def run_fingerprint_components(
     }
     if encoders:
         components["encoders"] = encoders
+    overrides = stage_overrides(
+        {
+            "selector": (
+                selector,
+                Selector(
+                    llm,
+                    prompts,
+                    templates,
+                    policy=selector_policy,
+                    legacy_id_resolution=policy.legacy_id_resolution,
+                ),
+            ),
+            "scorer": (scorer, Scorer(llm, prompts, templates, review_floor=policy.review_floor)),
+            "verifier": (verifier, Verifier(llm, prompts, templates)),
+            "rewriter": (rewriter, QueryRewriter(llm, prompts, templates)),
+        }
+    )
+    if overrides:
+        components["stages"] = overrides
     return components
 
 
@@ -200,8 +265,12 @@ def build_run_fingerprint(
     selector_policy: SelectorPolicy,
     retriever_limit: int = 20,
     rrf_k: int = 60,
+    selector: Selector | None = None,
+    scorer: Scorer | None = None,
+    verifier: Verifier | None = None,
+    rewriter: QueryRewriter | None = None,
 ) -> str:
-    """The hash of `run_fingerprint_components`."""
+    """The hash of `run_fingerprint_components`. Pass the stages handed to `Matcher`."""
     return hash_value(
         run_fingerprint_components(
             templates=templates,
@@ -213,6 +282,10 @@ def build_run_fingerprint(
             selector_policy=selector_policy,
             retriever_limit=retriever_limit,
             rrf_k=rrf_k,
+            selector=selector,
+            scorer=scorer,
+            verifier=verifier,
+            rewriter=rewriter,
         )
     )
 
@@ -227,6 +300,10 @@ def decision_run_fingerprint_components(
     policy: DecisionPolicy,
     rrf_k: int = 60,
     rewrite: str | None = None,
+    screener: Screener | None = None,
+    chooser: Chooser | None = None,
+    gate: PropertyGate | None = None,
+    rewriter: QueryRewriter | None = None,
 ) -> dict[str, Any]:
     """The decider path's counterpart of `run_fingerprint_components`.
 
@@ -235,8 +312,35 @@ def decision_run_fingerprint_components(
     the fingerprint of the optional miss-only query rewrite; it is included only when
     set, so a job without one keeps the fingerprint (and the cached ledger) it had
     before. The dict is stored in the manifest so a refused resume can name what changed.
+
+    Pass the stages handed to `DecisionMatcher`. A `screener`, `chooser` or `gate` that
+    differs from the one a job file would build (another decider, chunking unlike the
+    policy's) is recorded under `stages`. `rewriter`, when `rewrite` is not given, is
+    hashed whole: its client, prompts and effective generation settings. A job file
+    passes `rewrite` (see `JobSpec.decision_run_fingerprint_components`).
     """
-    extra: dict[str, str] = {} if rewrite is None else {"rewrite": rewrite}
+    if rewrite is None and rewriter is not None:
+        rewrite = hash_value(rewriter.identity)
+    extra: dict[str, Any] = {} if rewrite is None else {"rewrite": rewrite}
+    overrides = stage_overrides(
+        {
+            "screener": (
+                screener,
+                Screener(
+                    decider,
+                    questions,
+                    templates,
+                    chunk_size=policy.chunk_size,
+                    shortlist_size=policy.shortlist_size,
+                    shortlist_floor=policy.shortlist_floor,
+                ),
+            ),
+            "chooser": (chooser, Chooser(decider, questions, templates)),
+            "gate": (gate, PropertyGate(decider, questions, templates)),
+        }
+    )
+    if overrides:
+        extra["stages"] = overrides
     return {
         **extra,
         "library_version": __version__,
@@ -275,8 +379,13 @@ def build_decision_run_fingerprint(
     policy: DecisionPolicy,
     rrf_k: int = 60,
     rewrite: str | None = None,
+    screener: Screener | None = None,
+    chooser: Chooser | None = None,
+    gate: PropertyGate | None = None,
+    rewriter: QueryRewriter | None = None,
 ) -> str:
-    """The hash of `decision_run_fingerprint_components`."""
+    """The hash of `decision_run_fingerprint_components`. Pass the stages handed to
+    `DecisionMatcher`."""
     return hash_value(
         decision_run_fingerprint_components(
             templates=templates,
@@ -287,6 +396,10 @@ def build_decision_run_fingerprint(
             policy=policy,
             rrf_k=rrf_k,
             rewrite=rewrite,
+            screener=screener,
+            chooser=chooser,
+            gate=gate,
+            rewriter=rewriter,
         )
     )
 

@@ -715,6 +715,10 @@ def build_run_fingerprint(
     selector_policy: SelectorPolicy,
     retriever_limit: int = 20,
     rrf_k: int = 60,
+    selector: Selector | None = None,
+    scorer: Scorer | None = None,
+    verifier: Verifier | None = None,
+    rewriter: QueryRewriter | None = None,
 ) -> str
 ```
 
@@ -737,11 +741,30 @@ Everything whose change should invalidate prior results, hashed into one digest.
 - `encoders` (only when a retriever exposes `encoder_identity`, as `DenseRetriever`
   does): the live encoder's name, dimension and `settings` — for
   `SentenceTransformerEncoder` the revision (`"unknown"` unless pinned), `normalize`,
-  `query_prefix`, `doc_prefix` and `max_seq_length`.
+  `query_prefix`, `doc_prefix` and `max_seq_length`;
+- `stages` (only when a stage passed here differs from the default one): per stage,
+  the settings of its `identity` that differ from the stage a job file would build
+  from the same `llm`, `prompts`, `templates` and policies. A stage's `identity` holds
+  its client's fingerprint, its prompts and templates fingerprints, the *effective*
+  `temperature` and `max_tokens` (the stage's override, else the client's configured
+  value, read from the client's optional `generation_defaults`), and the
+  stage's own behavioural settings: the selector's `system`, budget and
+  `legacy_id_resolution`, the scorer's `review_floor`, the rewriter's `max_queries`.
+
+Pass the stages you hand `Matcher`. A stage left out is assumed to be the default, so
+`Scorer(max_tokens=256)` built but not passed is invisible to the fingerprint. An
+explicit override equal to the client's value (`Scorer(temperature=0.0)` on a client
+configured with `0.0`) sends the same request and keeps the fingerprint. Stages built
+the default way add no component, which is why a job-file run keeps the fingerprint it
+had before stages were hashed (`JobSpec` passes the stages it builds).
+`build_decision_run_fingerprint` takes the decider path's `screener`, `chooser`, `gate`
+and `rewriter` the same way; see [the decider reference](decide.md#decisionmatcher).
 
 Deliberately excluded: credentials (API keys, credential-like LiteLLM keyword
-arguments and headers, userinfo or key parameters in a base URL), output paths, and
-`policy.concurrency` — none of them change what a result means.
+arguments and headers, userinfo or key parameters in a base URL), output paths,
+`policy.concurrency`, client timeouts and retry counts, and wrappers
+(`BudgetedLLM`, `CachingLLM` delegate identity to the client they wrap) — none of them
+change what a result means.
 `Matcher.keep_candidates_in_trace` is likewise not an input: it changes trace
 verbosity, not the decision. `retriever_limit` and `rrf_k`
 must match the values handed to `Matcher`, or a resumed run will reuse results
