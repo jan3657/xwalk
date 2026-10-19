@@ -554,6 +554,7 @@ async def test_retrieval_failures_round_trip_and_old_blobs_read_as_clean():
 
 
 def test_the_status_semantics_version_is_part_of_run_identity():
+    from tests.test_effective_identity import default_stages
     from xwalk.policy import STATUS_SEMANTICS_VERSION
 
     components = run_fingerprint_components(
@@ -564,6 +565,7 @@ def test_the_status_semantics_version_is_part_of_run_identity():
         llm=FakeLLM([]),
         policy=POLICY,
         selector_policy=SelectorPolicy(),
+        **default_stages(FakeLLM([])),
     )
     assert components["policy"]["status_semantics"] == STATUS_SEMANTICS_VERSION >= 2
 
@@ -572,6 +574,7 @@ def test_the_decider_status_semantics_version_is_part_of_run_identity():
     from tests.test_decide_matcher import QUESTIONS
     from tests.test_decide_matcher import STORE as DSTORE
     from tests.test_decide_matcher import TEMPLATES as DTEMPLATES
+    from tests.test_effective_identity import default_decision_stages
     from xwalk.batch import decision_run_fingerprint_components
     from xwalk.decide.fake import FakeDecider
     from xwalk.decide.policy import DecisionPolicy
@@ -583,6 +586,7 @@ def test_the_decider_status_semantics_version_is_part_of_run_identity():
         retrievers=[ScriptedRetriever({})],
         decider=FakeDecider(),
         policy=DecisionPolicy(),
+        **default_decision_stages(FakeDecider()),
     )
     from xwalk.decide.policy import STATUS_SEMANTICS_VERSION as DECIDE_VERSION
 

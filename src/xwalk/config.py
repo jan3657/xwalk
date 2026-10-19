@@ -38,9 +38,13 @@ from xwalk.decide.jev import JevClient
 from xwalk.decide.matcher import DecisionMatcher
 from xwalk.decide.policy import DecisionPolicy
 from xwalk.decide.questions import QuestionSet
-from xwalk.fingerprint import hash_value
-from xwalk.llm.base import LLMClient
-from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
+from xwalk.fingerprint import hash_value, redact_url
+from xwalk.llm.base import LLMCapabilities, LLMClient, LLMRequest, LLMResponse
+from xwalk.llm.openai_compat import (
+    CAPABILITY_PROFILES,
+    OpenAICompatClient,
+    openai_compat_fingerprint,
+)
 from xwalk.matcher import Matcher
 from xwalk.policy import MatchPolicy
 from xwalk.prompts.contract import PromptSet, load_slots
@@ -687,6 +691,8 @@ class JobSpec(_Spec):
             screener=stages.screener,
             chooser=stages.chooser,
             gate=stages.gate,
+            # `rewrite` above identifies it; passed so the stage set is complete.
+            rewriter=stages.rewriter,
         )
 
     def decision_run_fingerprint_components(
@@ -730,9 +736,13 @@ class JobSpec(_Spec):
         if self.decider is None or self.decider.rewrite is None:
             return None
         spec = self.decider.rewrite
+        llm = spec.llm.model_dump(exclude={"api_key", "api_key_env"})
+        if llm.get("base_url"):
+            # Userinfo or a key parameter in the URL is a credential, not identity.
+            llm["base_url"] = redact_url(llm["base_url"])
         job = hash_value(
             {
-                "llm": spec.llm.model_dump(exclude={"api_key", "api_key_env"}),
+                "llm": llm,
                 "max_queries": spec.max_queries,
                 "prompts": self.build_prompts().fingerprint,
             }
@@ -742,8 +752,8 @@ class JobSpec(_Spec):
         if spec.llm.kind == "chatgpt":  # no job-built client to compare with
             return hash_value({"job": job, "rewriter": dict(rewriter.identity)})
         expected = QueryRewriter(
-            # Built only to read its identity: no credential, never called.
-            _llm_client(spec.llm, api_key=None),
+            # Only its identity is read: no client is built, nothing is called.
+            _SpecIdentity(spec.llm),
             self.build_prompts(),
             self.build_templates(),
             max_queries=spec.max_queries,
@@ -811,6 +821,63 @@ def _build_llm_client(spec: LLMSpec, *, where: str) -> LLMClient:
     return _llm_client(spec, api_key=api_key)
 
 
+def _litellm_kwargs(spec: LLMSpec, api_key: str | None) -> dict[str, Any]:
+    # The key the job required must also be sent. LiteLLMClient keeps it out of its
+    # fingerprint (`without_secrets`), so it never reaches a manifest.
+    extra: dict[str, Any] = {"api_key": api_key} if api_key else {}
+    if spec.base_url:
+        # LiteLLM's name for the endpoint. It is identity, hashed redacted by the client.
+        extra["api_base"] = spec.base_url
+    return extra
+
+
+class _SpecIdentity:
+    """What a spec's client would report for identity, without building the client
+    (building an HTTP client reads the environment and can fail). Never called."""
+
+    def __init__(self, spec: LLMSpec) -> None:
+        self._spec = spec
+
+    @property
+    def model(self) -> str:
+        return self._spec.model
+
+    @property
+    def capabilities(self) -> LLMCapabilities:
+        if self._spec.kind == "openai_compat":
+            return CAPABILITY_PROFILES[self._spec.profile]
+        return LLMCapabilities()
+
+    @property
+    def generation_defaults(self) -> dict[str, Any]:
+        return {"temperature": self._spec.temperature, "max_tokens": self._spec.max_tokens}
+
+    @property
+    def fingerprint(self) -> str:
+        spec = self._spec
+        if spec.kind == "openai_compat":
+            return openai_compat_fingerprint(
+                base_url=spec.base_url or "",
+                model=spec.model,
+                profile=spec.profile,
+                temperature=spec.temperature,
+                max_tokens=spec.max_tokens,
+                seed=spec.seed,
+            )
+        from xwalk.llm.litellm import litellm_fingerprint
+
+        return litellm_fingerprint(
+            spec.model,
+            temperature=spec.temperature,
+            max_tokens=spec.max_tokens,
+            seed=spec.seed,
+            **_litellm_kwargs(spec, None),
+        )
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:  # pragma: no cover
+        raise AssertionError("an identity stand-in is never called")
+
+
 def _llm_client(spec: LLMSpec, *, api_key: str | None) -> LLMClient:
     """The client an `openai_compat` or `litellm` spec describes, with `api_key`."""
     if spec.kind == "openai_compat":
@@ -825,18 +892,12 @@ def _llm_client(spec: LLMSpec, *, api_key: str | None) -> LLMClient:
         )
     from xwalk.llm.litellm import LiteLLMClient
 
-    # The key the job required must also be sent. LiteLLMClient keeps it out of its
-    # fingerprint (`without_secrets`), so it never reaches a manifest.
-    extra: dict[str, Any] = {"api_key": api_key} if api_key else {}
-    if spec.base_url:
-        # LiteLLM's name for the endpoint. It is identity, hashed redacted by the client.
-        extra["api_base"] = spec.base_url
     return LiteLLMClient(
         spec.model,
         temperature=spec.temperature,
         max_tokens=spec.max_tokens,
         seed=spec.seed,
-        **extra,
+        **_litellm_kwargs(spec, api_key),
     )
 
 

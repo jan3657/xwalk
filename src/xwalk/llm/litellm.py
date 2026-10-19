@@ -93,6 +93,39 @@ def _reported_usage(raw: object) -> Usage:
     return reported_usage(_field(raw, "prompt_tokens"), _field(raw, "completion_tokens"))
 
 
+def litellm_fingerprint(
+    model: str,
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    seed: int | None = None,
+    capabilities: LLMCapabilities | None = None,
+    **kwargs: Any,
+) -> str:
+    """The fingerprint `LiteLLMClient` would have, computed from its settings alone
+    (pure: no client, no litellm import)."""
+    sent = request_capabilities(capabilities or LLMCapabilities())
+    return hash_value(
+        {
+            "adapter": "litellm",
+            "adapter_version": ADAPTER_VERSION,
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            **({"seed": seed} if seed is not None else {}),
+            # Credentials passed as kwargs (api_key, extra_headers...) are not identity,
+            # and neither is userinfo or a key in an endpoint URL's query string.
+            "kwargs": {
+                k: redact_url(str(v)) if k in _URL_KWARGS else str(v)
+                for k, v in sorted(without_secrets(kwargs).items())
+            },
+            # Capabilities that change the request, only when not the all-false
+            # default, so a job-built client keeps its fingerprint.
+            **({"capabilities": sent} if sent != request_capabilities(LLMCapabilities()) else {}),
+        }
+    )
+
+
 class LiteLLMClient:
     def __init__(
         self,
@@ -127,29 +160,13 @@ class LiteLLMClient:
 
     @property
     def fingerprint(self) -> str:
-        sent = request_capabilities(self._capabilities)
-        return hash_value(
-            {
-                "adapter": "litellm",
-                "adapter_version": ADAPTER_VERSION,
-                "model": self._model,
-                "temperature": self._temperature,
-                "max_tokens": self._max_tokens,
-                **({"seed": self._seed} if self._seed is not None else {}),
-                # Credentials passed as kwargs (api_key, extra_headers...) are not identity,
-                # and neither is userinfo or a key in an endpoint URL's query string.
-                "kwargs": {
-                    k: redact_url(str(v)) if k in _URL_KWARGS else str(v)
-                    for k, v in sorted(without_secrets(self._kwargs).items())
-                },
-                # Capabilities that change the request, only when not the all-false
-                # default, so a job-built client keeps its fingerprint.
-                **(
-                    {"capabilities": sent}
-                    if sent != request_capabilities(LLMCapabilities())
-                    else {}
-                ),
-            }
+        return litellm_fingerprint(
+            self._model,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            seed=self._seed,
+            capabilities=self._capabilities,
+            **self._kwargs,
         )
 
     async def _acompletion(self, **kwargs: Any) -> Any:

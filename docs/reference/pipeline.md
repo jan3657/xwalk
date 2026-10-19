@@ -756,18 +756,23 @@ Everything whose change should invalidate prior results, hashed into one digest.
   stage's own behavioural settings: the selector's `system`, budget and
   `legacy_id_resolution`, the scorer's `review_floor`, the rewriter's `max_queries`.
 
-Pass the stages you hand `Matcher`. A stage left out is assumed to be the default, so
-`Scorer(max_tokens=256)` built but not passed is invisible to the fingerprint. An
-explicit override equal to the client's value (`Scorer(temperature=0.0)` on a client
-configured with `0.0`) sends the same request and keeps the fingerprint. Stages built
-the default way add no component, which is why a job-file run keeps the fingerprint it
-had before stages were hashed (`JobSpec` passes the stages it builds).
-`build_decision_run_fingerprint` takes the decider path's `screener`, `chooser`, `gate`
-and `rewriter` the same way; see [the decider reference](decide.md#decisionmatcher).
+The four stages are required keyword arguments: pass the ones you hand `Matcher`.
+(They used to be optional and an omitted stage counted as the default, so a
+`Scorer(max_tokens=256)` that was built but not passed resumed the default run with no
+call.) An explicit override equal to the client's value (`Scorer(temperature=0.0)` on
+a client configured with `0.0`) sends the same request and keeps the fingerprint.
+Stages built the default way add no component, so the stage hashing by itself leaves a
+job-file run's fingerprint as it was (`JobSpec` passes the stages it builds); other
+0.2 changes, such as the status-semantics version, change every fingerprint anyway.
+`build_decision_run_fingerprint` requires the decider path's `screener`, `chooser`,
+`gate` and `rewriter` (`None` when there is none) the same way; see
+[the decider reference](decide.md#decisionmatcher).
 
 Deliberately excluded: credentials (API keys, credential-like LiteLLM keyword
 arguments and headers, userinfo or key parameters in a base URL), output paths,
-`policy.concurrency`, client timeouts and retry counts, and wrappers
+`policy.concurrency`, client timeouts and retry counts, `extra_headers` (they may
+carry credentials, so a header that changes behaviour needs its own non-secret
+identity, for example a different `model` or `base_url`), and wrappers
 (`BudgetedLLM`, `CachingLLM` delegate identity to the client they wrap) — none of them
 change what a result means.
 `Matcher.keep_candidates_in_trace` is likewise not an input: it changes trace

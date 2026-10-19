@@ -545,7 +545,11 @@ Raises `ParseError` (with the original text on `.raw`) when:
   the profile (or LiteLLM's all-false default) does not, changes the client
   fingerprint, so a resumed run is refused and cache entries are not shared. A run
   whose client had such an override gets a new fingerprint; a job file cannot set
-  one, so job runs keep theirs.
+  one, so this change alone leaves job runs' fingerprints as they were.
+- **The fingerprint can be computed without a client.** `openai_compat_fingerprint(...)`
+  and `litellm_fingerprint(...)` take the constructor's settings and return exactly
+  the client's `fingerprint`; the clients use them. Nothing is constructed, so no HTTP
+  client reads the environment.
 - **`request.extra` is merged into the body last**, so it can override `model`,
   `messages`, or `response_format`. It is part of the cache key, so at least a
   divergence never aliases in the cache.

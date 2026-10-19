@@ -65,8 +65,8 @@ def test_fingerprint_changes_with_the_policy():
         llm=FakeLLM(["x"]),
         selector_policy=SelectorPolicy(),
     )
-    a = build_run_fingerprint(policy=MatchPolicy(accept_at=0.6), **kwargs)
-    b = build_run_fingerprint(policy=MatchPolicy(accept_at=0.7), **kwargs)
+    a = build_run_fingerprint(policy=MatchPolicy(accept_at=0.6), **_with_stages(kwargs))
+    b = build_run_fingerprint(policy=MatchPolicy(accept_at=0.7), **_with_stages(kwargs))
     assert a != b
 
 
@@ -79,8 +79,12 @@ def test_fingerprint_changes_with_the_selector_budget():
         llm=FakeLLM(["x"]),
         policy=MatchPolicy(),
     )
-    a = build_run_fingerprint(selector_policy=SelectorPolicy(max_candidates=30), **kwargs)
-    b = build_run_fingerprint(selector_policy=SelectorPolicy(max_candidates=10), **kwargs)
+    a = build_run_fingerprint(
+        selector_policy=SelectorPolicy(max_candidates=30), **_with_stages(kwargs)
+    )
+    b = build_run_fingerprint(
+        selector_policy=SelectorPolicy(max_candidates=10), **_with_stages(kwargs)
+    )
     assert a != b
 
 
@@ -96,8 +100,8 @@ def test_fingerprint_changes_with_the_target_snapshot():
         selector_policy=SelectorPolicy(),
     )
     other = MemoryStore.from_source([Record(id="T1", fields={"label": "changed"})])
-    assert build_run_fingerprint(store=STORE, **kwargs) != build_run_fingerprint(
-        store=other, **kwargs
+    assert build_run_fingerprint(store=STORE, **_with_stages(kwargs)) != build_run_fingerprint(
+        store=other, **_with_stages(kwargs)
     )
 
 
@@ -111,7 +115,9 @@ def test_fingerprint_is_stable_across_identical_configurations():
         policy=MatchPolicy(),
         selector_policy=SelectorPolicy(),
     )
-    assert build_run_fingerprint(**kwargs) == build_run_fingerprint(**kwargs)
+    assert build_run_fingerprint(**_with_stages(kwargs)) == build_run_fingerprint(
+        **_with_stages(kwargs)
+    )
 
 
 # --- running ----------------------------------------------------------------------
@@ -471,7 +477,13 @@ def _fp_kwargs(**overrides):
         selector_policy=SelectorPolicy(),
     )
     kwargs.update(overrides)
-    return kwargs
+    return _with_stages(kwargs)
+
+
+def _with_stages(kwargs):
+    from tests.test_effective_identity import default_stages
+
+    return {**kwargs, **default_stages(kwargs["llm"], prompts=kwargs["prompts"])}
 
 
 def test_the_fingerprint_is_the_hash_of_its_recorded_components():

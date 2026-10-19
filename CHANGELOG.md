@@ -204,13 +204,23 @@ offline only (FakeDecider, no paid calls).
   `generation_defaults`, so an explicit override equal to the client's value keeps the
   identity. A decider job's rewrite is identified by its job block plus whatever the
   client `ops.run` actually hands it differs in. Credentials, timeouts, retries,
-  concurrency and wrappers stay out. **Job-file runs keep their fingerprints** (a job
-  cannot express a stage or capability override; checked on the test fixtures before
-  and after). Python-API runs whose stages carry an override, or whose client has a
-  request-affecting capability override, get a new fingerprint: `xwalk match --out`
-  refuses to resume such a run directory (exit 3), and `run_batch` starts a new run in
-  the same ledger rather than reusing the old results. Pass the stages to
-  `build_run_fingerprint`: a stage left out is assumed to be the default.
+  concurrency and wrappers stay out. The stage arguments are **required** (on the
+  decider path `rewriter=None` says there is none): an omitted stage used to count as
+  the default, so a changed stage that was not passed resumed the old run with zero
+  calls. **Breaking for Python callers** of `build_run_fingerprint`,
+  `run_fingerprint_components`, `build_decision_run_fingerprint` and
+  `decision_run_fingerprint_components`, which now raise `TypeError` without them. A
+  decider job's `decider.rewrite.llm.base_url` is hashed with userinfo and key
+  parameters removed (it used to be hashed as written), and comparing an injected
+  rewrite client with the block no longer builds a client
+  (`openai_compat_fingerprint`, `litellm_fingerprint`). The stage hashing alone leaves
+  a job-file run's fingerprint as it was (a job cannot express a stage or capability
+  override; checked on the test fixtures), but the status-semantics version (below)
+  changes every run fingerprint anyway, so existing run directories are refused on
+  resume regardless. Python-API runs whose stages carry an override, or whose client
+  has a request-affecting capability override, get a new fingerprint: `xwalk match
+  --out` refuses to resume such a run directory (exit 3), and `run_batch` starts a new
+  run in the same ledger rather than reusing the old results.
 - **`xwalk cluster` run identity includes the pool's retrieval heads.** The fingerprint
   components stored the retrieval identity (lexical engine, dense encoder name,
   dimension and settings, fusion) under `pool` and then overwrote it with the pool

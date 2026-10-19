@@ -136,6 +136,30 @@ class Capture:
 # --- the Matcher path ---------------------------------------------------------------
 
 
+def default_stages(
+    llm: Any, *, prompts: Any = PROMPTS, templates: Any = TEMPLATES
+) -> dict[str, Any]:
+    """The four LLM stages as a job file builds them, for the required builder arguments."""
+    return {
+        "selector": Selector(llm, prompts, templates),
+        "scorer": Scorer(llm, prompts, templates),
+        "verifier": Verifier(llm, prompts, templates),
+        "rewriter": QueryRewriter(llm, prompts, templates),
+    }
+
+
+def default_decision_stages(
+    decider: Any, *, questions: Any = QUESTIONS, templates: Any = DECIDE_TEMPLATES
+) -> dict[str, Any]:
+    """The decider stages for a default `DecisionPolicy`, and no rewriter."""
+    return {
+        "screener": Screener(decider, questions, templates),
+        "chooser": Chooser(decider, questions, templates),
+        "gate": PropertyGate(decider, questions, templates),
+        "rewriter": None,
+    }
+
+
 def _config(
     llm: Any,
     *,
@@ -284,7 +308,7 @@ def test_default_stages_add_no_identity_component():
         verifier=config["verifier"],
         rewriter=config["rewriter"],
     )
-    assert with_stages == run_fingerprint_components(**common)
+    assert with_stages == run_fingerprint_components(**common, **default_stages(config["llm"]))
     assert "stages" not in with_stages
 
 
@@ -635,9 +659,202 @@ def test_default_decider_stages_add_no_identity_component():
     }
     from xwalk.batch import decision_run_fingerprint_components
 
-    staged = decision_run_fingerprint_components(
-        **common, screener=config["screener"], chooser=config["chooser"], gate=config["gate"]
+    stages = {k: config[k] for k in ("screener", "chooser", "gate")}
+    staged = decision_run_fingerprint_components(**common, **stages, rewriter=None)
+    assert "stages" not in staged and "rewrite" not in staged
+    with_rewriter = decision_run_fingerprint_components(
+        **common, **stages, rewriter=config["rewriter"]
     )
-    assert staged == decision_run_fingerprint_components(**common)
-    with_rewriter = decision_run_fingerprint_components(**common, rewriter=config["rewriter"])
     assert "rewrite" in with_rewriter and "sk-one" not in json.dumps(with_rewriter)
+
+
+# --- review follow-ups ----------------------------------------------------------------
+
+
+def _jev_rewrite_job(tmp_path: Path, **llm: Any) -> Any:
+    from xwalk.config import load_job
+
+    rewrite = {**_REWRITE, "llm": {**_REWRITE["llm"], **llm}}
+    return load_job(
+        _job(tmp_path, "job_tiny_jev.yaml", lambda d: d["decider"].update(rewrite=rewrite))
+    )
+
+
+def test_the_rewrite_fingerprint_hashes_no_credential_in_its_base_url(tmp_path, monkeypatch):
+    """Userinfo and key parameters in `decider.rewrite.llm.base_url` are credentials:
+    they must never reach a hash input, and rotating them must not change identity."""
+    import xwalk.config as config
+
+    inputs: list[str] = []
+    real = config.hash_value
+
+    def recording(value: Any) -> str:
+        inputs.append(json.dumps(value, default=str))
+        return real(value)
+
+    monkeypatch.setattr(config, "hash_value", recording)
+
+    def fingerprint(url: str) -> str:
+        job = _jev_rewrite_job(tmp_path, base_url=url)
+        return job.decision_run_fingerprint(
+            store=DECIDE_STORE, retrievers=[Scripted({})], decider=FakeDecider()
+        )
+
+    one = fingerprint("https://user:pw-one@llm.example/v1?api_key=key-one&region=eu")
+    two = fingerprint("https://user:pw-two@llm.example/v1?api_key=key-two&region=eu")
+    other = fingerprint("https://llm.example/v1?region=us")
+    assert one == two != other
+    assert inputs
+    assert not any(s in text for text in inputs for s in ("pw-one", "key-one", "pw-two"))
+
+
+def test_the_fingerprint_builders_require_every_stage():
+    """An omitted stage used to count as the default, so a stage built with
+    `max_tokens=256` but not passed resumed the default run with zero calls."""
+    capture = Capture()
+    config = _config(capture.client(), scorer={"max_tokens": 256})
+    old_signature: dict[str, Any] = {
+        "templates": TEMPLATES,
+        "prompts": PROMPTS,
+        "store": STORE,
+        "retrievers": [ScriptedRetriever({})],
+        "llm": config["llm"],
+        "policy": config["policy"],
+        "selector_policy": SelectorPolicy(),
+    }
+    with pytest.raises(TypeError, match="scorer"):
+        build_run_fingerprint(**old_signature)
+    with pytest.raises(TypeError, match="scorer"):
+        run_fingerprint_components(**old_signature)
+
+    decide = _decide_config(capture.jev(), capture.client())
+    old_decision: dict[str, Any] = {
+        "templates": DECIDE_TEMPLATES,
+        "questions": QUESTIONS,
+        "store": DECIDE_STORE,
+        "retrievers": [Scripted({})],
+        "decider": decide["decider"],
+        "policy": decide["policy"],
+    }
+    with pytest.raises(TypeError, match="screener"):
+        build_decision_run_fingerprint(**old_decision)
+    stages = {k: decide[k] for k in ("screener", "chooser", "gate")}
+    with pytest.raises(TypeError, match="rewriter"):
+        build_decision_run_fingerprint(**old_decision, **stages)
+    # "No rewriter" is said explicitly, and is not the same run as one with a rewriter.
+    without = build_decision_run_fingerprint(**old_decision, **stages, rewriter=None)
+    assert without != _decide_fingerprint(decide)
+
+
+@pytest.mark.parametrize("kind", ["openai_compat", "litellm"])
+def test_job_rewrite_identity_is_computed_without_building_a_client(tmp_path, monkeypatch, kind):
+    """Comparing an injected rewrite client with the job's block must not construct the
+    job's client (an HTTP client can fail to build, e.g. on a bad SSL_CERT_FILE)."""
+    import xwalk.llm.litellm as litellm_module
+    import xwalk.llm.openai_compat as openai_module
+
+    monkeypatch.setenv("XWALK_TEST_API_KEY", "sk-env")
+    job = _jev_rewrite_job(tmp_path, kind=kind, temperature=0.4)
+    common: dict[str, Any] = {"store": DECIDE_STORE, "retrievers": [Scripted({})]}
+    built = job.build_rewrite_llm()  # what the job builds, before construction is forbidden
+    expected = job.decision_run_fingerprint(**common, decider=FakeDecider(), rewrite_llm=built)
+
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("identity must not construct a client")
+
+    monkeypatch.setattr(openai_module.OpenAICompatClient, "__init__", forbidden)
+    monkeypatch.setattr(litellm_module.LiteLLMClient, "__init__", forbidden)
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", forbidden)
+    legacy = job.decision_run_fingerprint(**common, decider=FakeDecider())
+    again = job.decision_run_fingerprint(**common, decider=FakeDecider(), rewrite_llm=built)
+    injected = job.decision_run_fingerprint(
+        **common, decider=FakeDecider(), rewrite_llm=FakeLLM(["x"])
+    )
+    assert expected == again == legacy != injected
+
+
+# --- LiteLLM: captured completion kwargs ----------------------------------------------
+
+
+class LiteLLMCapture:
+    """LiteLLM clients whose `acompletion` kwargs land in `bodies`; no litellm import."""
+
+    def __init__(self, monkeypatch: Any) -> None:
+        import xwalk.llm.litellm as litellm_module
+
+        self.bodies: list[dict[str, Any]] = []
+        bodies = self.bodies
+
+        class Module:
+            @staticmethod
+            async def acompletion(**kwargs: Any) -> Any:
+                bodies.append(kwargs)
+                return {
+                    "model": "m",
+                    "choices": [{"message": {"content": REPLY}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                }
+
+        monkeypatch.setattr(litellm_module, "require", lambda *a, **k: Module)
+
+    def client(self, **kwargs: Any) -> Any:
+        from xwalk.llm.litellm import LiteLLMClient
+
+        settings: dict[str, Any] = {"api_key": "sk-one", "api_base": "https://proxy.test/v1"}
+        settings.update(kwargs)
+        return LiteLLMClient("openai/m", **settings)
+
+
+def _without_key(bodies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{k: v for k, v in body.items() if k != "api_key"} for body in bodies]
+
+
+LITELLM_DIFFERENT: dict[str, Callable[[LiteLLMCapture], dict[str, Any]]] = {
+    "a schema capability": lambda c: _config(
+        c.client(seed=7, capabilities=LLMCapabilities(json_schema=True))
+    ),
+    "a seed capability with a seed": lambda c: _config(
+        c.client(seed=7, capabilities=LLMCapabilities(seed=True))
+    ),
+    "a stage max_tokens override": lambda c: _config(c.client(seed=7), scorer={"max_tokens": 256}),
+    "a stage temperature override": lambda c: _config(
+        c.client(seed=7), selector={"temperature": 0.5}
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(LITELLM_DIFFERENT))
+async def test_litellm_requests_that_differ_get_different_fingerprints(name, monkeypatch):
+    capture = LiteLLMCapture(monkeypatch)
+    base = _config(capture.client(seed=7))
+    variant = LITELLM_DIFFERENT[name](capture)
+    before = _without_key(await _stage_bodies(capture, base))  # type: ignore[arg-type]
+    after = _without_key(await _stage_bodies(capture, variant))  # type: ignore[arg-type]
+    assert before != after
+    assert _fingerprint(base) != _fingerprint(variant)
+
+
+async def test_litellm_strictness_is_identity_only_with_a_schema(monkeypatch):
+    capture = LiteLLMCapture(monkeypatch)
+    loose = _config(capture.client(capabilities=LLMCapabilities(json_schema=True)))
+    strict = _config(
+        capture.client(capabilities=LLMCapabilities(json_schema=True, strict_schema=True))
+    )
+    assert await _stage_bodies(capture, loose) != await _stage_bodies(capture, strict)  # type: ignore[arg-type]
+    assert _fingerprint(loose) != _fingerprint(strict)
+
+    plain = _config(capture.client())
+    strict_alone = _config(capture.client(capabilities=LLMCapabilities(strict_schema=True)))
+    assert await _stage_bodies(capture, plain) == await _stage_bodies(capture, strict_alone)  # type: ignore[arg-type]
+    assert _fingerprint(plain) == _fingerprint(strict_alone)
+
+
+async def test_litellm_credential_rotation_keeps_the_fingerprint(monkeypatch):
+    capture = LiteLLMCapture(monkeypatch)
+    one = _config(capture.client(api_key="sk-one"))
+    two = _config(capture.client(api_key="sk-two"))
+    first = await _stage_bodies(capture, one)  # type: ignore[arg-type]
+    second = await _stage_bodies(capture, two)  # type: ignore[arg-type]
+    assert [b["api_key"] for b in first + second] == ["sk-one"] * 4 + ["sk-two"] * 4
+    assert _without_key(first) == _without_key(second)
+    assert _fingerprint(one) == _fingerprint(two)
