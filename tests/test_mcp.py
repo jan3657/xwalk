@@ -276,6 +276,31 @@ async def test_a_symlink_out_of_the_root_is_refused(server, job, tmp_path, outsi
 
 
 @pytest.mark.mcp
+async def test_a_symlink_inside_an_index_or_run_directory_is_refused(
+    server, job, tmp_path, outside
+):
+    from mcp import Client
+
+    index = tmp_path / "index"
+    index.mkdir()
+    run = tmp_path / "run"
+    run.mkdir()
+    try:
+        (index / "bm25").symlink_to(outside, target_is_directory=True)
+        (run / "index").symlink_to(outside, target_is_directory=True)
+    except OSError:  # pragma: no cover - Windows without symlink rights
+        pytest.skip("cannot create symlinks here")
+    async with Client(server) as client:
+        searched = await _call(
+            client, "search_candidates", job=str(job), query="dextrose", index_dir=str(index)
+        )
+        ran = await _call(client, "match_records", job=str(job), out=str(run), max_calls=5)
+    _refused(searched, "bm25")
+    _refused(ran, "index")
+    assert sorted(p.name for p in outside.iterdir()) == ["quickstart"]
+
+
+@pytest.mark.mcp
 async def test_a_job_referring_to_data_outside_the_roots_is_refused(server, job, outside):
     from mcp import Client
 

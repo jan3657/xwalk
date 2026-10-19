@@ -237,7 +237,10 @@ offline only (FakeDecider, no paid calls).
   working directory, or the directories given with the new repeatable `--root DIR`.
   The files a job refers to (`source.path`, `target.path`, `prompts.slots`, a dense
   `model` given as a local path, a sqlite database) are checked the same way before the
-  job is compiled or read; network database URLs are refused in MCP mode. A refusal is a
+  job is compiled or read; network database URLs are refused in MCP mode. An `out`,
+  `index_dir` or `run` directory that already holds a symlink leading out of the roots
+  is refused too, and a differently cased spelling of a root on a case-insensitive
+  filesystem is accepted (compared by file identity). A refusal is a
   tool error with code `path_outside_roots` (exit `2`). Before, an agent could name any
   job file the user could read, and so compile its templates, and write run and index
   directories anywhere writable. New module `xwalk.confine` (`Roots`, `PathRefused`);

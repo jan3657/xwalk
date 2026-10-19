@@ -210,9 +210,10 @@ def build_server(
             return respond(ops.failure_result(operation, exc), is_error=True)
         return respond(result)
 
-    def confined(value: str, what: str) -> str:
-        """`value` resolved inside the roots (`PathRefused` otherwise)."""
-        return str(allowed.resolve(value, what=what))
+    def confined(value: str, what: str, *, tree: bool = False) -> str:
+        """`value` resolved inside the roots (`PathRefused` otherwise). `tree`: a
+        directory worked beneath, refused if it holds a symlink out of the roots."""
+        return str(allowed.resolve(value, what=what, tree=tree))
 
     def confined_job(value: str) -> str:
         """The job path inside the roots, after checking the files it refers to."""
@@ -266,7 +267,7 @@ def build_server(
         refuses an incompatible one."""
 
         async def work() -> ops.OpResult:
-            index = confined(index_dir, "index_dir")
+            index = confined(index_dir, "index_dir", tree=True)
             checked = await anyio.to_thread.run_sync(confined_job, job)
             return await ops.search_async(checked, query, index_dir=index, limit=limit)
 
@@ -312,7 +313,7 @@ def build_server(
             )
 
         async def work() -> ops.OpResult:
-            run_dir = confined(out, "out")
+            run_dir = confined(out, "out", tree=True)
             checked = await anyio.to_thread.run_sync(confined_job, job)
             llm = make_llm() if make_llm is not None else None
             # A decider job offline gets the deterministic overlap FakeDecider, never Jev.
@@ -342,7 +343,9 @@ def build_server(
         """A run's identity, state, current counts, last usage and review overlay.
 
         `exit_code`/`status` are what the run itself would report (as `xwalk inspect`)."""
-        return await perform("inspect", in_thread(lambda: ops.inspect(confined(run, "run"))))
+        return await perform(
+            "inspect", in_thread(lambda: ops.inspect(confined(run, "run", tree=True)))
+        )
 
     async def list_results(
         run: Annotated[str, Field(description="run directory")],
@@ -360,7 +363,7 @@ def build_server(
             "results",
             in_thread(
                 lambda: ops.list_results(
-                    confined(run, "run"), offset=offset, limit=limit, status=status
+                    confined(run, "run", tree=True), offset=offset, limit=limit, status=status
                 )
             ),
         )
@@ -372,7 +375,7 @@ def build_server(
         """Why one source got its answer: the decision, every attempt (top candidates,
         scores, verifier), the applied review and the source's history."""
         return await perform(
-            "explain", in_thread(lambda: ops.explain(confined(run, "run"), source_id))
+            "explain", in_thread(lambda: ops.explain(confined(run, "run", tree=True), source_id))
         )
 
     server.add_tool(validate_job, annotations=read_only)

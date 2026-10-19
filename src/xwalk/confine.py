@@ -6,6 +6,9 @@ the server treats every path it is given as untrusted. `Roots.resolve` resolves 
 refuses it unless the result lies inside one of the roots. `Roots.check_job` applies the
 same rule to the files a job refers to, before anything in the job is compiled or read.
 
+Directories xwalk writes or reads beneath (`out`, `index_dir`, `run`) are also refused
+when they already contain a symlink leading out of the roots.
+
 The check is made when a tool is called; xwalk then opens the resolved path. A process
 that can swap a directory for a symlink between the two can still escape -- the roots
 guard against an agent naming paths, not against a hostile local user.
@@ -47,10 +50,56 @@ class Roots:
         return ", ".join(str(p) for p in self.paths)
 
     def _inside(self, path: Path) -> bool:
-        return any(path == root or path.is_relative_to(root) for root in self.paths)
+        """`path` (already resolved) is a root or lies beneath one.
 
-    def resolve(self, value: str | Path, *, what: str) -> Path:
-        """`value` resolved inside a root, or `PathRefused` naming the argument `what`."""
+        The textual check settles almost every call. On a case-insensitive filesystem a
+        resolved path keeps the caller's casing, so `/Proj/x` and the root `/proj` differ
+        as text; then the existing ancestors are compared with the roots by identity
+        (`samefile`: device and inode), which accepts the same directory under another
+        spelling and nothing else.
+        """
+        if any(path == root or path.is_relative_to(root) for root in self.paths):
+            return True
+        for ancestor in (path, *path.parents):
+            try:
+                if not ancestor.exists():
+                    continue
+                if any(ancestor.samefile(root) for root in self.paths):
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _tree_links(self, top: Path, *, what: str, value: str | Path) -> None:
+        """Refuse a directory holding a symlink (at any depth) that leaves the roots.
+
+        xwalk writes and reads beneath `out`, `index_dir` and `run`; a pre-existing link
+        such as `index/bm25 -> /elsewhere` would carry those writes out of the roots.
+        Links that stay inside are allowed; links are not followed while walking.
+        """
+        if not top.is_dir():
+            return
+        for directory, dirnames, filenames in os.walk(top, followlinks=False):
+            for name in (*dirnames, *filenames):
+                entry = Path(directory) / name
+                if not entry.is_symlink():
+                    continue
+                try:
+                    target = entry.resolve()
+                except (OSError, RuntimeError):
+                    target = None
+                if target is None or not self._inside(target):
+                    raise PathRefused(
+                        f"{what}: {str(value)!r} contains a symlink "
+                        f"{str(entry.relative_to(top))!r} that leads outside the allowed "
+                        f"roots ({self.describe()})"
+                    )
+
+    def resolve(self, value: str | Path, *, what: str, tree: bool = False) -> Path:
+        """`value` resolved inside a root, or `PathRefused` naming the argument `what`.
+
+        `tree=True` (a directory xwalk will write or read beneath) also refuses one that
+        contains a symlink leading outside the roots."""
         try:
             resolved = Path(value).resolve()  # relative: against the working directory
         except (OSError, ValueError, RuntimeError) as exc:  # NUL byte, symlink loop
@@ -61,6 +110,8 @@ class Roots:
                 f"({self.describe()}); start the server with --root to allow another "
                 "directory"
             )
+        if tree:
+            self._tree_links(resolved, what=what, value=value)
         return resolved
 
     def check_job(self, job: str | Path) -> None:

@@ -44,7 +44,14 @@ default rather than adding to it).
   root, and a symlink inside a root that points out of it are all refused. A path that
   does not exist yet (a new run or index directory) is checked through its nearest
   existing parent, so a run cannot be written through a symlink that leaves the roots.
-- This covers the `job`, `out`, `index_dir` and `run` arguments of every tool.
+- This covers the `job`, `out`, `index_dir` and `run` arguments of every tool. The
+  directories xwalk works beneath (`out`, `index_dir`, `run`) are also refused when they
+  already contain a symlink, at any depth, leading out of the roots (for example
+  `index/bm25 -> /elsewhere`); links that stay inside are fine.
+- On a case-insensitive filesystem (the macOS default) a path spelled with different
+  casing from the root (`/Users/me/Proj` for the root `/Users/me/proj`) is accepted: when
+  the text does not match, the path's existing ancestors are compared with the roots by
+  file identity.
 - The files a job refers to are checked too, before the job's templates are compiled or
   any record is read: `source.path`, `target.path`, `prompts.slots`, a dense retriever's
   `model` when it names a local directory (an existing path, as sentence-transformers
@@ -60,7 +67,7 @@ default rather than adding to it).
 The check is made when the tool is called; xwalk then opens the resolved path. The roots
 stop an agent from naming files elsewhere. They do not stop another local process from
 swapping a directory for a symlink between the check and the open, and files the user
-placed inside a root (including symlinks inside a run directory) are trusted.
+placed inside a root are trusted as long as their symlinks stay inside the roots.
 
 ## Client configuration
 

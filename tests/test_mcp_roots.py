@@ -254,3 +254,40 @@ def test_an_invalid_job_is_left_to_validation(root):
     job = root / "broken.yaml"
     job.write_text("name: [unclosed\n", encoding="utf-8")
     Roots([root]).check_job(job)  # nothing to check; ops reports the invalid job
+
+
+# --- directories written or read beneath a confined path -----------------------------------
+
+
+def test_a_symlink_beneath_a_directory_argument_is_refused(root, outside):
+    index = root / "index"
+    index.mkdir()
+    _symlink(index / "bm25", outside)  # writes to index/bm25/... would land outside
+    roots = Roots([root])
+    with pytest.raises(PathRefused, match=r"index_dir.*bm25"):
+        roots.resolve(str(index), what="index_dir", tree=True)
+    nested = root / "run" / "index"
+    nested.mkdir(parents=True)
+    _symlink(nested / "ledger.sqlite", outside / "secret.yaml")
+    with pytest.raises(PathRefused, match="ledger.sqlite"):
+        roots.resolve(str(root / "run"), what="out", tree=True)
+
+
+def test_a_symlink_beneath_that_stays_inside_is_accepted(root):
+    (root / "real").mkdir()
+    (root / "run").mkdir()
+    _symlink(root / "run" / "alias", root / "real")
+    roots = Roots([root])
+    assert roots.resolve(str(root / "run"), what="out", tree=True) == root.resolve() / "run"
+
+
+def test_a_differently_cased_path_to_the_same_root_is_accepted(root, outside):
+    upper = Path(str(root.parent / root.name.upper()))
+    if not upper.exists() or not upper.samefile(root):
+        pytest.skip("case-sensitive filesystem")
+    roots = Roots([root])
+    assert roots.resolve(str(upper / "job.yaml"), what="job").name == "job.yaml"
+    assert roots.resolve(str(upper / "new" / "run"), what="out").name == "run"
+    other = Path(str(outside.parent / outside.name.upper()))
+    with pytest.raises(PathRefused):
+        roots.resolve(str(other / "secret.yaml"), what="job")
