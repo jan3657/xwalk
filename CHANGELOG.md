@@ -16,6 +16,10 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- Decider traces retain the rewritten retrieval union before the second screen,
+  including when that screen fails. Serialized traces preserve retrieval evidence
+  without claiming that failed screening produced a presentation map.
+
 - Evaluation reports budget truncation only with explicit clipping evidence.
   Retrieved gold with unknown presentation after selector failure is unavailable,
   excluded from the ceiling denominator, rather than a recommendation to raise budgets.

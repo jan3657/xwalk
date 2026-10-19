@@ -151,13 +151,15 @@ class DecisionMatcher:
                     seen = {c.id for c in candidates}
                     new = [c for c in second if c.id not in seen]
                     note = f"rewrite: {len(extra)} queries proposed, {len(new)} new candidates"
+                    # Retrieval evidence exists even if the next screen fails. Keep
+                    # its union independently of successful presentation evidence.
+                    candidates = list(candidates) + new
                     if second and not failed2:
                         screen2 = await self._screener.screen(source, context, second)
                         usage = usage + screen2.usage
                         if screen is None:
-                            screen, candidates = screen2, list(second)
+                            screen = screen2
                         else:
-                            candidates = list(candidates) + new
                             screen = self._screener.merge(screen, screen2, candidates)
                 rewrite_notes.append(note)
             if screen is not None:
