@@ -860,8 +860,28 @@ class _RunView:
     manifest: dict[str, Any]
 
 
+def refuse_cluster_run(run_dir: str | Path, operation: str) -> None:
+    """A clustering run has no ledger: say so and name what reads it, instead of
+    reporting `run_not_found` (or opening a ledger, which would create one)."""
+    path = Path(run_dir)
+    try:
+        manifest = _read_manifest(path)
+    except (OSError, ValueError):
+        return
+    if manifest is not None and manifest.get("operation") == "cluster":
+        raise OpError(
+            operation,
+            "cluster_run",
+            f"{path} is a clustering run; `xwalk {operation}` reads matching runs. Read its "
+            "exports (members.csv, clusters.csv, unresolved.csv, decisions.jsonl) or score "
+            f"it with `xwalk cluster eval --run {path} --gold <csv>`",
+            exit_code=EXIT_USAGE,
+        )
+
+
 def _open_run(run_dir: str | Path, operation: str) -> tuple[_RunView, Ledger]:
     path = Path(run_dir)
+    refuse_cluster_run(path, operation)
     manifest = _read_manifest(path)
     if manifest is None or not (path / "ledger.sqlite").is_file():
         raise OpError(
@@ -1177,6 +1197,22 @@ def cluster(
     return asyncio.run(
         cluster_async(job, out, max_calls=max_calls, llm=llm, encoder=encoder, progress=progress)
     )
+
+
+def cluster_eval(
+    run_dir: str | Path, gold: str | Path, *, out: str | Path | None = None
+) -> OpResult:
+    """Score a clustering run against a gold partition (`item_id, cluster_id` rows).
+
+    Pairwise and B-cubed precision/recall/F1 (records outside the accepted partition as
+    singletons, and accepted records only), outcome counts, and the share of gold pairs
+    co-exposed in one judge prompt (a diagnostic, not a recall bound). Reads the run's
+    exports and store; makes no model or retriever call and writes no data in the run
+    directory. `out` also writes the report as JSON.
+    """
+    from xwalk.cluster.operation import cluster_eval_operation
+
+    return cluster_eval_operation(run_dir, gold, out=out)
 
 
 # --- inspect / explain --------------------------------------------------------------
@@ -1681,6 +1717,7 @@ __all__ = [
     "bundled_example",
     "cluster",
     "cluster_async",
+    "cluster_eval",
     "explain",
     "export",
     "index",

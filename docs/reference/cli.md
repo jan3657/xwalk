@@ -78,8 +78,11 @@ Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missi
 `source_not_found`, `fatal_provider_failure`, `call_limit_reached`, `exception`,
 `interrupted` and `usage`. The decider path adds `wrong_job_path` (`ablate`, `prompts` or
 `fit` given the wrong kind of job) and, from `fit`, `no_recommendation`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
-to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`, and the
-`experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
+to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`,
+`run_format_outdated`, `cluster_run` (a matching-run command such as `inspect`
+given a clustering run), from `cluster eval` `not_a_cluster_run`,
+`gold_unreadable`, `store_unreadable` and the `partial_run` and `gold_not_in_run`
+warnings, and the `experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
 `--offline-model` adds the `offline_model` warning.
 
 ## `init`
@@ -269,6 +272,62 @@ job error, `3` aborted run, failed records or a foreign run directory, `130` int
 
 `validate` (and `doctor`) accept clustering jobs too: strict schema, source file,
 extras, credential presence and duplicate source ids, with no model call.
+
+`inspect`, `explain`, `results`, `export`, `review`, `eval`, `fit` and `compare` read
+matching runs. Given a clustering run directory they exit `2` with `cluster_run`,
+naming the exports and `xwalk cluster eval`, and create nothing in it.
+
+## `cluster eval`
+
+Scores a clustering run's exported partition against a gold partition. Reads
+`manifest.json`, `members.csv` and `cluster.sqlite` (read-only); calls no model and no
+retriever and writes no data in the run directory. (While a run is still in progress,
+SQLite may update its shared-memory index `cluster.sqlite-shm` as it does for any
+reader; the store is snapshotted with SQLite's backup API and the database and its
+log are not written.) Usage is summed over the run's invocations; an invocation that
+never finished recorded none, which makes the totals a lower bound (`usage_incomplete`
+warning, `usage.invocations_without_usage`).
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | clustering run directory |
+| `--gold` | yes | — | gold partition: CSV with a header `item_id,cluster_id` (or `source_id,cluster_id`), or JSONL objects with those keys. Records with the same `cluster_id` are equivalent; give every gold record a row, a singleton its own id |
+| `--out` | no | none | also write the report as JSON to this file. Give it after `eval`: run flags (`--job`, `--out`, `--max-calls`) before `eval` are refused with `usage` (exit `2`) |
+
+```console
+$ xwalk cluster eval --run runs/food --gold food_gold.csv
+clustering run runs/food against food_gold.csv (8 gold items; run complete)
+  as_singletons : pairwise P/R/F1 1.000 / 1.000 / 1.000   B-cubed P/R/F1 1.000 / 1.000 / 1.000
+  accepted_only : pairwise P/R/F1 1.000 / 1.000 / 1.000   B-cubed P/R/F1 1.000 / 1.000 / 1.000
+  outcomes      : 5 assigned, 3 singleton
+  co-exposed    : 4 of 4 gold pairs were in one judge prompt together (a diagnostic, not a recall bound)
+  usage         : 21 calls over 1 invocation(s); this evaluation made none
+```
+
+(Output of the test fixture with a scripted judge, so the scores are perfect by
+construction.) `as_singletons` scores every gold record outside the accepted partition
+(`needs_review`, `failed`, `pending`, or absent from the run) as its own cluster;
+`accepted_only` scores the accepted records against gold restricted to them. Both are
+computed by `xwalk.evaluate.clustering`, the code the benchmark uses. `--json` data:
+`scores` (both conventions with pairwise and B-cubed precision, recall and F1, false
+merges, splits and singleton counts, plus `outcome_counts`, `review_coverage`,
+`accepted_coverage`), `exposure`, `usage` (summed over the run's invocations),
+`calls_per_item`, the run's `stop_reason` and `exported_revision`. `counts` holds
+`gold_items` and the outcome counts.
+
+`exposure.gold_pairs_co_exposed` counts gold co-cluster pairs whose two records were
+in at least one prompt together: the subject record or cluster and the member lines
+shown, as rendered (at most `pool.member_evidence` per cluster). It tells search misses
+from judge misses when recall is low. It is **not an upper bound** on recall: a record
+joins on the evidence of a cluster's first members, and merges link records that no
+prompt showed together.
+
+Exit codes: `0` scored (a run that is not `complete` is scored with a `partial_run`
+warning, its `pending` records as singletons); `2` unknown run directory, a
+directory that is not a clustering run (`not_a_cluster_run`) or an unreadable or
+duplicate-id gold file (`gold_unreadable`); `3` an unreadable or corrupt store
+(`store_unreadable`) or IO error. From
+Python: `ops.cluster_eval(run_dir, gold, out=None)`.
 
 ## `search`
 

@@ -24,7 +24,9 @@ run can be compared row for row.
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -168,6 +170,7 @@ class ClusterStore:
     def __init__(self, conn: sqlite3.Connection, path: Path) -> None:
         self._conn = conn
         self.path = path
+        self._scratch: tempfile.TemporaryDirectory[str] | None = None
 
     @classmethod
     def open(cls, path: str | Path) -> ClusterStore:
@@ -189,8 +192,75 @@ class ClusterStore:
             )
         return store
 
+    @classmethod
+    def open_readonly(cls, path: str | Path) -> ClusterStore:
+        """Open an existing store for reading only (evaluation, inspection).
+
+        No row is written and no schema created. Three cases:
+
+        - Closed cleanly (no `-wal`): opened `immutable`, which reads the file without
+          creating any side file.
+        - A live writer (`-wal` and `-shm`, a run in progress): read through SQLite with
+          `mode=ro` and snapshotted with `Connection.backup()` into a temporary file, so
+          the copy is one consistent transaction, never a torn file copy taken during a
+          checkpoint. As any reader of a WAL database does, SQLite may update the
+          shared-memory index (`-shm`) while reading; the database and log are not
+          written.
+        - A killed run (`-wal` without `-shm`, so no writer): the file and its log are
+          copied to a temporary directory and read there, committed steps included.
+
+        A missing file is an error, not a new empty store; an unreadable or corrupt one
+        is a `ClusterStoreError`."""
+        path = Path(path)
+        if not path.is_file():
+            raise ClusterStoreError(f"{path}: no clustering store")
+        wal = path.with_name(path.name + "-wal")
+        shm = path.with_name(path.name + "-shm")
+        scratch: tempfile.TemporaryDirectory[str] | None = None
+        conn: sqlite3.Connection | None = None
+        try:
+            if wal.exists():
+                scratch = tempfile.TemporaryDirectory(prefix="xwalk-cluster-ro-")
+                copy = Path(scratch.name) / path.name
+                if shm.exists():
+                    source = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+                    try:
+                        target = sqlite3.connect(copy)
+                        try:
+                            source.backup(target)
+                        finally:
+                            target.close()
+                    finally:
+                        source.close()
+                else:
+                    shutil.copyfile(path, copy)
+                    shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
+                uri = f"{copy.as_uri()}?mode=ro"
+            else:
+                uri = f"{path.resolve().as_uri()}?mode=ro&immutable=1"
+            conn = sqlite3.connect(uri, uri=True)
+            conn.row_factory = sqlite3.Row
+            store = cls(conn, path)
+            store._scratch = scratch
+            version = store.get_meta("schema_version")
+        except sqlite3.DatabaseError as exc:
+            if conn is not None:
+                conn.close()
+            if scratch is not None:
+                scratch.cleanup()
+            raise ClusterStoreError(f"{path}: unreadable clustering store ({exc})") from None
+        if version != SCHEMA_VERSION:
+            store.close()
+            raise ClusterStoreError(
+                f"{path} has cluster store schema {version}; this xwalk reads {SCHEMA_VERSION}"
+            )
+        return store
+
     def close(self) -> None:
         self._conn.close()
+        if self._scratch is not None:
+            self._scratch.cleanup()
+            self._scratch = None
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -442,6 +512,17 @@ class ClusterStore:
                 (_now(),),
             )
         return int(cursor.lastrowid or 0)
+
+    def invocations(self) -> list[dict[str, Any]]:
+        """Every invocation with its run state, usage and errors, oldest first."""
+        rows = self._conn.execute("SELECT * FROM invocations ORDER BY id")
+        out = []
+        for row in rows:
+            data = dict(row)
+            for key in ("usage", "errors"):
+                data[key] = json.loads(data[key]) if data[key] else None
+            out.append(data)
+        return out
 
     def finish_invocation(
         self,

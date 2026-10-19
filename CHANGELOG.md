@@ -16,6 +16,29 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- `xwalk cluster eval --run DIR --gold CSV [--out FILE] [--json]` and
+  `ops.cluster_eval`: score a clustering run against a gold partition. Pairwise and
+  B-cubed precision, recall and F1 with records outside the accepted clusters as
+  singletons and over the accepted records only, false merges, splits, outcome
+  counts, usage summed over the run's invocations, and `gold_pairs_co_exposed`, the
+  gold pairs whose records were in one judge prompt together (a diagnostic that
+  separates search misses from judge misses; not an upper bound on recall, since
+  joins see a cluster's first members only and merges link records no prompt
+  showed together). Reads the exports and the store read-only: no model or
+  retriever call, no data written in the run directory (a run in progress is
+  snapshotted with SQLite's backup API). Exit `0` scored, `2` unknown
+  or non-clustering run directory or unreadable gold, `3` unreadable store. The
+  metric functions moved from `benchmarks/clustering.py` to
+  `xwalk.evaluate.clustering` (re-exported by the benchmark), which also reads
+  `pending` outcomes and `source_id` columns.
+- The benchmark's clustering track runs `xwalk cluster` itself (`xwalk_clustering`,
+  default settings) beside the baselines and reports its scores, usage and gold-pair
+  co-exposure. In `--smoke` the judge is the offline lexical stand-in and the numbers
+  are SYNTHETIC; `--real` uses the variant's model under `--max-calls`.
+- `inspect`, `explain`, `results`, `export`, `review`, `eval`, `fit` and `compare`
+  given a clustering run directory exit `2` with `cluster_run`, naming the exports and
+  `xwalk cluster eval`, instead of `run_not_found` ("no manifest.json" although
+  there was one); `eval` and `compare` no longer create an empty `ledger.sqlite` there.
 - `xwalk ui` serves a workbench at `/app`: Runs, Results with a record inspector, and a
   Review queue with a fixed decision bar, built in React from the xwalk design system
   (`web/`, committed as `xwalk/ui/static/app`, so installs still need no Node; CI checks
@@ -163,6 +186,32 @@ offline only (FakeDecider, no paid calls).
   fingerprint; `base_url` is passed as `api_base` and enters the fingerprint with any
   userinfo or credential-like query parameter removed (`LiteLLMClient` now redacts
   `api_base`/`base_url` kwargs that way).
+- **`xwalk cluster` run identity includes the pool's retrieval heads.** The fingerprint
+  components stored the retrieval identity (lexical engine, dense encoder name,
+  dimension and settings, fusion) under `pool` and then overwrote it with the pool
+  settings, so a lexical run and a dense run of the same job shared a fingerprint and
+  adding `dense:` resumed a lexical run with zero calls. The heads are now their own
+  `retrieval` component, and a changed head (lexical to dense or back, another encoder,
+  other encoder settings) is refused with `run_fingerprint_mismatch` naming
+  `retrieval.*`, before anything is written or called. The clustering format goes to 2:
+  a run directory written by an earlier version is refused with `run_format_outdated`
+  (exit 3) because its fingerprint cannot say which heads ran; cluster again into a new
+  `--out`.
+- `xwalk cluster` exports describe a cluster the same way in both files after its seed
+  leaves it (a failed reverification or a switch during reassignment). The member left
+  alone was exported `assigned` with `cluster_size` 1 while `clusters.csv` called the
+  cluster `singleton` and named the departed seed as `seed_id`. Both files now decide
+  singleton-ness by the exported cluster size: the lone member is `singleton` with reason
+  `sole_remaining_member` (its `decision_id` still names the decision that admitted it),
+  and `seed_id` is the cluster's first current member. Stored runs are unchanged; only
+  the exports are regenerated differently.
+- `xwalk cluster` no longer claims mint provenance `retrieval_exhausted` after a full
+  page of hits. The test "fewer hits than asked for" compared the hits of the last
+  search with the depth of the next page, which was already doubled, so with
+  `shown_limit >= retrieve_limit` and the expansion pages exhausted a record could mint
+  under `mint_requires: retrieval_exhausted` while retrievable clusters were never shown.
+  It now compares with the depth actually searched. The defaults are not affected (the
+  last page reaches `expand_limit`, where doubling is capped).
 - BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
   forms were `strip().lower()`, but the query's exact term was built from the
   *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat

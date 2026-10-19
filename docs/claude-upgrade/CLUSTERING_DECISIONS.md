@@ -13,7 +13,7 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 | # | Conflict | Resolution in 0.2 |
 |---|---|---|
 | 1 | Assignment to an immutable taxonomy node vs merging/modifying it | No taxonomy in 0.2 (CONTRACTS 10.1). Every cluster is minted in-run; the plan's taxonomy-wins merge rule and `Provenance.TAXONOMY` are not built. Assigning to an external node is a later, separate operation; nothing here can mutate an external record. |
-| 2 | Source collection and order must be part of run identity | The run fingerprint hashes the *ordered* snapshot `[(id, hash)]` after the ordering rule is applied, the ordering rule itself, templates, prompts, LLM, pool settings and policy. Cluster ID = `hash(run_fp, seed_member_id)`. Default order: stable sort on case-folded, whitespace-collapsed query text, then id (input permutation does not change the run); `order: input` keeps file order and makes order part of identity. |
+| 2 | Source collection and order must be part of run identity | The run fingerprint hashes the *ordered* snapshot `[(id, hash)]` after the ordering rule is applied, the ordering rule itself, templates, prompts, LLM, pool settings and policy, and the pool's retrieval heads (`retrieval`: lexical engine, dense encoder identity, fusion; format 2, review fix October 2026 -- format 1 let the pool settings overwrite them, and its run directories are refused with `run_format_outdated`). Cluster ID = `hash(run_fp, seed_member_id)`. Default order: stable sort on case-folded, whitespace-collapsed query text, then id (input permutation does not change the run); `order: input` keeps file order and makes order part of identity. |
 | 3 | Historical pool representations must be reconstructable | `cluster_revisions(cluster_id, revision, members, representation)` is append-only. Each decision row stores the `(cluster_id, revision)` pairs **retrieved** and **shown**, the exact system and user prompt, and the raw response. `tests/test_cluster_engine.py` re-renders every stored prompt from the stored revisions and compares byte for byte. |
 | 4 | Exports must use the best stable revision when refinement oscillates | Every iteration end is stored as a state revision (full member -> cluster/outcome map plus cluster revision pointers). `converged`: the final revision is a fixpoint and is exported. `oscillation` / `max_iterations`: the revision with the fewest unresolved sources, ties earliest (CONTRACTS 10.7), is exported; the manifest names both the selected and the last revision. |
 | 5 | An injected incumbent must survive truncation | In reassignment the incumbent is placed in the shown list; when the list is full it replaces the lowest-ranked challenger. Its representation excludes the member being reconsidered. A test truncates to one challenger slot and checks the incumbent is shown. |
@@ -26,7 +26,11 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 - **Outcomes.** Stored per source: `assigned`, `seed` (minted the cluster), `deferred`,
   `failed`. Exported: `assigned`; `singleton` for a seed whose cluster still has one
   member; a seed whose cluster gained verified members is exported `assigned` (its
-  equivalence was verified by the joining or merge decision). A source that seeds a
+  equivalence was verified by the joining or merge decision). Both export files decide
+  by the exported cluster size (review fix, October 2026): a member left alone after
+  every other member, the seed included, moved out is `singleton` with reason
+  `sole_remaining_member`, and `clusters.csv` `seed_id` is the cluster's first current
+  member, so it always names a member. A source that seeds a
   second cluster (moved out of its first, later minted again) gets
   `hash(run_fp, seed, n)`. `deferred` becomes
   `needs_review`. Sources not reached by an aborted run are `pending`. Each source
@@ -95,7 +99,9 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 Taxonomy seeding, broader/narrower and multi-level hierarchy, fixed cluster counts,
 LLM naming/glosses and name verification (cluster representation is its members), a
 review overlay with clustering verbs (`unresolved.csv` is the worksheet; applying
-decisions is a later task), `inspect`/`explain` for cluster runs, concurrency.
+decisions is a later task), `inspect`/`explain` for cluster runs (they refuse a
+cluster run with `cluster_run` and point to the exports and `xwalk cluster eval`,
+added October 2026), concurrency.
 
 ## Scaling check
 
@@ -148,7 +154,7 @@ print(time.perf_counter() - start)
 | History reconstructable; selected-revision export correct | met | every stored prompt rebuilt from stored revisions; `test_exports_use_the_selected_revision...` |
 | Candidate and call bounds under refinement | met | per-step call bound, shown and member-evidence bounds, `--max-calls` exact |
 | No full index rebuild per mint; scaling measured | met | `test_the_pool_index_is_updated_per_change...`; table above |
-| Small labelled real sample evaluated | **not met** | no inference endpoint was configured; nothing was run against a real model |
+| Small labelled real sample evaluated | **not met** | no inference endpoint was configured; nothing was run against a real model. The tool now exists: `xwalk cluster eval` (October 2026) |
 
 Because the last gate is not met, and the thresholds are uncalibrated, clustering ships
 marked **experimental** (CLI warning `experimental`, manifest `experimental: true`,

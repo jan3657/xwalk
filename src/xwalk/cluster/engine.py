@@ -516,9 +516,11 @@ class ClusterEngine:
         first_page: list[str] = []
         depth = pool.retrieve_limit
         hits: list[PoolHit] = []
+        searched = depth  # the depth `hits` was retrieved at; `depth` runs one page ahead
         page_index = 0
         while page_index <= pool.max_expansion_pages:
             hits = self.pool.search(query, depth)
+            searched = depth
             seen = set(shown)
             page = [h.cluster_id for h in hits if h.cluster_id not in seen][: pool.shown_limit]
             scanned = 0
@@ -569,7 +571,7 @@ class ClusterEngine:
         shown_set = set(shown)
         if set(live) <= shown_set:
             provenance = "pool_exhausted"
-        elif len(hits) < depth and {h.cluster_id for h in hits} <= shown_set:
+        elif len(hits) < searched and {h.cluster_id for h in hits} <= shown_set:
             provenance = "retrieval_exhausted"
         else:
             provenance = "bounded"

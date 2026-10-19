@@ -12,8 +12,13 @@ interrupted) exports its latest committed state, and sources it never reached ar
 - `decisions.jsonl`: every decision ever recorded (history, including decisions whose
   effects a later revision superseded), with retrieved and shown clusters.
 
-Exported outcomes: `assigned`, `singleton` (a seed whose cluster has no other member;
-not a verified equivalence), `needs_review` (deferred), `failed`, `pending`.
+Exported outcomes: `assigned` (in a cluster with other members), `singleton` (alone in
+its cluster: the seed no record joined, or the last member left after the others moved
+out; not a verified equivalence), `needs_review` (deferred), `failed`, `pending`. Both
+`members.csv` and `clusters.csv` decide singleton-ness by the exported cluster size, and
+`seed_id` is the cluster's first current member: the record that started it, or, once
+that record has left, the earliest remaining member (the cluster id keeps the original
+seed's hash).
 """
 
 from __future__ import annotations
@@ -58,6 +63,9 @@ UNRESOLVED_COLUMNS = (
     "decision_id",
 )
 EXPORT_OUTCOMES = ("assigned", "singleton", "needs_review", "failed", "pending")
+# Exported reason of a non-seed member left alone in its cluster (its other members,
+# the seed among them, were moved out). `decision_id` still names the admitting decision.
+LONE_MEMBER_REASON = "sole_remaining_member"
 
 
 @dataclass(frozen=True)
@@ -134,9 +142,15 @@ def write_exports(store: ClusterStore, out: Path) -> dict[str, Any]:
                     if cluster_id not in accepted or sid not in accepted[cluster_id]["members"]:
                         raise RuntimeError(f"{sid} is {stored} but not a member of {cluster_id}")
                     seen_in_clusters.add(sid)
-                    outcome = (
-                        "singleton" if stored == SEED and sizes[cluster_id] == 1 else "assigned"
-                    )
+                    # The outcome follows the cluster's exported size, as clusters.csv's
+                    # status does: a member left alone because every other member moved
+                    # out is no verified equivalence any more (CONTRACTS.md 10.4).
+                    if sizes[cluster_id] > 1:
+                        outcome = "assigned"
+                    else:
+                        outcome = "singleton"
+                        if stored != SEED:
+                            reason = LONE_MEMBER_REASON
                 else:
                     outcome = "needs_review" if stored == DEFERRED else "failed"
                     cluster_id = None
@@ -171,7 +185,7 @@ def write_exports(store: ClusterStore, out: Path) -> dict[str, Any]:
                     "revision": cluster_row["revision"],
                     "size": len(cluster_row["members"]),
                     "status": "singleton" if len(cluster_row["members"]) == 1 else "verified",
-                    "seed_id": cluster_row["seed_id"],
+                    "seed_id": cluster_row["members"][0],
                     "mint_provenance": cluster_row["mint_provenance"],
                     "member_ids": "|".join(cluster_row["members"]),
                     "representation": cluster_row["representation"],
@@ -203,6 +217,7 @@ def write_exports(store: ClusterStore, out: Path) -> dict[str, Any]:
 __all__ = [
     "CLUSTER_COLUMNS",
     "EXPORT_OUTCOMES",
+    "LONE_MEMBER_REASON",
     "MEMBER_COLUMNS",
     "UNRESOLVED_COLUMNS",
     "StateView",

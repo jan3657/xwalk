@@ -213,6 +213,37 @@ def test_assignment_files_round_trip_and_reject_duplicates(tmp_path):
         read_assignments(jsonl)
 
 
+def test_the_benchmark_scores_with_the_package_metric_code(tmp_path):
+    from xwalk.evaluate import clustering as package
+
+    assert evaluate_clustering is package.evaluate_clustering
+    assert partition_scores is package.partition_scores
+    # xwalk cluster exports name items `source_id` and have `pending` rows
+    path = tmp_path / "members.csv"
+    path.write_text("source_id,cluster_id,outcome\na,k,singleton\nb,,pending\n")
+    clusters, outcomes = read_assignments(path)
+    assert outcomes == {"a": "singleton", "b": "pending"}
+    result = evaluate_clustering(clusters, outcomes, {"a": "1", "b": "1"})
+    assert result["outcome_counts"]["pending"] == 1
+    assert result["as_singletons"]["pairwise_recall"] == 0.0
+
+
+@pytest.mark.parametrize("outcome", ["", "assigned", "singleton"])
+def test_an_accepted_row_needs_a_cluster_id(tmp_path, outcome):
+    # Blank ids would all fall into one cluster "" and score as co-clustered.
+    path = tmp_path / "gold.csv"
+    path.write_text(f"item_id,cluster_id,outcome\na,,{outcome}\nb,,{outcome}\nc,k,\n")
+    with pytest.raises(ValueError, match="row 1 has no cluster_id"):
+        read_assignments(path)
+
+
+def test_an_unresolved_row_may_have_no_cluster_id(tmp_path):
+    path = tmp_path / "members.csv"
+    path.write_text("item_id,cluster_id,outcome\na,,needs_review\nb,,pending\nc,k,singleton\n")
+    _, outcomes = read_assignments(path)
+    assert outcomes == {"a": "needs_review", "b": "pending", "c": "singleton"}
+
+
 def test_cluster_eval_cli_scores_files_and_carries_meta(tmp_path):
     gold, pred, meta, out = (tmp_path / n for n in ("g.csv", "p.csv", "m.json", "o.json"))
     write_assignments(gold, {"a": "1", "b": "1", "c": "2"})
@@ -285,6 +316,15 @@ def test_the_smoke_run_is_labelled_synthetic_complete_and_deterministic(tmp_path
         )
     assert "ncbi_disease" in first["tracks"]["clustering"]
     assert (tmp_path / "out1" / "clustering" / "ncbi_disease" / "gold_clusters.csv").exists()
+    # xwalk's own clustering is scored, with the offline lexical judge in smoke mode
+    xc = first["tracks"]["clustering"]["ncbi_disease"]["xwalk_clustering"]
+    assert xc["scores"]["outcome_counts"]["missing"] == 0
+    assert sum(xc["scores"]["outcome_counts"].values()) == 5
+    assert xc["predictions"] == ["pred_xwalk_clustering.csv"]
+    assert xc["usage"]["calls"] > 0 and xc["run_state"] == "complete"
+    assert "SYNTHETIC" in xc["judge"]
+    assert xc["exposure"]["gold_pairs"] >= xc["exposure"]["gold_pairs_co_exposed"] >= 0
+    assert "xwalk_clustering" in summary
     assert first["not_run"]["linktransformer"].startswith("pending")
     assert _strip_costs(first) == _strip_costs(second)
 
