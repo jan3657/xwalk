@@ -14,6 +14,7 @@ from xwalk.decide.base import (
     response_from_dict,
     response_to_dict,
 )
+from xwalk.records import Usage
 
 QUESTIONS = {
     "same": Noul(instructions="Is it the same?"),
@@ -129,6 +130,45 @@ def test_a_probability_that_is_not_a_finite_unit_number_is_rejected(value):
     payload = {**PAYLOAD, "answers": {**PAYLOAD["answers"], "same": bad}}
     with pytest.raises(DecisionResponseError, match="same"):
         parse_response(payload, QUESTIONS, configured_model="m")
+
+
+def test_reported_usage_is_read():
+    usage = parse_response(PAYLOAD, QUESTIONS, configured_model="m").usage
+    assert (usage.prompt_tokens, usage.calls, usage.unknown_calls) == (120, 1, 0)
+    assert usage.cost_usd == 0.000005
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        None,
+        "lots",
+        {},
+        {"cost": 0.1},
+        {"input_tokens": None},
+        {"input_tokens": "120"},
+        {"input_tokens": -3},
+        {"input_tokens": True},
+        {"input_tokens": float("nan")},
+        {"input_tokens": float("inf")},
+        {"input_tokens": 1.5},
+    ],
+)
+def test_missing_or_invalid_token_usage_is_unknown_not_zero(usage):
+    payload = {k: v for k, v in PAYLOAD.items() if k != "usage"}
+    if usage is not None:
+        payload["usage"] = usage
+    parsed = parse_response(payload, QUESTIONS, configured_model="m").usage
+    assert (parsed.calls, parsed.unknown_calls, parsed.total_tokens) == (1, 1, 0)
+
+
+@pytest.mark.parametrize("cost", [float("nan"), float("inf"), -1.0, "0.1"])
+def test_an_invalid_cost_makes_the_whole_usage_block_unknown(cost):
+    # A malformed accounting block is not trusted in part: the call is one with unknown
+    # usage, and no NaN or negative cost can poison a run's totals.
+    payload = {**PAYLOAD, "usage": {"input_tokens": 120, "cost": cost}}
+    parsed = parse_response(payload, QUESTIONS, configured_model="m").usage
+    assert parsed == Usage.unreported(1)
 
 
 def test_a_type_mismatch_is_fatal():

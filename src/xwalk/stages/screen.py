@@ -29,13 +29,18 @@ from xwalk.templates import TemplateSet
 
 
 class ScreenFailed(DecisionError):
-    """A screen chunk failed. `usage` is what the screen cost: the sibling chunks that
-    answered, plus the failing request itself (dispatched, its tokens unknown)."""
+    """One or more screen chunks failed. `cause` is the first failure in chunk order.
+    `usage` is what the screen cost: the sibling chunks that answered, every failed
+    request, and every request cancelled after dispatch (those with unknown tokens)."""
 
-    def __init__(self, cause: DecisionError, usage: Usage) -> None:
-        super().__init__(str(cause))
+    def __init__(self, cause: DecisionError, usage: Usage, *, failed_chunks: int = 1) -> None:
+        message = str(cause)
+        if failed_chunks > 1:
+            message = f"{message} ({failed_chunks} chunks failed)"
+        super().__init__(message)
         self.cause = cause
         self.usage = usage
+        self.failed_chunks = failed_chunks
 
 
 def build_source_state(source: Record, context: str) -> dict[str, Any]:
@@ -141,11 +146,18 @@ class Screener:
         }
         chunks, notes = self._chunks(keyed, shared)
 
-        async def one(chunk: list[tuple[str, str]]) -> tuple[dict[str, float], Usage, str]:
+        # Index of every chunk whose request reached the decider. A chunk cancelled after
+        # that point was dispatched and is billed as a call with unknown usage.
+        dispatched: set[int] = set()
+
+        async def one(
+            index: int, chunk: list[tuple[str, str]]
+        ) -> tuple[dict[str, float], Usage, str]:
             state = {**shared, "candidates": dict(chunk)}
             questions: dict[str, Noul] = {
                 f"n_{key}": self._questions.screen_question(key) for key, _ in chunk
             }
+            dispatched.add(index)
             response = await self._decider.decide(state, questions)
             probabilities = {}
             for key, _ in chunk:
@@ -154,7 +166,7 @@ class Screener:
                 probabilities[key] = answer.noul
             return probabilities, response.usage, response.model
 
-        tasks = [asyncio.create_task(one(chunk)) for chunk in chunks]
+        tasks = [asyncio.create_task(one(i, chunk)) for i, chunk in enumerate(chunks)]
         # FIRST_EXCEPTION, not a plain gather: the moment one chunk fails the rest are
         # wasted spend, and a batch that is about to stop should not keep paying for them.
         try:
@@ -165,33 +177,47 @@ class Screener:
             await _cancel(tasks)
             raise
 
+        if any(task.done() and not task.cancelled() and task.exception() for task in tasks):
+            # One chunk failed: the rest are wasted spend. Settle every task before
+            # reading outcomes, so a chunk that finished or failed meanwhile is counted.
+            await _cancel(tasks)
+
         results: list[tuple[dict[str, float], Usage, str]] = []
-        first_error: BaseException | None = None
-        for task in tasks:
-            if not task.done() or task.cancelled():
+        errors: list[BaseException] = []
+        cancelled_after_dispatch = 0
+        for index, task in enumerate(tasks):
+            if task.cancelled():
+                cancelled_after_dispatch += index in dispatched
                 continue
             error = task.exception()
             if error is not None:
-                if first_error is None:
-                    first_error = error
+                errors.append(error)
             else:
                 results.append(task.result())
 
-        if first_error is not None:
-            await _cancel(tasks)
-            if isinstance(first_error, DecisionError):
-                # The sibling chunks were billed before this one failed, and the failing
-                # request was dispatched too. Hand the caller the bill with the error.
-                paid = sum((chunk_usage for _, chunk_usage, _ in results), Usage.zero())
-                paid = paid + failure_usage(first_error)
-                if isinstance(first_error, DecisionFatalError) and not isinstance(
-                    first_error, DecisionResponseError
+        if errors:
+            # A programming error is raised as itself, whatever else failed.
+            for error in errors:
+                if not isinstance(error, DecisionError):
+                    raise error
+            # The whole bill: every chunk that answered, every failed request, and every
+            # request that was dispatched and then cancelled (its tokens unknown).
+            paid = sum((chunk_usage for _, chunk_usage, _ in results), Usage.zero())
+            for error in errors:
+                paid = paid + failure_usage(error)
+            if cancelled_after_dispatch:
+                paid = paid + Usage.unreported(cancelled_after_dispatch)
+            # A fatal error stops the batch whichever chunk it came from (chunk order is
+            # an accident of scheduling, not a priority).
+            for error in errors:
+                if isinstance(error, DecisionFatalError) and not isinstance(
+                    error, DecisionResponseError
                 ):
-                    # The batch stops (fatal_provider_failure); the matcher books this.
-                    first_error.usage = paid
-                    raise first_error
-                raise ScreenFailed(first_error, paid)
-            raise first_error
+                    error.usage = paid
+                    raise error
+            first = errors[0]
+            assert isinstance(first, DecisionError)
+            raise ScreenFailed(first, paid, failed_chunks=len(errors))
 
         probabilities: dict[str, float] = {}
         usage = Usage.zero()

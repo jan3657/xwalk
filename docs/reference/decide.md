@@ -172,7 +172,10 @@ a `ChoiceAnswer` naming an option that was never offered is a `DecisionResponseE
 contract, not data about your records. The client does not retry it; the matcher treats it
 as a per-record failure (see below). `usage` is read from the payload's `usage` object into a `Usage` with
 `prompt_tokens`, `calls=1`, and `cost_usd`; there are no completion tokens, because there
-is no completion.
+is no completion. A missing usage object, a missing or invalid `input_tokens` (not a
+non-negative integer: NaN, infinite, fractional, a string) or an invalid `cost` makes the
+call one with unknown usage (`Usage.unreported()`), never a known zero; an absent `cost`
+is 0.0.
 
 | Error | Raised for |
 |---|---|
@@ -456,12 +459,15 @@ further: it is sent anyway, and a note (`candidate C… alone exceeds the state 
 only warning.
 
 **Failures.** The first chunk to fail cancels the chunks still in flight, since they are
-wasted spend once the record is going to fail. A `DecisionFatalError` (other than a
-`DecisionResponseError`) propagates as itself, its `usage` set to what the screen cost. Any
-other `DecisionError` is raised as `ScreenFailed`, which carries the original error as
-`cause` and, as `usage`, what the chunks that had already finished cost plus the failed
-request (a call with unknown usage), so the caller can bill the failed attempt for it. Cancelling `screen()` itself cancels and awaits
-every chunk task, so none is left running.
+wasted spend once the record is going to fail. Every chunk is then settled and every
+failure collected. If any of them is a `DecisionFatalError` (other than a
+`DecisionResponseError`), that fatal error propagates as itself whichever chunk it came
+from, its `usage` set to what the screen cost. Otherwise the failures are raised as
+`ScreenFailed`, which carries the first in chunk order as `cause`, the count as
+`failed_chunks`, and, as `usage`, the whole bill: the chunks that answered, every failed
+request, and every request cancelled after dispatch (each failed or cancelled request a
+call with unknown usage). A chunk cancelled before it reached the decider is not a call.
+Cancelling `screen()` itself cancels and awaits every chunk task, so none is left running.
 
 `shortlist` is the top `shortlist_size` record ids by probability that also clear
 `shortlist_floor`. `best` is the highest probability seen over **all** candidates, not just
