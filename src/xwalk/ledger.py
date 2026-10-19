@@ -13,8 +13,9 @@ Two views of a run are kept apart (docs/claude-upgrade/CONTRACTS.md section 2):
   is deleted.
 
 Schema versions: version 1 is the 0.1.1 layout (no ``ledger_meta`` table). Opening a
-version 1 ledger copies the file aside first and then upgrades it additively; a newer
-version than this code knows is refused without being touched.
+version 1 ledger for writing copies the file aside first and then upgrades it
+additively; opening it read-only reads an upgraded copy in memory and leaves the file
+alone. A newer version than this code knows is refused without being touched.
 """
 
 from __future__ import annotations
@@ -146,6 +147,10 @@ class LedgerClosedError(RuntimeError):
     """A write was attempted on a closed ledger: the write would have been lost."""
 
 
+class ReadOnlyLedgerError(RuntimeError):
+    """A write was attempted on a ledger opened with ``read_only=True``."""
+
+
 @dataclass(frozen=True)
 class CurrentEntry:
     """One source in the current view. `result is None` means pending."""
@@ -198,22 +203,32 @@ class Ledger:
         *,
         migrated_from: int | None = None,
         backup_path: Path | None = None,
+        read_only: bool = False,
     ) -> None:
         self._conn = connection
         self._write_lock = asyncio.Lock()
         self._closed = False
         self.migrated_from = migrated_from
         self.backup_path = backup_path
+        self.read_only = read_only
 
     @classmethod
-    def open(cls, path: str | Path) -> Ledger:
+    def open(cls, path: str | Path, *, read_only: bool = False) -> Ledger:
         """Open or create a ledger.
 
         A 0.1.1 ledger is copied to ``<name>.v1-backup`` before its additive upgrade.
         A ledger from a newer xwalk, or a file that is not a ledger, raises
         `UnsupportedLedgerError` and is left exactly as it was.
+
+        ``read_only=True`` is for commands that only read (inspect, explain, export,
+        eval, the UI's views): the file must exist, it is never created, upgraded or
+        written, and every write raises `ReadOnlyLedgerError`. A 0.1.1 ledger is then
+        read through an upgraded copy in memory (`migrated_from` is 1, there is no
+        backup); `xwalk upgrade` or the next `match` migrates the file itself.
         """
         path = Path(path)
+        if read_only:
+            return cls._open_read_only(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         conn.row_factory = sqlite3.Row
@@ -236,6 +251,51 @@ class Ledger:
             conn.close()
             raise
         return cls(conn, migrated_from=1 if version == 1 else None, backup_path=backup)
+
+    @classmethod
+    def _open_read_only(cls, path: Path) -> Ledger:
+        if not path.is_file():
+            raise FileNotFoundError(f"no ledger at {path}")
+        uri = path.resolve().as_uri()
+        wal = path.with_name(path.name + "-wal")
+        # With no pending write-ahead log the main file is the whole database, and an
+        # immutable connection reads it without creating -wal/-shm files beside it.
+        # A live ledger (a run still writing, or one left with a log) is opened the
+        # ordinary read-only way so its log is read too.
+        live = wal.exists() and wal.stat().st_size > 0
+        source = sqlite3.connect(
+            f"{uri}?mode=ro" if live else f"{uri}?mode=ro&immutable=1",
+            uri=True,
+            check_same_thread=False,
+            isolation_level=None,
+        )
+        try:
+            version = cls._detect_version(source, path)
+            if version == LEDGER_SCHEMA_VERSION and live:
+                source.row_factory = sqlite3.Row
+                return cls(source, read_only=True)
+            if version != LEDGER_SCHEMA_VERSION:
+                # An older (or empty) file is read through a current copy in memory.
+                memory = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
+                source.backup(memory)
+        except BaseException:
+            source.close()
+            raise
+        source.close()
+        if version == LEDGER_SCHEMA_VERSION:
+            # Immutable was only safe for the version probe: a run may start writing
+            # while this ledger is being read.
+            conn = sqlite3.connect(
+                f"{uri}?mode=ro", uri=True, check_same_thread=False, isolation_level=None
+            )
+            conn.row_factory = sqlite3.Row
+            return cls(conn, read_only=True)
+        memory.row_factory = sqlite3.Row
+        if version == 0:
+            cls._create(memory)
+        else:
+            cls._upgrade_from_v1(memory)
+        return cls(memory, migrated_from=1 if version == 1 else None, read_only=True)
 
     @staticmethod
     def _detect_version(conn: sqlite3.Connection, path: Path) -> int:
@@ -320,6 +380,8 @@ class Ledger:
     def _check_open(self) -> None:
         if self._closed:
             raise LedgerClosedError("the ledger is closed; this write would be lost")
+        if self.read_only:
+            raise ReadOnlyLedgerError("the ledger was opened read-only; nothing was written")
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:

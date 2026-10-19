@@ -413,6 +413,20 @@ library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
 
 A root that is not a directory or a cap below 1 exits `2`.
 
+## `upgrade`
+
+Migrates a run's ledger to the current schema in place. A 0.1.1 ledger is first copied
+to `ledger.sqlite.v1-backup` (the path is printed and returned as the `backup`
+artifact); a current ledger is left as it is (exit `0` either way). Read-only commands
+(`inspect`, `explain`, `results`, `export`, `eval`, `fit`, `compare`, `review export`
+and the UI's views) never migrate: they read an old ledger through an upgraded copy in
+memory. `match` and `review apply` migrate as they open it, so `upgrade` is only needed
+to convert a run you will not write to again.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | run directory |
+
 ## `export`
 
 Writes one explicit view of a run.

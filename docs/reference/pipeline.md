@@ -630,10 +630,13 @@ LLM calls and rewrites identical exports.
 ### Ledger schema
 
 The ledger records `schema_version` (currently 2) in a `ledger_meta` table. A 0.1.1
-ledger (version 1, no such table) is upgraded on open: the file is first copied to
+ledger (version 1, no such table) is upgraded when a writing command opens it (`match`,
+`review apply`, `xwalk upgrade`): the file is first copied to
 `ledger.sqlite.v1-backup`, then the upgrade adds tables and defaulted columns in one
 transaction. Nothing existing is rewritten or dropped. All 0.1.1 rows become history,
-and the current view is inferred as the latest row per source id. A ledger with a newer
+and the current view is inferred as the latest row per source id. Read-only commands
+(`inspect`, `export`, `eval` and the like) read an upgraded copy in memory and leave
+the file as it is. A ledger with a newer
 schema version, an SQLite file that is not a ledger, or a file that is not SQLite raises
 `UnsupportedLedgerError` and is not modified.
 

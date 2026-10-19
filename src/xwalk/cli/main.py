@@ -166,6 +166,13 @@ def _build_parser() -> argparse.ArgumentParser:
     export.add_argument("--view", choices=EXPORT_VIEWS, default="raw")
     export.add_argument("--out", required=True)
 
+    upgrade = sub.add_parser(
+        "upgrade",
+        parents=[common],
+        help="migrate a run's ledger to the current schema in place, after a backup copy",
+    )
+    upgrade.add_argument("--run", required=True, help="run directory")
+
     ev = sub.add_parser("eval", parents=[common], help="evaluate a run against gold labels")
     ev.add_argument("--run", required=True)
     ev.add_argument("--gold", required=True)
@@ -429,6 +436,12 @@ def _cmd_export(args: argparse.Namespace) -> OpResult:
     return ops.export(args.run, args.view, args.out)
 
 
+def _cmd_upgrade(args: argparse.Namespace) -> OpResult:
+    from xwalk import ops
+
+    return ops.upgrade(args.run)
+
+
 def _cmd_eval(args: argparse.Namespace) -> OpResult:
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.evaluate.report import evaluate, render_report, write_report
@@ -436,7 +449,7 @@ def _cmd_eval(args: argparse.Namespace) -> OpResult:
 
     run_dir = Path(args.run)
     gold = load_gold_csv(args.gold)
-    ledger = Ledger.open(run_dir / "ledger.sqlite")
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
     try:
         report = evaluate(ledger, _run_fingerprint_of(run_dir), gold)
     finally:
@@ -511,7 +524,7 @@ def _cmd_fit(args: argparse.Namespace) -> OpResult:
             exit_code=EXIT_USAGE,
         )
     gold = load_gold_csv(args.gold)
-    ledger = Ledger.open(run_dir / "ledger.sqlite")
+    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
     fingerprint = _run_fingerprint_of(run_dir)
     try:
         results = list(ledger.iter_results(fingerprint))
@@ -589,7 +602,7 @@ def _cmd_compare(args: argparse.Namespace) -> OpResult:
             )
         label, _, path = entry.partition("=")
         run_dir = Path(path)
-        ledger = Ledger.open(run_dir / "ledger.sqlite")
+        ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
         try:
             summaries.append(summarise_run(ledger, _run_fingerprint_of(run_dir), gold, label=label))
         finally:
@@ -768,6 +781,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
     "results": _cmd_results,
     "explain": _cmd_explain,
     "export": _cmd_export,
+    "upgrade": _cmd_upgrade,
     "eval": _cmd_eval,
     "fit": _cmd_fit,
     "compare": _cmd_compare,

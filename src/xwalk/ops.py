@@ -804,7 +804,7 @@ def _check_out_dir(
         if not foreign:
             return
         if (out / "ledger.sqlite").is_file():
-            ledger = Ledger.open(out / "ledger.sqlite")
+            ledger = Ledger.open(out / "ledger.sqlite", read_only=True)
             try:
                 if ledger.get_manifest(run_fp) is not None:
                     return
@@ -860,7 +860,14 @@ class _RunView:
     manifest: dict[str, Any]
 
 
-def _open_run(run_dir: str | Path, operation: str) -> tuple[_RunView, Ledger]:
+def _open_run(
+    run_dir: str | Path, operation: str, *, read_only: bool = True
+) -> tuple[_RunView, Ledger]:
+    """The run's manifest view and its ledger, read-only unless the operation writes.
+
+    Reading never migrates: a 0.1.1 ledger is read through an upgraded copy in memory
+    and stays as it is on disk until `match`, `review apply` or `upgrade` opens it.
+    """
     path = Path(run_dir)
     manifest = _read_manifest(path)
     if manifest is None or not (path / "ledger.sqlite").is_file():
@@ -872,7 +879,7 @@ def _open_run(run_dir: str | Path, operation: str) -> tuple[_RunView, Ledger]:
         )
     return (
         _RunView(path, str(manifest["run_fingerprint"]), manifest),
-        Ledger.open(path / "ledger.sqlite"),
+        Ledger.open(path / "ledger.sqlite", read_only=read_only),
     )
 
 
@@ -1705,7 +1712,7 @@ def review_apply(run_dir: str | Path, reviewed: str | Path, job: JobRef) -> OpRe
 
     spec = load_valid_job(job, operation="review apply")
     _, store = _read_targets(spec, "review apply")
-    _, ledger = _open_run(run_dir, "review apply")
+    _, ledger = _open_run(run_dir, "review apply", read_only=False)
     try:
         report = apply_review(
             ledger, read_review(reviewed), target_store_fingerprint=store.fingerprint
@@ -1721,6 +1728,35 @@ def review_apply(run_dir: str | Path, reviewed: str | Path, job: JobRef) -> OpRe
         OpMessage("review_rejected", f"{key}: {why}") for key, why in report.rejected
     ]
     result.lines.append(f"applied {report.applied} decisions")
+    return result
+
+
+def upgrade(run_dir: str | Path) -> OpResult:
+    """Migrate a run's ledger to the current schema in place, after a backup copy.
+
+    Read-only commands never migrate; `match` and `review apply` do it as they open the
+    ledger. This is the explicit step for a run you only want to read with tools that
+    open the file themselves. A current ledger is left as it is.
+    """
+    view, ledger = _open_run(run_dir, "upgrade", read_only=False)
+    try:
+        migrated_from, backup = ledger.migrated_from, ledger.backup_path
+    finally:
+        ledger.close()
+    result = OpResult(
+        operation="upgrade",
+        exit_code=EXIT_OK,
+        artifacts={"ledger": str(view.run_dir / "ledger.sqlite")},
+        data={"migrated_from": migrated_from},
+    )
+    if backup is not None:
+        result.artifacts["backup"] = str(backup)
+        result.lines.append(
+            f"upgraded {view.run_dir / 'ledger.sqlite'} from schema version {migrated_from}; "
+            f"the original is kept as {backup}"
+        )
+    else:
+        result.lines.append(f"{view.run_dir / 'ledger.sqlite'} is already current")
     return result
 
 
@@ -1808,5 +1844,6 @@ __all__ = [
     "review_export",
     "run",
     "run_async",
+    "upgrade",
     "validate",
 ]

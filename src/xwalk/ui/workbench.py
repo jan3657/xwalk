@@ -636,7 +636,7 @@ def reviews(ws: Workspace, params: Params) -> Response:
         from xwalk.review import adjudicated, review_history
 
         fingerprint = str(manifest["run_fingerprint"])
-        ledger = Ledger.open(run_dir / "ledger.sqlite")
+        ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
         try:
             history = [
                 {**entry.review, "state": entry.state}

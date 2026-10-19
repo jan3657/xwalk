@@ -440,13 +440,15 @@ LEDGER_SCHEMA_VERSION = 2
 
 class UnsupportedLedgerError(Exception): ...
 class LedgerClosedError(RuntimeError): ...
+class ReadOnlyLedgerError(RuntimeError): ...
 
 class Ledger:
     @classmethod
-    def open(cls, path: str | Path) -> Ledger: ...
+    def open(cls, path: str | Path, *, read_only: bool = False) -> Ledger: ...
     schema_version: int          # property
-    migrated_from: int | None    # 1 when this open upgraded a 0.1.1 ledger
+    migrated_from: int | None    # 1 when this open upgraded (or read) a 0.1.1 ledger
     backup_path: Path | None     # the copy taken before that upgrade
+    read_only: bool
     closed: bool                 # property
 
     # results
@@ -499,6 +501,12 @@ source. `HistoryEntry(result, revision, current)`.
   `<name>.v1-backup` and then upgraded additively in one transaction. A newer schema
   version, an SQLite file that is not a ledger, or a non-SQLite file raises
   `UnsupportedLedgerError` without modifying the file.
+- `open(path, read_only=True)` is what read-only commands use (`inspect`, `explain`,
+  `results`, `export`, `eval`, `fit`, `compare`, `review export`, the UI's views). The
+  file must exist (`FileNotFoundError` otherwise) and is never created, upgraded or
+  written; every write raises `ReadOnlyLedgerError`. A current ledger is opened with
+  SQLite's `mode=ro`; a 0.1.1 ledger is read through an upgraded copy in memory
+  (`migrated_from == 1`, no backup) and the file and its directory stay byte-identical.
 - `put_result` on an existing `result_key` moves the previous row to history and
   stores the new one as the next revision; nothing is overwritten in place.
 - The current view is the latest snapshot's entries joined to their results. Without a
