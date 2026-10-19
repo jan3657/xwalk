@@ -85,3 +85,73 @@ describe('ErrorBoundary', () => {
     expect(screen.getByRole('link', { name: /classic explorer/i }).getAttribute('href')).toBe('/#/home');
   });
 });
+
+// --- the review screen over a small matching run --------------------------------------
+
+const MATCH_DIR = 'runs/m';
+
+function matchRun(): RunView {
+  return {
+    kind: 'match',
+    dir: MATCH_DIR,
+    job_path: 'job.yaml',
+    answered_by: 'offline',
+    duplicate_targets: {},
+    inspect: {
+      schema_version: 1, operation: 'inspect', status: 'ok', exit_code: 1,
+      run: { dir: MATCH_DIR, run_fingerprint: 'fp', run_state: 'complete' },
+      counts: { needs_review: 3, total: 3 }, usage: null, artifacts: {}, warnings: [], errors: [],
+      data: { job: 'demo', model: 'offline', fingerprint_components: { policy: { accept_at: 0.95, review_floor: 0.4 } } },
+    },
+  };
+}
+
+const IDS = ['s1', 's2', 's3'];
+const sheetRow = (id: string) => ({ result_key: `k-${id}`, run_fingerprint: 'fp', source_id: id, source_hash: `h-${id}`, proposed_target_id: `T:${id}` });
+const mappingRow = (id: string) => ({
+  source_id: id, status: 'needs_review', reason: 'below_accept_threshold', matched_id: `T:${id}`, confidence: 0.9,
+  revision: 1, result_key: `k-${id}`, source_text: `text ${id}`, source_context: null, target_label: `label ${id}`, target_ontology: null,
+});
+const ok = <D,>(operation: string, data: D) => ({
+  schema_version: 1, operation, status: 'ok', exit_code: 0, run: null, counts: {}, usage: null, artifacts: {}, warnings: [], errors: [], data,
+});
+const explainOf = (id: string) => ok('explain', {
+  source_id: id, in_current_snapshot: true, status: 'needs_review',
+  decision: { result_key: `k-${id}`, revision: 1, matched_id: `T:${id}`, confidence: 0.9, status: 'needs_review', reason: 'below_accept_threshold', explanation: '', usage: {} },
+  review: null, attempts: [], history: [],
+  result: { matched_record: { id: `T:${id}`, fields: { label: `label ${id}`, definition: `definition of ${id}`, synonyms: [] } }, attempts: [], source_hash: `h-${id}` },
+});
+
+function reviewFixture({ applied = [] as string[] } = {}) {
+  mock.api.run.mockResolvedValue(matchRun());
+  mock.api.workspace.mockResolvedValue({ root: '/ws', jobs: [{ path: 'job.yaml', kind: 'match' }], runs: [], gold: [], truncated: false });
+  mock.api.worksheet.mockResolvedValue(ok('review export', { rows: IDS.map(sheetRow), decisions: ['accept', 'reject', 'replace', 'no_match', 'defer'] }));
+  mock.api.mapping.mockResolvedValue(ok('results', { rows: IDS.map(mappingRow), offset: 0, limit: 200, total: 3, next_offset: null, job_path: 'job.yaml' }));
+  mock.api.reviews.mockResolvedValue(ok('reviews', {
+    history: applied.map((id, i) => ({
+      review_id: i + 1, result_key: `k-${id}`, source_id: id, source_hash: `h-${id}`, proposed_target_id: `T:${id}`,
+      decision: 'accept', corrected_target_id: null, reviewer: 'jan', review_note: '', reviewed_at: '2026-10-19T10:00:00Z', result_revision: 1, state: 'applied',
+    })),
+    final: {},
+  }));
+  mock.api.explain.mockImplementation(async (_dir: string, id: string) => explainOf(id));
+}
+
+const proposal = () => screen.getByText('Model proposal').closest('section')!;
+
+describe('the review screen', () => {
+  it('shows a placeholder, not "not in the reference", while the record loads', async () => {
+    reviewFixture();
+    const pending: Record<string, (v: unknown) => void> = {};
+    mock.api.explain.mockImplementation((_dir: string, id: string) => new Promise((r) => { pending[id] = r; }));
+    const finish = (v: unknown) => pending.s1!(v);
+    await open(`#/review?dir=${MATCH_DIR}&sel=s1`);
+    const cell = proposal();
+    expect(cell.textContent).not.toMatch(/Not in the reference collection|Label not available|None recorded/);
+    expect(cell.textContent).toContain('label s1'); // the queue row already knows the label
+    expect(cell.querySelector('[aria-busy="true"]')).toBeTruthy();
+    await act(async () => { finish(explainOf('s1')); await new Promise((r) => setTimeout(r, 0)); });
+    expect(proposal().textContent).toContain('definition of s1');
+    expect(proposal().querySelector('[aria-busy="true"]')).toBeNull();
+  });
+});

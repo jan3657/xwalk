@@ -160,6 +160,10 @@ offline only (FakeDecider, no paid calls).
   (`scripts/bench_review_step.py`, FakeLLM, in-process) the medians went from 749 ms to
   7 ms for explain, 382 ms to 28 ms for a decision and 379 ms to 25 ms for the overlay;
   over HTTP on a 2,189-row run, 798 to 4 ms, 379 to 12 ms and 373 to 24 ms.
+- While a record's explanation loads, the Review screen's proposal shows the label the
+  queue already has and a placeholder for the rest, instead of "Label not available",
+  "None recorded" and "Not in the reference collection", which read as facts about the
+  reference.
 
 ## [0.2.0rc1] — 2026-10-05
 

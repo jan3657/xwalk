@@ -74,7 +74,22 @@ function Cell({ kind, tone, children }: { kind: string; tone?: 'human' | 'struck
   );
 }
 
-function TargetFacts({ record, id }: { record: TargetRecord | null; id: string }) {
+function TargetFacts({ record, id, loading = false, label = null }: {
+  record: TargetRecord | null; id: string;
+  /** The record is still being fetched: a placeholder, never "not in the reference". */
+  loading?: boolean;
+  /** A label already known (the queue row's), shown while loading. */
+  label?: string | null;
+}) {
+  if (loading) {
+    return (
+      <div aria-busy="true">
+        <div className={v.big}>{label ?? <Skeleton width="55%" height={14} />}</div>
+        <div className={v.idLine}><Identifier value={id} /></div>
+        <div className={v.factsLoading}><Skeleton lines={3} /></div>
+      </div>
+    );
+  }
   const f = record?.fields;
   const synonyms = f?.synonyms ?? [];
   return (
@@ -185,7 +200,7 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
 
   // Once this record is on screen, fetch what "save and next" and j will show next.
   useEffect(() => {
-    if (explain.state !== 'ready' || idx < 0) return;
+    if (explain.state !== 'ready' || idx < 0 || explain.data?.source_id !== queue[idx]!.sheet.source_id) return;
     const after = queue.slice(idx + 1);
     for (const e of [after.find(isOpen), after[0]]) if (e) explains.prefetch(e.sheet.source_id);
     // isOpen reads `saved` and `history`, both listed.
@@ -407,7 +422,7 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
                   </Cell>
                 ) : proposed ? (
                   <Cell kind={cuts ? 'Model proposal · final: unmatched' : 'Model proposal'} tone={cuts ? 'struck' : undefined}>
-                    <TargetFacts id={proposed} record={ex?.result?.matched_record ?? null} />
+                    <TargetFacts id={proposed} record={ex?.result?.matched_record ?? null} loading={!ex && explain.state === 'loading'} label={row?.target_label ?? null} />
                   </Cell>
                 ) : (
                   <Cell kind="Model proposal"><div className={s.body}>No target proposed.</div></Cell>
