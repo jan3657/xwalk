@@ -12,6 +12,7 @@ upstream call; a call that raises is counted as one call with unknown usage. Pas
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from xwalk._extras import require
@@ -22,6 +23,7 @@ from xwalk.llm.base import (
     LLMRequest,
     LLMResponse,
     LLMRetryableError,
+    reported_usage,
 )
 from xwalk.records import Usage
 
@@ -44,12 +46,16 @@ _FATAL_MARKERS = (
 )
 
 
-def _reported_usage(raw: Any) -> Usage:
-    prompt = getattr(raw, "prompt_tokens", None)
-    completion = getattr(raw, "completion_tokens", None)
-    if prompt is None and completion is None:
-        return Usage.unreported()
-    return Usage(prompt_tokens=int(prompt or 0), completion_tokens=int(completion or 0), calls=1)
+def _field(obj: object, name: str) -> Any:
+    """`obj.name` or `obj[name]`: LiteLLM objects support both, plain dicts only one."""
+    if isinstance(obj, Mapping):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _reported_usage(raw: object) -> Usage:
+    """Tokens count only if reported and valid; otherwise the call's usage is unknown."""
+    return reported_usage(_field(raw, "prompt_tokens"), _field(raw, "completion_tokens"))
 
 
 class LiteLLMClient:
@@ -140,14 +146,37 @@ class LiteLLMClient:
             # failure burns the budget without ever succeeding.
             raise LLMFatalError(str(exc), usage=unknown) from exc
 
-        usage = _reported_usage(getattr(completion, "usage", None))
-        choices = getattr(completion, "choices", None) or []
+        return self._parse(completion, structured=structured)
+
+    def _parse(self, completion: object, *, structured: bool) -> LLMResponse:
+        """Reduce a completion to a response. Anything malformed is a retryable error.
+
+        A malformed envelope says nothing about credentials or the request, so it is
+        recoverable (CONTRACTS.md section 3), booked as one call with unknown usage.
+        """
+
+        def malformed(what: str) -> LLMRetryableError:
+            return LLMRetryableError(f"malformed response: {what}", usage=Usage.unreported())
+
+        choices = _field(completion, "choices")
         if not choices:
-            raise LLMFatalError("provider returned no choices", usage=usage)
+            raise malformed("provider returned no choices")
+        if not isinstance(choices, (list, tuple)):
+            raise malformed("choices is not a list")
+        message = _field(choices[0], "message")
+        if message is None or isinstance(message, (str, bytes)):
+            raise malformed("choice has no message object")
+        text = _field(message, "content")
+        if text is None:
+            text = ""
+        if not isinstance(text, str):
+            raise malformed(f"content is a {type(text).__name__}, not a string")
+        finish_reason = _field(choices[0], "finish_reason")
+        model = _field(completion, "model")
         return LLMResponse(
-            text=getattr(choices[0].message, "content", "") or "",
-            usage=usage,
-            model=str(getattr(completion, "model", self._model)),
+            text=text,
+            usage=_reported_usage(_field(completion, "usage")),
+            model=str(model) if model is not None else self._model,
             structured=structured,
-            finish_reason=getattr(choices[0], "finish_reason", None),
+            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
         )

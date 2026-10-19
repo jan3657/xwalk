@@ -6,6 +6,7 @@ import pytest
 
 from xwalk.llm.base import LLMCapabilities, LLMFatalError, LLMRequest, LLMRetryableError
 from xwalk.llm.openai_compat import CAPABILITY_PROFILES, OpenAICompatClient
+from xwalk.records import Usage
 
 SCHEMA = {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"]}
 
@@ -208,10 +209,105 @@ async def test_a_connection_error_is_retryable():
         )
 
 
-async def test_an_empty_choices_array_is_fatal():
+async def test_an_empty_choices_array_is_retryable_not_fatal():
+    # CONTRACTS.md section 3: malformed output is a recoverable per-record outcome. An
+    # empty choices list says nothing about credentials or the request, so it must not
+    # abort a run.
     llm = client(lambda r: httpx.Response(200, json={"choices": []}))
-    with pytest.raises(LLMFatalError, match="no choices"):
+    with pytest.raises(LLMRetryableError, match="no choices") as caught:
         await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(1)
+
+
+# --- malformed HTTP 200 bodies (engine revision R1) ------------------------------
+
+MALFORMED_200 = {
+    "html": lambda: httpx.Response(200, text="<html><body>502 Bad Gateway</body></html>"),
+    "empty body": lambda: httpx.Response(200, content=b""),
+    "json array": lambda: httpx.Response(200, json=[ok_body()]),
+    "json string": lambda: httpx.Response(200, json="ok"),
+    "no choices key": lambda: httpx.Response(200, json={"model": "m"}),
+    "choices not a list": lambda: httpx.Response(200, json={"choices": {"0": "x"}}),
+    "choice not an object": lambda: httpx.Response(200, json={"choices": ["x"]}),
+    "message not an object": lambda: httpx.Response(200, json={"choices": [{"message": "x"}]}),
+    "content is a list": lambda: httpx.Response(
+        200, json={"choices": [{"message": {"content": [{"type": "text", "text": "x"}]}}]}
+    ),
+    "content is a number": lambda: httpx.Response(
+        200, json={"choices": [{"message": {"content": 7}}]}
+    ),
+    "error body without a code": lambda: httpx.Response(200, json={"error": {"message": "oops"}}),
+}
+
+
+@pytest.mark.parametrize("name", sorted(MALFORMED_200))
+async def test_a_malformed_200_body_is_retryable_with_unknown_usage(name):
+    llm = client(lambda r: MALFORMED_200[name](), max_retries=0)
+    with pytest.raises(LLMRetryableError) as caught:
+        await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(1)
+
+
+async def test_a_200_error_body_with_a_retryable_code_is_retried():
+    responses = iter(
+        [
+            httpx.Response(200, json={"error": {"code": 502, "message": "upstream down"}}),
+            httpx.Response(200, json=ok_body()),
+        ]
+    )
+    llm = client(lambda r: next(responses), backoff_base=0.0)
+    response = await llm.complete(LLMRequest(system="", user="u"))
+    assert response.text == '{"a": "x"}'
+    assert (response.usage.calls, response.usage.unknown_calls) == (2, 1)
+
+
+async def test_a_200_error_body_with_a_retryable_code_exhausts_as_retryable():
+    llm = client(
+        lambda r: httpx.Response(200, json={"error": {"code": 429, "message": "slow"}}),
+        max_retries=2,
+        backoff_base=0.0,
+    )
+    with pytest.raises(LLMRetryableError, match="429") as caught:
+        await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(3)
+
+
+async def test_a_200_error_body_with_another_code_is_fatal():
+    llm = client(lambda r: httpx.Response(200, json={"error": {"code": 401, "message": "no key"}}))
+    with pytest.raises(LLMFatalError, match="401") as caught:
+        await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(1)
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {"prompt_tokens": "eleven", "completion_tokens": 3},
+        {"prompt_tokens": 11, "completion_tokens": [3]},
+        {"prompt_tokens": -1, "completion_tokens": 3},
+        {"prompt_tokens": 1e400, "completion_tokens": 3},
+        {"prompt_tokens": True, "completion_tokens": 3},
+        ["not", "a", "mapping"],
+    ],
+)
+async def test_unusable_token_counts_are_unknown_not_an_error(usage):
+    # The answer itself is fine; only the accounting is unusable, so keep the answer and
+    # book the call as one with unknown usage rather than spend another call.
+    body = {**ok_body(), "usage": usage}
+    # Python's json writes `Infinity`, as a lax provider might; httpx's `json=` refuses it.
+    llm = client(lambda r: httpx.Response(200, content=json.dumps(body).encode()))
+    response = await llm.complete(LLMRequest(system="", user="u"))
+    assert response.text == '{"a": "x"}'
+    assert response.usage == Usage.unreported(1)
+
+
+async def test_null_content_is_an_empty_answer_not_an_error():
+    body = {"choices": [{"message": {"content": None}, "finish_reason": "content_filter"}]}
+    response = await client(lambda r: httpx.Response(200, json=body)).complete(
+        LLMRequest(system="", user="u")
+    )
+    assert response.text == ""
+    assert response.finish_reason == "content_filter"
 
 
 def test_profiles_exist_for_the_endpoints_we_document():

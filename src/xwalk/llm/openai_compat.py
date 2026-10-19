@@ -15,6 +15,7 @@ from xwalk.llm.base import (
     LLMRequest,
     LLMResponse,
     LLMRetryableError,
+    reported_usage,
 )
 from xwalk.llm.budget import CallBudget, CallLimitExceeded
 from xwalk.records import Usage
@@ -74,14 +75,53 @@ def _error_message(response: httpx.Response) -> str:
 
 
 def _reported_usage(raw: object) -> Usage:
-    """One successful call. Its tokens count only if the provider actually reported them."""
-    if not isinstance(raw, Mapping) or not ("prompt_tokens" in raw or "completion_tokens" in raw):
+    """One successful call. Its tokens count only if the provider actually reported them.
+
+    Malformed counts make the call's usage unknown; they never discard the answer and
+    never raise (a bad accounting block is not a reason to spend another call).
+    """
+    if not isinstance(raw, Mapping):
         return Usage.unreported()
-    return Usage(
-        prompt_tokens=int(raw.get("prompt_tokens") or 0),
-        completion_tokens=int(raw.get("completion_tokens") or 0),
-        calls=1,
-    )
+    return reported_usage(raw.get("prompt_tokens"), raw.get("completion_tokens"))
+
+
+# Error codes in an HTTP 200 error body that mean the request itself is unusable: auth,
+# billing, unknown model, invalid request. Anything else in an error body -- a
+# retryable status, an unknown code, no code at all -- is treated as transient.
+FATAL_BODY_CODES = frozenset({400, 401, 402, 403, 404, 413, 422})
+
+
+def _body_error(payload: object) -> tuple[int | None, str] | None:
+    """The (code, message) of an error object in a 200 body, or None if there is none.
+
+    Some gateways (OpenRouter among them) report upstream failures as HTTP 200 with an
+    `error` object instead of choices.
+    """
+    if not isinstance(payload, Mapping):
+        return None
+    error = payload.get("error")
+    if not error:
+        return None
+    if not isinstance(error, Mapping):
+        return None, str(error)[:500]
+    raw_code = error.get("code")
+    code: int | None = None
+    if isinstance(raw_code, int) and not isinstance(raw_code, bool):
+        code = raw_code
+    elif isinstance(raw_code, str) and raw_code.isdigit():
+        code = int(raw_code)
+    return code, str(error.get("message", error))[:500]
+
+
+def _json_payload(response: httpx.Response, dispatched: int) -> object:
+    """The decoded body of a 200, or a retryable error if it is not JSON (an HTML page)."""
+    try:
+        return response.json()
+    except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError both subclass it
+        raise LLMRetryableError(
+            f"malformed response: body is not JSON ({response.text[:200]!r})",
+            usage=Usage.unreported(dispatched),
+        ) from exc
 
 
 class OpenAICompatClient:
@@ -238,9 +278,25 @@ class OpenAICompatClient:
                 last_error = f"{type(exc).__name__}: {exc}"
             else:
                 if response.status_code == 200:
-                    return self._parse(
-                        response, structured=structured, failed_before=dispatched - 1
-                    )
+                    payload = _json_payload(response, dispatched)
+                    body_error = _body_error(payload)
+                    if body_error is None:
+                        return self._parse(
+                            payload, structured=structured, failed_before=dispatched - 1
+                        )
+                    code, message = body_error
+                    if code in FATAL_BODY_CODES:
+                        raise LLMFatalError(
+                            f"HTTP 200 with error {code}: {message}",
+                            usage=Usage.unreported(dispatched),
+                        )
+                    last_error = f"HTTP 200 with error {code}: {message}"
+                    last_retry_after = None
+                    if attempt < self._max_retries:
+                        delay = min(self._backoff_cap, self._backoff_base * (2**attempt))
+                        if delay:
+                            await asyncio.sleep(delay)
+                    continue
 
                 message = _error_message(response)
                 if (
@@ -274,23 +330,47 @@ class OpenAICompatClient:
             usage=Usage.unreported(dispatched),
         )
 
-    def _parse(
-        self, response: httpx.Response, *, structured: bool, failed_before: int
-    ) -> LLMResponse:
-        earlier = Usage.unreported(failed_before)
-        payload = response.json()
-        usage = earlier + _reported_usage(payload.get("usage"))
-        choices = payload.get("choices") or []
+    def _parse(self, payload: object, *, structured: bool, failed_before: int) -> LLMResponse:
+        """Reduce a 200 body to a response. Anything malformed is a retryable error.
+
+        A malformed envelope says nothing about credentials or the request, so it is
+        recoverable (CONTRACTS.md section 3), and its call is counted with unknown usage.
+        """
+        dispatched = failed_before + 1
+
+        def malformed(what: str) -> LLMRetryableError:
+            return LLMRetryableError(
+                f"malformed response: {what}", usage=Usage.unreported(dispatched)
+            )
+
+        if not isinstance(payload, Mapping):
+            raise malformed(f"body is a JSON {type(payload).__name__}, not an object")
+        choices = payload.get("choices")
         if not choices:
-            raise LLMFatalError("provider returned no choices", usage=usage)
-        message = choices[0].get("message") or {}
-        text = message.get("content") or ""
+            raise malformed("provider returned no choices")
+        if not isinstance(choices, list):
+            raise malformed("choices is not a list")
+        choice = choices[0]
+        if not isinstance(choice, Mapping):
+            raise malformed("choice is not an object")
+        message = choice.get("message")
+        if message is None:
+            message = {}
+        if not isinstance(message, Mapping):
+            raise malformed("message is not an object")
+        text = message.get("content")
+        if text is None:
+            text = ""
+        if not isinstance(text, str):
+            raise malformed(f"content is a {type(text).__name__}, not a string")
+        finish_reason = choice.get("finish_reason")
+        usage = Usage.unreported(failed_before) + _reported_usage(payload.get("usage"))
         return LLMResponse(
             text=text,
             usage=usage,
             model=str(payload.get("model", self._model)),
             structured=structured,
-            finish_reason=choices[0].get("finish_reason"),
+            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
         )
 
     async def aclose(self) -> None:

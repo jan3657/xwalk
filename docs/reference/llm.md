@@ -118,8 +118,8 @@ free.
 | Error | Raised when |
 |---|---|
 | `LLMError` | Never directly — the base class for catching all provider failures |
-| `LLMRetryableError` | Transient failure: HTTP 408, 409, 429, 5xx, timeouts, connection resets. Carries `retry_after` (seconds) when the provider said how long to wait |
-| `LLMFatalError` | Non-retryable failure: auth failure, unknown model, malformed request, a 200 with no choices |
+| `LLMRetryableError` | Transient failure: HTTP 408, 409, 429, 5xx, timeouts, connection resets, and any malformed 200 response (not JSON, no choices, wrong shapes). Carries `retry_after` (seconds) when the provider said how long to wait |
+| `LLMFatalError` | Non-retryable failure: auth failure, unknown model, malformed request |
 | `ParseError` | The response text could not be reduced to a JSON object (see [Parsing model output](#parsing-model-output)). Carries the original text as `raw` |
 
 `OpenAICompatClient` raises `LLMRetryableError` only after exhausting its own retries;
@@ -214,9 +214,17 @@ with the defaults, 1, 2, 4, 8, 16 seconds. When all attempts are spent it raises
 `LLMRetryableError("exhausted {max_retries} retries: …", retry_after=…)` carrying the
 last `retry-after` seen.
 
-A 200 whose payload has no choices raises `LLMFatalError("provider returned no
-choices")`. A response without a usage block counts as a call with unknown usage, not
-zero tokens. The returned (or raised) `usage` counts every POST this `complete` made:
+A 200 is validated before it is trusted, and nothing in it can raise anything but an
+`LLMError`. A body that is not JSON (an HTML error page), is not a JSON object, has no
+or empty `choices`, or whose first choice, message or `content` has the wrong shape
+raises `LLMRetryableError("malformed response: …")` at once, with the call counted as
+unknown usage: malformed output is a recoverable per-record outcome, never a run abort
+(CONTRACTS §3). A `null` content is an empty answer. A 200 carrying an `error` object
+(some gateways report upstream failures this way) is treated like that status: a code in
+`FATAL_BODY_CODES = {400, 401, 402, 403, 404, 413, 422}` raises `LLMFatalError`; any
+other code, or none, is retried like a retryable status. A response without a usage
+block, or with token counts that are not non-negative integers, counts as a call with
+unknown usage, not zero tokens, and keeps its answer. The returned (or raised) `usage` counts every POST this `complete` made:
 each failed attempt before the final one is a call with unknown usage.
 
 ### Fingerprint
@@ -274,6 +282,10 @@ Differences from `OpenAICompatClient`, all of them deliberate:
   `overloaded`).
 - **Unknown errors are fatal.** An unrecognised exception becomes `LLMFatalError`:
   retrying a permanent failure burns the budget without ever succeeding.
+- **Malformed responses are retryable.** A completion with no choices, a choice without
+  a message, or non-string content raises `LLMRetryableError`, counted as one call with
+  unknown usage. Invalid token counts make the usage unknown and keep the answer.
+  Dict-shaped responses are read as well as LiteLLM's objects.
 - **No sticky structured fallback** and no `retry-after` handling. A provider that
   rejects `response_format` will surface as a fatal `badrequest`.
 

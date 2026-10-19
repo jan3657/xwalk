@@ -440,3 +440,107 @@ async def test_an_unset_request_uses_the_client_defaults():
     )
     await llm.complete(LLMRequest(system="", user="u"))
     assert (bodies[0]["temperature"], bodies[0]["max_tokens"]) == (0.0, 1024)
+
+
+# --- engine revision R1: malformed HTTP 200 bodies stay inside the record ----------
+
+_MALFORMED_BODIES = {
+    "html": (b"<html><body>502 Bad Gateway</body></html>", "text/html"),
+    "empty": (b"", "application/json"),
+    "json array": (b"[]", "application/json"),
+    "json null": (b"null", "application/json"),
+    "no choices": (b'{"model": "m"}', "application/json"),
+    "empty choices": (b'{"choices": []}', "application/json"),
+    "choice is a string": (b'{"choices": ["x"]}', "application/json"),
+    "content is a list": (
+        b'{"choices": [{"message": {"content": [{"type": "text", "text": "x"}]}}]}',
+        "application/json",
+    ),
+    "error body, retryable code": (
+        b'{"error": {"code": 502, "message": "upstream"}}',
+        "application/json",
+    ),
+    "error body, no code": (b'{"error": "something broke"}', "application/json"),
+}
+
+
+def _openai_matcher(handler, *, max_retries=0, policy=ONE_ATTEMPT):
+    llm = OpenAICompatClient(
+        base_url="https://example.invalid/v1",
+        model="m",
+        max_retries=max_retries,
+        backoff_base=0.0,
+        transport=httpx.MockTransport(handler),
+    )
+    return Matcher(
+        templates=TEMPLATES,
+        retrievers=[ScriptedRetriever({"glucose": ["T1"], "fructose": ["T2"]})],
+        store=STORE,
+        selector=Selector(llm, PROMPTS, TEMPLATES),
+        scorer=Scorer(llm, PROMPTS, TEMPLATES),
+        verifier=Verifier(llm, PROMPTS, TEMPLATES),
+        rewriter=QueryRewriter(llm, PROMPTS, TEMPLATES),
+        policy=policy,
+        run_fingerprint="fp1",
+    )
+
+
+def _good_reply(request: httpx.Request) -> httpx.Response:
+    user = json.loads(request.content)["messages"][1]["content"]
+    content = select_reply("C01") if "## Candidates" in user else score_reply(0.95)
+    return httpx.Response(
+        200,
+        json={
+            "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+        },
+    )
+
+
+@pytest.mark.parametrize("name", sorted(_MALFORMED_BODIES))
+async def test_a_malformed_200_body_is_a_provider_failure_not_an_exception(name):
+    content, content_type = _MALFORMED_BODIES[name]
+    posts: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        posts.append(request)
+        return httpx.Response(200, content=content, headers={"content-type": content_type})
+
+    result = await _openai_matcher(handler).match(SOURCE)
+    assert result.status is MatchStatus.FAILED
+    assert result.reason is DecisionReason.PROVIDER_FAILURE
+    assert result.usage.calls == len(posts) == 1
+    assert result.usage.unknown_calls == 1
+    assert result.usage.total_tokens == 0
+
+
+async def test_a_200_error_body_with_an_auth_code_is_fatal_not_an_exception():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"error": {"code": 401, "message": "no key"}})
+
+    result = await _openai_matcher(handler).match(SOURCE)
+    assert result.status is MatchStatus.FAILED
+    assert result.reason is DecisionReason.FATAL_PROVIDER_FAILURE
+    assert result.usage == Usage.unreported(1)
+
+
+async def test_one_html_page_does_not_abort_the_batch(tmp_path):
+    from xwalk.batch import run_batch
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "fructose" in json.loads(request.content)["messages"][1]["content"]:
+            return httpx.Response(200, text="<html>Bad Gateway</html>")
+        return _good_reply(request)
+
+    sources = [
+        Record(id="s1", fields={"mention": "glucose"}),
+        Record(id="s2", fields={"mention": "fructose"}),
+    ]
+    report = await run_batch(_openai_matcher(handler), sources, out=tmp_path / "run")
+    # `failed` (a record to retry on resume), not `aborted`: the sibling was committed.
+    assert report.run_state.value == "failed"
+    assert report.errors == ()
+    assert report.pending == 0
+    assert report.by_status() == {MatchStatus.MATCHED: 1, MatchStatus.FAILED: 1}
+    # 2 calls for the good record, 1 for the HTML page; the HTML call's usage is unknown.
+    assert (report.usage.calls, report.usage.unknown_calls) == (3, 1)

@@ -63,6 +63,39 @@ def failure_usage(exc: BaseException) -> Usage:
     return usage if isinstance(usage, Usage) else Usage.unreported()
 
 
+def token_count(value: object) -> int | None:
+    """A provider-reported token count, or None when it is not a usable count.
+
+    Usable means a non-negative integer (an integral float is accepted). Booleans,
+    strings, NaN, infinities and negatives are not counts. A missing value (`None`) is 0:
+    callers decide separately whether the provider reported usage at all.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float) and value.is_integer() and value >= 0:
+        return int(value)
+    return None
+
+
+def reported_usage(prompt: object, completion: object) -> Usage:
+    """Usage of one call that returned. Its tokens count only if reported and valid.
+
+    Nothing reported, or a count that is not a count, makes the call's usage unknown;
+    it never raises, so bad accounting cannot discard an otherwise valid answer.
+    """
+    if prompt is None and completion is None:
+        return Usage.unreported()
+    prompt_tokens = token_count(prompt)
+    completion_tokens = token_count(completion)
+    if prompt_tokens is None or completion_tokens is None:
+        return Usage.unreported()
+    return Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, calls=1)
+
+
 @dataclass(frozen=True)
 class LLMCapabilities:
     """What an adapter claims it can do. Defaults are all-false: assume nothing."""
