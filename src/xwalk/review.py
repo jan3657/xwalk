@@ -12,13 +12,13 @@ the review stays in the ledger and `review_history` reports it as stale.
 from __future__ import annotations
 
 import csv
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
 from xwalk.ledger import Ledger
-from xwalk.records import MatchStatus
+from xwalk.records import MatchResult, MatchStatus
 
 COLUMNS = (
     "result_key",
@@ -111,20 +111,7 @@ def export_review(
         for result in ledger.iter_results(run_fingerprint):
             if result.status not in wanted:
                 continue
-            writer.writerow(
-                {
-                    "result_key": result.result_key,
-                    "run_fingerprint": result.run_fingerprint,
-                    "source_id": result.source_id,
-                    "source_hash": result.source_hash,
-                    "proposed_target_id": result.matched_id or "",
-                    "decision": "",
-                    "corrected_target_id": "",
-                    "reviewer": "",
-                    "review_note": "",
-                    "reviewed_at": "",
-                }
-            )
+            writer.writerow(worksheet_row(result))
             written += 1
     return written
 
@@ -263,48 +250,141 @@ def review_history(ledger: Ledger, run_fingerprint: str) -> Iterator[ReviewHisto
         yield ReviewHistoryEntry(review=review, state=state)
 
 
+def _adjudicate(
+    result_key: str,
+    source_id: str,
+    model_target_id: str | None,
+    model_status: MatchStatus,
+    confidence: float | None,
+    decision_row: Mapping[str, object] | None,
+) -> AdjudicatedResult:
+    """The final answer for one current result and its applicable decision, if any."""
+    if decision_row is None:
+        return AdjudicatedResult(
+            result_key=result_key,
+            source_id=source_id,
+            model_target_id=model_target_id,
+            model_status=model_status,
+            confidence=confidence,
+            final_target_id=model_target_id,
+            final_status=model_status,
+            reviewer=None,
+            review_note="",
+            reviewed_at=None,
+        )
+
+    decision = ReviewDecision(str(decision_row["decision"]))
+    final_id: str | None
+    if decision is ReviewDecision.ACCEPT:
+        final_id, final_status = model_target_id, MatchStatus.MATCHED
+    elif decision is ReviewDecision.REPLACE:
+        final_id = str(decision_row["corrected_target_id"])
+        final_status = MatchStatus.MATCHED
+    elif decision in (ReviewDecision.REJECT, ReviewDecision.NO_MATCH):
+        final_id, final_status = None, MatchStatus.UNMATCHED
+    else:  # DEFER
+        final_id, final_status = model_target_id, MatchStatus.NEEDS_REVIEW
+
+    return AdjudicatedResult(
+        result_key=result_key,
+        source_id=source_id,
+        model_target_id=model_target_id,
+        model_status=model_status,
+        confidence=confidence,
+        final_target_id=final_id,
+        final_status=final_status,
+        reviewer=str(decision_row["reviewer"]),
+        review_note=str(decision_row["review_note"]),
+        reviewed_at=str(decision_row["reviewed_at"]),
+    )
+
+
 def adjudicated(ledger: Ledger, run_fingerprint: str) -> Iterator[AdjudicatedResult]:
     """The derived view over current results: model answer plus the latest reviewer
     decision made against that exact result, if any."""
     latest = _applicable_reviews(ledger, run_fingerprint)
 
     for result in ledger.iter_results(run_fingerprint):
-        decision_row = latest.get(result.result_key)
-        if decision_row is None:
-            yield AdjudicatedResult(
-                result_key=result.result_key,
-                source_id=result.source_id,
-                model_target_id=result.matched_id,
-                model_status=result.status,
-                confidence=result.confidence,
-                final_target_id=result.matched_id,
-                final_status=result.status,
-                reviewer=None,
-                review_note="",
-                reviewed_at=None,
-            )
-            continue
-
-        decision = ReviewDecision(str(decision_row["decision"]))
-        if decision is ReviewDecision.ACCEPT:
-            final_id, final_status = result.matched_id, MatchStatus.MATCHED
-        elif decision is ReviewDecision.REPLACE:
-            final_id = str(decision_row["corrected_target_id"])
-            final_status = MatchStatus.MATCHED
-        elif decision in (ReviewDecision.REJECT, ReviewDecision.NO_MATCH):
-            final_id, final_status = None, MatchStatus.UNMATCHED
-        else:  # DEFER
-            final_id, final_status = result.matched_id, MatchStatus.NEEDS_REVIEW
-
-        yield AdjudicatedResult(
-            result_key=result.result_key,
-            source_id=result.source_id,
-            model_target_id=result.matched_id,
-            model_status=result.status,
-            confidence=result.confidence,
-            final_target_id=final_id,
-            final_status=final_status,
-            reviewer=str(decision_row["reviewer"]),
-            review_note=str(decision_row["review_note"]),
-            reviewed_at=str(decision_row["reviewed_at"]),
+        yield _adjudicate(
+            result.result_key,
+            result.source_id,
+            result.matched_id,
+            result.status,
+            result.confidence,
+            latest.get(result.result_key),
         )
+
+
+def adjudicated_reviewed(ledger: Ledger, run_fingerprint: str) -> Iterator[AdjudicatedResult]:
+    """`adjudicated` for the current results that have an applicable decision, from the
+    ledger's summary columns: no stored result is decoded, so the cost follows the
+    number of rows, not their size."""
+    latest = _applicable_reviews(ledger, run_fingerprint)
+    if not latest:
+        return
+    for row in ledger.iter_current_summaries(run_fingerprint):
+        key = row["result_key"]
+        if key is None or key not in latest:
+            continue
+        yield _adjudicate(
+            str(key),
+            str(row["source_id"]),
+            row["matched_id"],
+            MatchStatus(row["status"]),
+            row["confidence"],
+            latest[key],
+        )
+
+
+def applied_review(
+    ledger: Ledger, run_fingerprint: str, result_key: str, revision: int
+) -> dict[str, object] | None:
+    """The decision `review_history` reports as applied to this current result (the
+    latest made against this revision), reading only this result's reviews."""
+    latest: dict[str, object] | None = None
+    for review in ledger.iter_reviews_for(run_fingerprint, result_key):
+        if review["result_revision"] == revision:
+            latest = review
+    return latest
+
+
+def adjudicate_result(
+    result: MatchResult, decision_row: Mapping[str, object] | None
+) -> AdjudicatedResult:
+    """`adjudicated`'s answer for one current result and its applied decision."""
+    return _adjudicate(
+        result.result_key,
+        result.source_id,
+        result.matched_id,
+        result.status,
+        result.confidence,
+        decision_row,
+    )
+
+
+def worksheet_row(result: MatchResult) -> dict[str, str]:
+    """One review worksheet row: identity columns filled, decision columns blank."""
+    return {
+        "result_key": result.result_key,
+        "run_fingerprint": result.run_fingerprint,
+        "source_id": result.source_id,
+        "source_hash": result.source_hash,
+        "proposed_target_id": result.matched_id or "",
+        "decision": "",
+        "corrected_target_id": "",
+        "reviewer": "",
+        "review_note": "",
+        "reviewed_at": "",
+    }
+
+
+def reviewable(ledger: Ledger, run_fingerprint: str, result_key: str) -> MatchResult | None:
+    """The result for `result_key` when the worksheet would list it (current and
+    `needs_review`), else None. Reads that one result."""
+    stored = ledger.get_result(result_key)
+    if stored is None or stored.run_fingerprint != run_fingerprint:
+        return None
+    entry = ledger.current_entry(run_fingerprint, stored.source_id)
+    if entry is None or entry.result is None or entry.result.result_key != result_key:
+        return None
+    return entry.result if entry.result.status is MatchStatus.NEEDS_REVIEW else None

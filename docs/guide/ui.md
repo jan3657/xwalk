@@ -154,11 +154,23 @@ setting jobs up. It has three screens:
   candidate list, with the five decisions in a fixed bar (keys A, P, R, N, D; J/K to move;
   ⌘↵ to *Save and next*). Each decision is recorded through `ops.review_apply` against the
   exact result it was made on. A failed save says why and the queue does not advance; a
-  result that changed since the queue loaded is reported as a conflict to reload.
+  result that changed since the queue loaded is reported as a conflict to reload. Each
+  record is read from the run on its own (and the next one is fetched while you read),
+  so stepping and saving stay quick on runs of thousands of rows. The queue opens on the
+  first record still to decide and scrolls with J/K. A corrected target id you type is
+  looked up in the job's target collection before it can be saved; an id the collection
+  does not have is refused, by the page and again by the server.
+
+Keys work without clicking into a list first: J/K and ↵ on Runs and Results as soon as
+the page opens, and Escape leaves a text field (Reviewer, Note, a filter) so the
+single-key shortcuts work again.
 
 Setting up jobs, uploads, the ontology library, evaluation and clustering stay on the
-classic explorer, which the workbench links to. The source and its design notes are in
-[`web/`](https://github.com/jan3657/xwalk/blob/main/web/README.md) in the repository (not in the sdist).
+classic explorer, which the workbench links to. A clustering run opened in the workbench
+(by a link or a typed URL) says so and links to its classic run page; a screen that fails
+to render shows the error and a way back instead of a blank page. The source and its design
+notes are in [`web/`](https://github.com/jan3657/xwalk/blob/main/web/README.md) in the
+repository (not in the sdist).
 
 ## Which model answers
 
@@ -241,6 +253,7 @@ failed; misuse of the API raises `ApiError` with an HTTP status. Routes:
 | POST | `/api/quickmap` | pasted terms: `candidates` (retrieval only) or a run (`offline`, `endpoint`) |
 | GET | `/api/mapping`, `/api/mapping.csv` | a run's results with source texts, contexts and target labels; the same as CSV |
 | GET | `/api/reviews` | a run's review overlay: every decision with its state (`applied`, `superseded`, `stale`) and the adjudicated answer of each reviewed result |
+| GET | `/api/target` | one record of a run's target collection by its exact id (`dir`, `id`, optional `job`); 404 `target_not_found` otherwise |
 | GET | `/api/job-file`, `/api/review-sheet` | download a job file; download the review worksheet |
 | POST | `/api/review-upload` | apply a filled-in worksheet from the workspace |
 | GET, POST | `/api/presets`, `/api/credentials` | model presets; session API keys (state only, never values) |

@@ -83,7 +83,7 @@ button.candidate:hover { background: var(--surface-hover); }
 .error { display: flex; gap: 8px; align-items: center; font: 500 12px var(--font-mono); color: var(--status-failed-fg); }
 .errSq { width: 6px; height: 6px; background: currentColor; }
 .raw summary { font: 600 10.5px var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); cursor: pointer; }
-.raw summary:hover { color: var(--accent); }
+.raw summary:hover { color: var(--accent-ink); }
 .raw pre {
   margin: 6px 0 0;
   padding: 8px 10px;

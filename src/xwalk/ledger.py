@@ -141,6 +141,16 @@ _V2_ADDITIONS = (
 )
 
 
+# One source's snapshot entry, for the per-source reads (explain, one review decision).
+# Not part of the versioned layout: a ledger without it reads the same, only slower. It is
+# created with a new or upgraded ledger and by `put_snapshot`, the write every run makes,
+# never by opening a ledger to read it.
+_SNAPSHOT_SOURCE_INDEX = (
+    "CREATE INDEX IF NOT EXISTS snapshot_entries_by_source "
+    "ON snapshot_entries(snapshot_id, source_id)"
+)
+
+
 class UnsupportedLedgerError(Exception):
     """The file is not a ledger this version of xwalk can open. It was not modified."""
 
@@ -420,6 +430,7 @@ class Ledger:
     def _apply_v2(conn: sqlite3.Connection, *, migrated_from: int | None) -> None:
         for statement in _V2_ADDITIONS:
             conn.execute(statement)
+        conn.execute(_SNAPSHOT_SOURCE_INDEX)
         meta = {"schema_version": str(LEDGER_SCHEMA_VERSION), "created_at": _now()}
         if migrated_from is not None:
             meta = {**meta, "migrated_from": str(migrated_from), "migrated_at": meta["created_at"]}
@@ -581,6 +592,7 @@ class Ledger:
         An identical consecutive snapshot is reused, so an unchanged rerun adds nothing.
         """
         self._check_open()
+        self._conn.execute(_SNAPSHOT_SOURCE_INDEX)  # ledgers written before it gain it here
         digest = hash_value([list(entry) for entry in entries])
         latest = self._conn.execute(
             "SELECT snapshot_id, digest FROM snapshots WHERE run_fingerprint = ? "
@@ -738,6 +750,84 @@ class Ledger:
                 revision=revision,
                 current=bool(row["live"]) and current.get(key) == revision,
             )
+
+    # --- one source -------------------------------------------------------------------
+    # Reads for interactive callers (explain, one review decision) that are about one
+    # record: indexed lookups that decode that record's rows only, never the run's.
+
+    def _current_row_for(
+        self, run_fingerprint: str, source_id: str, columns: str
+    ) -> sqlite3.Row | None:
+        """`_current_rows` restricted to one source id."""
+        snapshot_id = self.current_snapshot_id(run_fingerprint)
+        if snapshot_id is not None:
+            row: sqlite3.Row | None = self._conn.execute(
+                f"""SELECT e.source_id AS entry_source_id, e.source_hash AS entry_source_hash,
+                    {columns}
+                FROM snapshot_entries e
+                LEFT JOIN results r ON r.run_fingerprint = ? AND r.source_id = e.source_id
+                    AND r.source_hash = e.source_hash
+                WHERE e.snapshot_id = ? AND e.source_id = ?""",
+                (run_fingerprint, snapshot_id, source_id),
+            ).fetchone()
+            return row
+        row = self._conn.execute(
+            f"""SELECT r.source_id AS entry_source_id, r.source_hash AS entry_source_hash,
+                {columns}
+            FROM results r
+            WHERE r.run_fingerprint = ? AND r.source_id = ?
+            ORDER BY r.commit_seq DESC LIMIT 1""",
+            (run_fingerprint, source_id),
+        ).fetchone()
+        return row
+
+    def current_entry(self, run_fingerprint: str, source_id: str) -> CurrentEntry | None:
+        """The `iter_current` entry for one source, or None when the current view does not
+        have it (an unknown or removed source)."""
+        row = self._current_row_for(run_fingerprint, source_id, "r.blob, r.revision")
+        if row is None:
+            return None
+        blob = row["blob"]
+        return CurrentEntry(
+            source_id=str(row["entry_source_id"]),
+            source_hash=str(row["entry_source_hash"]),
+            result=None if blob is None else result_from_dict(json.loads(blob)),
+            revision=None if row["revision"] is None else int(row["revision"]),
+        )
+
+    def iter_source_history(self, run_fingerprint: str, source_id: str) -> Iterator[HistoryEntry]:
+        """`iter_history` for one source: its committed results in commit order."""
+        live = self._current_row_for(run_fingerprint, source_id, "r.result_key, r.revision")
+        current = (
+            (str(live["result_key"]), int(live["revision"]))
+            if live is not None and live["result_key"] is not None
+            else None
+        )
+        cursor = self._conn.execute(
+            """SELECT blob, result_key, revision, commit_seq, 1 AS live
+                FROM results WHERE run_fingerprint = ? AND source_id = ?
+            UNION ALL
+            SELECT blob, result_key, revision, commit_seq, 0 AS live
+                FROM result_history WHERE run_fingerprint = ? AND source_id = ?
+            ORDER BY commit_seq""",
+            (run_fingerprint, source_id, run_fingerprint, source_id),
+        )
+        for row in cursor:
+            key, revision = str(row["result_key"]), int(row["revision"])
+            yield HistoryEntry(
+                result=result_from_dict(json.loads(row["blob"])),
+                revision=revision,
+                current=bool(row["live"]) and current == (key, revision),
+            )
+
+    def iter_reviews_for(self, run_fingerprint: str, result_key: str) -> Iterator[dict[str, Any]]:
+        """`iter_reviews` for one result key, in the order applied."""
+        cursor = self._conn.execute(
+            "SELECT * FROM reviews WHERE run_fingerprint = ? AND result_key = ? ORDER BY review_id",
+            (run_fingerprint, result_key),
+        )
+        for row in cursor:
+            yield dict(row)
 
     def history_count(self, run_fingerprint: str) -> int:
         row = self._conn.execute(

@@ -74,6 +74,26 @@ export function useStored(key: string, initial: string): [string, (v: string) =>
 export const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
 
+/**
+ * Escape leaves a text field, so the single-key shortcuts (j k, A P R N D) work again
+ * without reaching for the mouse. It runs first (capture) and goes no further, so the
+ * same press does not also close a drawer. Fields inside a dialog keep Escape for the
+ * dialog.
+ */
+export function useEscapeLeavesField(): void {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !isTyping(e.target)) return;
+      const field = e.target as HTMLElement;
+      if (field.closest('[role="dialog"]')) return;
+      e.stopPropagation();
+      field.blur();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+}
+
 /** "/" focuses the screen's filter field, as in most tools that list things. */
 export function useSlashFocus(ref: { current: HTMLInputElement | null }): void {
   useEffect(() => {

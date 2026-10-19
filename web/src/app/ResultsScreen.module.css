@@ -23,7 +23,7 @@
 .pillDiamond { width: 6px; height: 6px; flex-shrink: 0; background: var(--human-solid); transform: rotate(45deg); }
 
 .policy { display: flex; flex-direction: column; gap: 3px; font: 400 10.5px var(--font-mono); color: var(--text-muted); white-space: nowrap; }
-.policy b { color: var(--accent); font-weight: 600; }
+.policy b { color: var(--accent-ink); font-weight: 600; }
 .policyNote { color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; font-size: 9.5px; }
 
 /* Inspector drawer: the three layers side by side as a hairline grid. */

@@ -374,6 +374,55 @@ offline only (FakeDecider, no paid calls).
   template, example job and prompt renders byte for byte as before, so template, prompt
   and run fingerprints are unchanged. Compiled record templates are now cached per
   process, so building a `TemplateSet` again no longer recompiles.
+- The workbench can be rebuilt from the repository again. The unanchored `data/` rule
+  in `.gitignore` (meant for the private inputs in the root `data/`) also ignored
+  `web/src/components/data/`, so `DataTable`, `Identifier`, `ScoreMeter`, `KeyValue`,
+  `FilterChip` and `CommandLine` were never committed and `npm run typecheck`, `npm
+  test` and `npm run build` failed on a clean checkout. The rule is now `/data/`, and
+  the six components were rewritten from the committed bundle: the rebuilt JavaScript
+  and CSS match the previous build except for CSS-module hashes. `FilterChip`, unused
+  by the screens and absent from the bundle, follows the design system's version.
+  `web/tsconfig.tsbuildinfo`, a compiler cache, is no longer tracked.
+- `/app` no longer goes blank on a clustering run's URL. `/api/run` returns a manifest
+  and no `inspect` for clustering runs, which the Results screen read unguarded; with no
+  error boundary React unmounted the whole page. Results and Review now say that
+  clustering runs open in the classic explorer and link there, `RunView` is typed as a
+  matching or clustering run so the compiler checks the difference, and an error
+  boundary (inside the shell, and around it) shows the error with links to the classic
+  explorer and the runs list.
+- Reviewing a large run no longer waits seconds per record. `ops.explain` decoded every
+  current result, the whole history and the adjudicated view to answer for one source;
+  it now reads that source's rows through indexed lookups (`Ledger.current_entry`,
+  `Ledger.iter_source_history`, `Ledger.iter_reviews_for`, all read-only), and a test
+  pins it to the previous answers for reviewed, re-reviewed, stale, edited and removed
+  sources. Recording one decision in `xwalk ui` (`POST /api/review`) looks up the
+  decided result instead of exporting the whole worksheet (`ops.review_rows`), and
+  `GET /api/reviews` derives the reviewed answers from the ledger's summary columns
+  (`review.adjudicated_reviewed`) without decoding results. The Review screen fetches the
+  next record's explanation while the current one is read. On a generated 2,000-row run
+  (`scripts/bench_review_step.py`, FakeLLM, in-process) the medians went from 749 ms to
+  7 ms for explain, 382 ms to 28 ms for a decision and 379 ms to 25 ms for the overlay;
+  over HTTP on a 2,189-row run, 798 to 4 ms, 379 to 12 ms and 373 to 24 ms.
+- While a record's explanation loads, the Review screen's proposal shows the label the
+  queue already has and a placeholder for the rest, instead of "Label not available",
+  "None recorded" and "Not in the reference collection", which read as facts about the
+  reference.
+- Review keyboard and queue fixes in `/app`: the queue opens on the first record still to
+  decide instead of the first record, and scrolls to follow J/K; Escape leaves a text
+  field (it used to stay in the Reviewer or Note field, where A P R N D were typed as
+  text); J/K and ↵ work on Runs and Results from a fresh page, not only after tabbing
+  into the table.
+- A corrected target id typed in the Review screen is checked against the job's target
+  collection before it can be saved: new read route `GET /api/target` (exact id,
+  `ops.find_targets`), and `POST /api/review` refuses a `replace` to an id the
+  collection does not have (422 `unknown_target`) instead of recording an answer that
+  names no record. `xwalk review apply` and `review.apply_review` are unchanged.
+- Workbench text meets WCAG AA contrast. Faint ink (`#85837C`, 3.2 to 3.6:1 on the
+  workbench surfaces) is now `#66645E`, orange text uses `--orange-700`, and the review
+  count and *Save and next* put ink rather than white on signal orange. axe-core's
+  `color-contrast` rule found 272 failing text elements across Runs, Results and Review
+  before, and none after. The design language (archival neutrals, one signal orange for
+  marks) is unchanged; there is still no dark theme.
 
 ## [0.2.0rc1] — 2026-10-05
 

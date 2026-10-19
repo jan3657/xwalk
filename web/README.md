@@ -12,6 +12,10 @@ Review queue, plus the Export and Resume dialogs.
   `#EFECE6`, ink `#1A1A17`; signal orange `#EE6327` only for the selected strand, focus,
   filters and the single *Save and next*. Hairline grids instead of cards and shadows; 2px
   corners.
+- **Text passes WCAG AA (4.5:1).** Faint ink is `#66645E` (the design system's `#85837C`,
+  3.2 to 3.6:1, stays as `--gray-500` for marks and rules); orange text uses
+  `--accent-ink` (`--orange-700`); text on an orange fill is ink, not white. Checked with
+  axe-core's `color-contrast` rule on Runs, Results (both views, inspector) and Review.
 - **Marks, not pills.** Model output is a 6px square (`■ NEEDS REVIEW`); a human decision is
   a blue diamond (`◆ REPLACED`), so the two layers never read alike. Run state sits in a
   hairline box and blinks a signal square while running.
@@ -57,7 +61,7 @@ the policy allows).
 
 | Path | What |
 |---|---|
-| `src/styles/tokens/` | The design system's tokens, copied verbatim (`colors`, `typography`, `spacing`, `effects`, `base`). `fonts.css` bundles Geist and Geist Mono (OFL, `@fontsource`) instead of loading Google Fonts. |
+| `src/styles/tokens/` | The design system's tokens (`colors`, `typography`, `spacing`, `effects`, `base`), with `--text-faint`, `--accent-ink` and `--text-on-accent` changed or added for contrast. `fonts.css` bundles Geist and Geist Mono (OFL, `@fontsource`) instead of loading Google Fonts. |
 | `src/components/` | 32 primitives (the design system's 30, plus `CommandLine` and `Drawer`), grouped: `core/` Button, IconButton, Icon, Kbd, Tooltip · `status/` StatusBadge, RunStateBadge, ReviewBadge, Tag · `data/` DataTable, Identifier, ScoreMeter, KeyValue, FilterChip, CommandLine · `forms/` Input, Textarea, Select, Checkbox, Switch, SegmentedControl, DecisionPicker · `navigation/` Tabs, SidebarNav · `feedback/` Banner, EmptyState, Skeleton, Toast · `overlays/` Dialog, Inspector, Drawer. |
 | `src/api/` | A typed client over `xwalk.ui.api`. Field names are the backend's own. |
 | `src/app/` | The shell and screens. Routes are hash routes: `#/runs`, `#/results?dir=…&sel=…`, `#/review?dir=…&sel=…`. |
@@ -95,8 +99,9 @@ importing Lucide elsewhere.
 | Inspector: decision, candidates, attempts, history | `GET /api/explain` (`ops.explain(full=True)`) | existing |
 | Shared target hint | manifest `duplicate_targets` via `GET /api/run` | existing (passed through) |
 | Review queue | `GET /api/review` (the worksheet's `needs_review` rows) | existing |
-| Save and next | `POST /api/review` with one decision (`ops.review_apply`, validated against the current result) | existing |
+| Save and next | `POST /api/review` with one decision (`ops.review_apply`, validated against the current result; the decided result is looked up alone); the next record's `GET /api/explain` is prefetched while the current one is read | existing |
 | Spot-check matched records | — | **proposed**: the worksheet holds `needs_review` rows only |
+| Corrected target id check | `GET /api/target` (`ops.find_targets`, exact id); `POST /api/review` refuses a `replace` to an unknown id (422 `unknown_target`) | **new read route** |
 | Worksheet | `GET /api/review-sheet` | existing |
 | Export dialog | `GET /api/export?view=raw\|reviewed\|history` | existing |
 | Summary, Evaluate tabs | the classic explorer's run page | existing, not redesigned yet |

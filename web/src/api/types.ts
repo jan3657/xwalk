@@ -104,13 +104,24 @@ export interface InspectData {
   reviews?: Record<string, number>;
 }
 
-export interface RunView {
-  kind: 'match' | 'cluster';
+/** `GET /api/run`: a matching run carries `inspect`; a clustering run only its manifest. */
+export type RunView = MatchRunView | ClusterRunView;
+
+interface RunViewBase {
   dir: string;
   job_path: string | null;
   answered_by: 'offline' | 'endpoint' | null;
+}
+
+export interface MatchRunView extends RunViewBase {
+  kind: 'match';
   inspect: Envelope<InspectData>;
   duplicate_targets: Record<string, string[]>;
+}
+
+export interface ClusterRunView extends RunViewBase {
+  kind: 'cluster';
+  manifest: Record<string, unknown>;
 }
 
 export interface MappingRow {
