@@ -16,6 +16,13 @@ import httpcore
 import httpx
 import pytest
 
+# Required (the dev extra installs it): without it the TLS, SNI and redirect tests
+# below would not run at all.
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
+
 from xwalk.ui.egress import PinnedTransport, is_public, wire_host
 from xwalk.ui.files import FileProblem
 from xwalk.ui.library import download
@@ -27,12 +34,6 @@ TOY_OBO = b"format-version: 1.2\n\n[Term]\nid: TOY:0001\nname: Seizure\n"
 @pytest.fixture
 def tls_server(tmp_path: Path) -> Iterator[tuple[int, Path, dict[str, Any]]]:
     """An HTTPS server on 127.0.0.1 with a self-signed certificate for NAME only."""
-    pytest.importorskip("cryptography")
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
-
     key = ec.generate_private_key(ec.SECP256R1())
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, NAME)])
     now = datetime.datetime.now(datetime.timezone.utc)
