@@ -17,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from xwalk.cluster.diagnostics import dedupe
 from xwalk.cluster.evaluate import ClusterEvalError, evaluate_cluster_run
 from xwalk.cluster.inspection import (
     ClusterInspectError,
@@ -246,6 +247,8 @@ async def cluster_operation(
                 f"{needs_review} source(s) need review: see {report.artifacts.get('unresolved')}",
             )
         )
+    result.warnings += [OpMessage(w["code"], w["message"]) for w in report.warnings]
+    result.warnings = dedupe(result.warnings)
     c = report.counts
     result.lines += [
         f"clustered {c.get('total', 0)} records into {c.get('clusters', 0)} clusters "
@@ -521,19 +524,8 @@ def inspect_warnings(info: dict[str, Any], run_dir: str | Path) -> list[OpMessag
                 "recorded no usage: the call and token totals are a lower bound",
             )
         )
-    if info["selected_is_last"] is False:
-        changed = info["changed_after_export"]["sources"]
-        exported = info["exported_revision"]
-        warnings.append(
-            OpMessage(
-                "selected_not_last",
-                f"the exports hold state revision {exported}, not the last revision "
-                f"{info['last_revision']} (stop reason {info['stop_reason']}): {changed} "
-                f"source(s) changed after revision {exported} and those changes are not in "
-                f"the exports; `xwalk cluster explain --run {run_dir} <source_id>` shows them",
-            )
-        )
-    return warnings
+    warnings += [OpMessage(w["code"], w["message"]) for w in info["warnings"]]
+    return dedupe(warnings)
 
 
 def cluster_explain_operation(

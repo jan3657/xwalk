@@ -46,6 +46,16 @@ offline only (FakeDecider, no paid calls).
   `manifest_unreadable` and `store_mismatch` (exit `3`). The `cluster_run` refusal of
   the matching-run commands now names these commands. `members.csv` is computed by the
   same function (`exports.exported_state`), so the views match the exports.
+- `xwalk cluster` and `xwalk cluster inspect` warn, once per code, about the limits a
+  run worked within: `retrieval_bounded` (the pool grew past `pool.scan_below` with
+  lexical retrieval only, so synonyms sharing no word may never have been compared),
+  `evidence_bounded` (an exported cluster has more than `pool.member_evidence`
+  members, so later members were not checked against every member),
+  `resume_determinism` (a resumed run matches an uninterrupted one only if the model
+  answers identical prompts identically) and `selected_not_last` (the exports hold an
+  earlier state revision than the last). `ClusterReport.warnings` carries them.
+  Thresholds are in the clustering guide. Decisions, ordering and retrieval defaults
+  are unchanged.
 - The benchmark's clustering track runs `xwalk cluster` itself (`xwalk_clustering`,
   default settings) beside the baselines and reports its scores, usage and gold-pair
   co-exposure. In `--smoke` the judge is the offline lexical stand-in and the numbers

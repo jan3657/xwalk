@@ -205,6 +205,19 @@ Exit codes: `0` complete with nothing to review; `1` complete with `needs_review
 error or `--max-calls`), records that failed, or a run directory that belongs to another
 run; `130` interrupted (resume continues).
 
+## Warnings about a run's limits
+
+`xwalk cluster` (at the end of every invocation) and `xwalk cluster inspect` report what
+bounded this run, each at most once. They describe the run; none of them changes a
+decision.
+
+| Warning | Reported when | What it means |
+|---|---|---|
+| `retrieval_bounded` | the largest number of live clusters at any step is greater than `pool.scan_below`, and there is no `dense:` head | above `scan_below`, expansion pages show only retrieved clusters, so a record meets only clusters that share a word with it: synonyms with no word in common may never have been compared. `dense:` or a larger `scan_below` widens the search; neither makes it exhaustive. Not reported for a format-1 run (its manifest does not record the retrieval heads) |
+| `evidence_bounded` | an exported cluster has more than `pool.member_evidence` members | a record is verified against the first `member_evidence` members listed, not every member, so members that joined later may never have been compared with each other |
+| `resume_determinism` | the run took more than one invocation, or the last one was aborted, interrupted or never finished | a resumed run reproduces an uninterrupted one only if the model answers identical prompts identically; with a sampling model it can differ |
+| `selected_not_last` | refinement stopped at `max_iterations` or `oscillation` and the exports hold an earlier state revision than the last | changes after that revision (for instance a member removed by a failed reverification) are in the store and `decisions.jsonl`, not in the exports; `xwalk cluster explain` lists them per record |
+
 ## Limits of this first version
 
 - Equivalence only, one level, clusters created in the run. No taxonomy seeding,

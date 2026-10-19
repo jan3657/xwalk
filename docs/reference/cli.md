@@ -82,7 +82,8 @@ to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`,
 `run_format_outdated`, `cluster_run` (a matching-run command such as `inspect`
 given a clustering run), from `cluster eval`, `cluster inspect` and `cluster explain`
 `not_a_cluster_run`, `manifest_unreadable`, `store_mismatch`, the `selected_not_last`,
-`invocation_unfinished` and `superseded_by_selection` warnings,
+`invocation_unfinished`, `superseded_by_selection`, `retrieval_bounded`,
+`evidence_bounded` and `resume_determinism` warnings,
 `gold_unreadable`, `store_unreadable` and the `partial_run` and `gold_not_in_run`
 warnings, and the `experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
 `--offline-model` adds the `offline_model` warning.
@@ -270,7 +271,10 @@ existing `--out` is refused. Resuming a finished run retries its `failed` record
 stderr. Exit codes: `0` complete, `1` complete with `needs_review` records, `2` usage or
 job error, `3` aborted run, failed records or a foreign run directory, `130` interrupted.
 `--json` data: `stop_reason`, `selected_revision`, `last_revision`, `exported_revision`,
-`experimental`.
+`experimental`. Warnings, each at most once: `experimental`, `needs_review`, and the
+factual `retrieval_bounded`, `evidence_bounded`, `resume_determinism` and
+`selected_not_last` (thresholds in the guide's
+[warnings table](../guide/clustering.md#warnings-about-a-runs-limits)).
 
 `validate` (and `doctor`) accept clustering jobs too: strict schema, source file,
 extras, credential presence and duplicate source ids, with no model call.
@@ -317,9 +321,10 @@ state differs from the exported one, with up to 20 ids), `clusters` (`accepted`,
 `by_size`, the five `largest`), `merges` by outcome, `decisions` by kind (and how many
 carry an error), `invocations` (state and calls of each), `fingerprint_components`.
 
-Warnings: `experimental`, `needs_review`, `partial_run` (sources never reached),
-`invocation_unfinished` (the last invocation is still running or was killed),
-`usage_incomplete`, and `selected_not_last`: refinement stopped at `max_iterations`
+Warnings, each at most once: `experimental`, `needs_review`, `partial_run` (sources
+never reached), `invocation_unfinished` (the last invocation is still running or was
+killed), `usage_incomplete`, the factual `retrieval_bounded`, `evidence_bounded` and
+`resume_determinism` (as `xwalk cluster` reports them), and `selected_not_last`: refinement stopped at `max_iterations`
 or `oscillation` and the exports hold an earlier state revision than the last, so
 changes made after it (a member removed by a failed reverification, for instance) are
 in the store and `decisions.jsonl` but not in the exports. `cluster explain` shows them.

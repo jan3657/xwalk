@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from xwalk.cluster.diagnostics import assignment_differs, changed_after_export, run_warnings
 from xwalk.cluster.engine import ACCEPTED
 from xwalk.cluster.exports import exported_state
 from xwalk.cluster.store import ClusterStore, ClusterStoreError
@@ -251,12 +252,8 @@ def _inspect(run: ClusterRun) -> dict[str, Any]:
     largest = sorted(
         state.accepted.items(), key=lambda item: (-len(item[1]["members"]), item[1]["created_seq"])
     )[:LARGEST_SHOWN]
-    current = store.current_assignments()
-    changed = [
-        row["source_id"]
-        for row in state.rows
-        if _differs(state.view.assignments.get(row["source_id"]), current.get(row["source_id"]))
-    ]
+    changed = changed_after_export(store, state)
+    run_state = run_state_of(store, manifest)
     merges = Counter(str(m["outcome"]) for m in store.merges())
     kinds: Counter[str] = Counter()
     errors = 0
@@ -266,8 +263,15 @@ def _inspect(run: ClusterRun) -> dict[str, Any]:
     invocations = store.invocations()
     return {
         "manifest": manifest,
-        "run_state": run_state_of(store, manifest),
+        "run_state": run_state,
         "state": state,
+        "warnings": run_warnings(
+            store,
+            manifest.get("fingerprint_components"),
+            state,
+            run_state=run_state,
+            run_dir=run.path,
+        ),
         "stop_reason": stop_reason,
         "selected_revision": selected,
         "last_revision": last,
@@ -320,12 +324,6 @@ def _inspect(run: ClusterRun) -> dict[str, Any]:
             for i in invocations
         ],
     }
-
-
-def _differs(exported: Sequence[Any] | None, current: Mapping[str, Any] | None) -> bool:
-    if exported is None or current is None:
-        return (exported is None) != (current is None)
-    return (exported[0], exported[1]) != (current["outcome"], current["cluster_id"])
 
 
 # --- explain --------------------------------------------------------------------------------
@@ -451,7 +449,7 @@ def _explain(run: ClusterRun, source_id: str, full: bool) -> dict[str, Any]:
     current = store.current_assignments().get(source_id)
     exported_stored = state.view.assignments.get(source_id)
     current_view = None
-    if current is not None and _differs(exported_stored, current):
+    if current is not None and assignment_differs(exported_stored, current):
         current_view = {
             "outcome": current["outcome"],
             "cluster_id": current["cluster_id"],
