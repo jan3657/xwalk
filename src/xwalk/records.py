@@ -185,6 +185,11 @@ class Attempt:
     finish_reason: str | None
     # Calibrated signals from a decision model. Empty on the LLM path.
     signals: Mapping[str, float] = field(default_factory=dict)
+    # One note per retriever search that raised or timed out in this attempt
+    # ("name: message"). Non-empty means the candidate list may be incomplete, so a
+    # negative outcome from it is not settled evidence. Kept whether or not the trace
+    # keeps candidates; empty for a forced re-score, which does not search.
+    retrieval_failures: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

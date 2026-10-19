@@ -604,6 +604,7 @@ class Signals:
     rubric_levels: int | None = None
     rubric_confidence: float | None = None
     properties: Mapping[str, float] = field(default_factory=dict)
+    retrieval_degraded: bool = False  # some retriever search failed (either pass)
 
     def flat(self) -> dict[str, float]
 
@@ -631,7 +632,7 @@ def derive_status(signals: Signals, policy: DecisionPolicy) -> tuple[MatchStatus
 
 Seven rules, in order; the first that matches wins.
 
-1. every retriever failed → `failed` / `retriever_failure`
+1. every retriever failed (first pass) → `failed` / `retriever_failure`
 2. no candidates, or nothing was screened → `unmatched` / `no_candidates`
 3. best screen probability < `screen_floor` → `unmatched` / `below_review_floor`
 4. choose said `NONE` and `p_none` ≥ `none_at` → `unmatched` / `selector_abstained`
@@ -642,8 +643,16 @@ Seven rules, in order; the first that matches wins.
    → `matched` / `accept_threshold`
 7. otherwise → `needs_review` / `below_accept_threshold`
 
+Then one override: if the outcome is `unmatched` and `Signals.retrieval_degraded` is set
+(some retriever search failed in the first pass or in the rewrite's search), the result is
+`failed` / `retriever_failure` instead, so a resumed run retries it. A match or a review
+stands on the surviving candidates. `DecisionMatcher` stores the failed searches on the
+attempt as `retrieval_failures`.
+
 A provider failure is handled by the matcher rather than here, and produces `failed` /
-`provider_failure`.
+`provider_failure`, which takes precedence over a retriever failure in the same record.
+`STATUS_SEMANTICS_VERSION` (now 2) versions these rules and is part of the run
+fingerprint.
 
 Rule 6 is a conjunction: one property at `0.40` sends an otherwise perfect match to review.
 That is the intended direction — an automatic match is the one nobody looks at.

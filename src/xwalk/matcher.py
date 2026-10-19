@@ -11,6 +11,11 @@ Stage-failure policy (CONTRACTS.md section 3). Every stage call goes through
 - recoverable in the rewriter: the loop ends; status comes from the attempts so far.
 - fatal (`LLMFatalError`) anywhere: the result is `failed` with
   `reason=fatal_provider_failure`. `match` never raises for a provider error.
+
+A retriever that raises or times out is recorded on the attempt (`retrieval_failures`).
+With no surviving hits the attempt is `retriever_failure` and the same query is retried;
+with hits the attempt goes on, and can match or go to review, but a negative outcome
+from it is `failed`, not `unmatched` (`policy.derive_status`).
 """
 
 from __future__ import annotations
@@ -239,13 +244,15 @@ class Matcher:
                 usage=usage,
                 elapsed_seconds=time.perf_counter() - started,
                 finish_reason=finish_reason,
+                retrieval_failures=tuple(notes),
             )
 
         def done(attempt: Attempt, routed: RoutedProposals = _NO_PROPOSALS) -> _AttemptOutcome:
             return _AttemptOutcome(attempt, routed, keyed, candidates)
 
-        # Every retriever failed. A dead index is not evidence of a non-match.
-        if not candidates and notes and len(notes) == len(self._retrievers):
+        # No surviving hits and at least one retriever failed: the empty list may be
+        # the outage, not the record. Retried like any retriever failure.
+        if not candidates and notes:
             return done(build(reason=DecisionReason.RETRIEVER_FAILURE))
 
         if not candidates:

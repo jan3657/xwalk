@@ -136,10 +136,15 @@ reason, whose verifier decision (if any) is `"support"`. Otherwise, if attempts 
 
 `derive_status` (in `xwalk.policy`) reduces the attempt list to one
 `(status, reason, best_attempt)`. Any `FATAL_PROVIDER_FAILURE` attempt makes the result
-`FAILED` with that reason. Only a finite score in `[0, 1]` counts. Highest score wins;
-on a tie an attempt that completed beats one whose verifier call failed, then the
-earlier attempt wins. A best attempt with `verifier_decision="error"` is
-`NEEDS_REVIEW` with reason `PROVIDER_FAILURE`.
+`FAILED` with that reason. Otherwise an acceptable attempt (the test that stopped the
+loop) is `MATCHED`, even when an earlier attempt scored higher but was rejected or left
+unverified by the verifier. Without one, the fallback ranking applies: only a finite
+score in `[0, 1]` counts, highest score wins; on a tie an attempt that completed beats
+one whose verifier call failed, then the earlier attempt wins. A best attempt with
+`verifier_decision="error"` is `NEEDS_REVIEW` with reason `PROVIDER_FAILURE`. A
+negative outcome is `UNMATCHED` only when no attempt failed and no search lost a
+retriever; otherwise it is `FAILED` with the latest blocking reason. The full table is
+in [core types](core-types.md#status-precedence).
 `matched_id` is cleared for `UNMATCHED` and `FAILED`. The matched record is looked up
 in the store — a missing id is tolerated, leaving `matched_record` as `None`. The
 result carries a `result_key` derived from `(run_fingerprint, source.id,
@@ -793,8 +798,12 @@ produced at another retrieval depth.
   overwrites it; the survivor is the call that ended the attempt.
 - **`Attempt.error` doubles as degradation notes.** When no stage errored, it carries
   the joined retriever failure notes, if any.
-- **Ties in `derive_status` go to the earlier attempt**, and the highest-scoring
-  attempt wins even if a later one scored lower.
+- **Ties in `derive_status` go to the earlier attempt**, and among attempts that are
+  not acceptable the highest-scoring one is proposed even if a later one scored lower.
+  An acceptable attempt beats them all.
+- **A retriever down is recorded structurally.** `Attempt.retrieval_failures` lists each
+  failed search, with or without the candidate trace. With no surviving hits the
+  attempt is `retriever_failure` and the same query is retried.
 - **`apply_budget` always keeps at least one candidate**, even when that single
   candidate exceeds the character budget.
 - **`matched_record` can be `None` while `matched_id` is set.** The store lookup
