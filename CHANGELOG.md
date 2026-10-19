@@ -16,6 +16,11 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- Jev adapter identity version 2 hashes the redacted full endpoint (scheme, host,
+  path and non-secret query parameters, including blank values), excluding userinfo
+  and credentials. This deliberately invalidates prior Jev cache/run identities;
+  resume in a fresh run directory. Credential rotation keeps the new identity stable.
+
 - MCP directory confinement follows allowed directory symlinks and checks their
   descendants, using directory identities to terminate cycles.
 

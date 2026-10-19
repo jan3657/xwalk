@@ -231,11 +231,15 @@ request, retries included, and report each request's outcome with `budget.settle
 refusal can name the error of a provider that is failing; `BudgetedDecider` (in `xwalk.decide.budget`) does that and
 keeps the complete usage, which is how `--max-calls` limits the decider path.
 
-**Fingerprint.** `hash_value` over the adapter name, `ADAPTER_VERSION`, the endpoint's host
-and path, and the configured model id. The API key is not in it, so rotating a key does not
-invalidate a resumable run — the same rule the LLM adapters follow. Moving from the
-OpenRouter endpoint to TypeSafe's *does* change it, because the host and path are part of
-what answered.
+**Fingerprint.** `hash_value` over the adapter name, `ADAPTER_VERSION`, the redacted full
+endpoint and the configured model id. Endpoint identity includes scheme, host, path and
+non-secret query parameters (including blank values). URL userinfo and credential
+parameters never enter the hash, so rotating credentials preserves the identity. Changing
+providers or deployment query parameters changes it.
+
+**Compatibility.** Jev adapter identity version 2 deliberately invalidates version 1
+cache and run identities, which omitted scheme and query parameters. Start a fresh run
+directory for existing Jev runs.
 
 `aclose()` closes the underlying `httpx.AsyncClient`.
 

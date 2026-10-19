@@ -10,7 +10,6 @@ import asyncio
 import dataclasses
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 
@@ -24,11 +23,11 @@ from xwalk.decide.base import (
     question_to_dict,
 )
 from xwalk.decide.budget import reserve
-from xwalk.fingerprint import hash_value
+from xwalk.fingerprint import hash_value, redact_url
 from xwalk.llm.budget import CallBudget
 from xwalk.records import Usage
 
-ADAPTER_VERSION = 1
+ADAPTER_VERSION = 2
 RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504, 529})
 
 
@@ -90,8 +89,7 @@ class JevClient:
             {
                 "adapter": "jev",
                 "adapter_version": ADAPTER_VERSION,
-                "host": urlparse(self._url).netloc,
-                "path": urlparse(self._url).path,
+                "endpoint": redact_url(self._url),
                 "model": self._model,
             }
         )

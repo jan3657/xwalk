@@ -858,3 +858,50 @@ async def test_litellm_credential_rotation_keeps_the_fingerprint(monkeypatch):
     assert [b["api_key"] for b in first + second] == ["sk-one"] * 4 + ["sk-two"] * 4
     assert _without_key(first) == _without_key(second)
     assert _fingerprint(one) == _fingerprint(two)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://jev.example/decide?deployment=a",
+        "https://jev.example/decide?deployment=b",
+        "https://jev.example/decide?deployment=a&flag=",
+    ],
+)
+async def test_jev_full_endpoint_changes_run_identity(url):
+    one = JevClient("https://jev.example/decide?deployment=a", "jev")
+    two = JevClient(url, "jev")
+    try:
+        assert _decide_fingerprint(_decide_config(one, FakeLLM([]))) != _decide_fingerprint(
+            _decide_config(two, FakeLLM([]))
+        )
+    finally:
+        await one.aclose()
+        await two.aclose()
+
+
+async def test_jev_identity_never_hashes_url_credentials(monkeypatch):
+    import xwalk.decide.jev as jev
+    from xwalk.fingerprint import hash_value
+
+    inputs = []
+    monkeypatch.setattr(jev, "hash_value", lambda value: inputs.append(value) or hash_value(value))
+    one = JevClient("https://alice:secret@jev.example/decide?api_key=hidden&deployment=a", "jev")
+    two = JevClient("https://bob:rotated@jev.example/decide?token=changed&deployment=a", "jev")
+    try:
+        assert one.fingerprint == two.fingerprint
+        assert (
+            inputs
+            == [
+                {
+                    "adapter": "jev",
+                    "adapter_version": 2,
+                    "endpoint": "https://jev.example/decide?deployment=a",
+                    "model": "jev",
+                }
+            ]
+            * 2
+        )
+    finally:
+        await one.aclose()
+        await two.aclose()
