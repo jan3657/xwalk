@@ -222,8 +222,86 @@ def greedy_leader(
     return {s.id: out[s.id] for s in variant.sources}
 
 
+CLUSTER_JUDGE_SMOKE = (
+    "xwalk.ui.offline.lexical_cluster_model (SYNTHETIC: word-overlap stand-in, not a model)"
+)
+
+
+def cluster_llm_factory(mode: str, make_llm: Callable[[], LLMClient]) -> Callable[[], LLMClient]:
+    """The judge for `xwalk cluster`. The synthetic matching judge does not read the
+    clustering prompts, so smoke mode uses the UI's offline lexical stand-in."""
+    if mode == "smoke":
+        from xwalk.llm.fake import FakeLLM
+        from xwalk.ui.offline import lexical_cluster_model
+
+        return lambda: FakeLLM(handler=lexical_cluster_model)
+    return make_llm
+
+
+def run_xwalk_clustering(
+    variant: Variant,
+    work: Path,
+    out_dir: Path,
+    llm: LLMClient,
+    max_calls: int | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Run `xwalk cluster` (default settings, `order: label`) over the variant's
+    mentions, write its exported partition as a prediction file, and return that file
+    with the run's own evaluation extras (co-exposure, usage) from `xwalk cluster eval`'s
+    code. A `--max-calls` cap that aborts the run leaves `pending` mentions, which are
+    scored as singletons."""
+    import asyncio
+
+    from xwalk.cluster import ClusterRunError
+    from xwalk.cluster import run_clustering as cluster_records
+    from xwalk.cluster.evaluate import evaluate_cluster_run
+    from xwalk.evaluate.clustering import read_assignments
+    from xwalk.templates import TemplateSet
+
+    field = "{{ " + variant.query_field + " }}"
+    templates = TemplateSet(query=field, context=field, doc=field, candidate=field)
+    run_dir = work / "xwalk_clustering"
+    if run_dir.exists():
+        shutil.rmtree(run_dir)  # scratch: a benchmark invocation always starts clean
+    try:
+        report = asyncio.run(
+            cluster_records(
+                variant.sources, out=run_dir, llm=llm, templates=templates, max_calls=max_calls
+            )
+        )
+    except ClusterRunError as exc:
+        raise RuntimeError(f"xwalk clustering could not run: {exc}") from exc
+    clusters, outcomes = read_assignments(run_dir / "members.csv")
+    path = out_dir / "pred_xwalk_clustering.csv"
+    write_assignments(path, clusters, outcomes)
+    gold_path = out_dir / "gold_clusters.csv"
+    evaluated = evaluate_cluster_run(run_dir, gold_path)
+    extra = {
+        "run_state": report.run_state,
+        "stop_reason": report.stop_reason,
+        "usage": {
+            "calls": report.usage.calls,
+            "prompt_tokens": report.usage.prompt_tokens,
+            "completion_tokens": report.usage.completion_tokens,
+            "unknown_calls": report.usage.unknown_calls,
+            "tokens": report.usage.describe_tokens(),
+        },
+        "calls_per_item": evaluated["calls_per_item"],
+        "exposure": evaluated["exposure"],
+        "settings": "xwalk.cluster defaults (order: label, lexical pool, no dense head)",
+    }
+    return path, extra
+
+
 def run_clustering(
-    variant: Variant, matching: dict[str, methods.MethodOutput], out_dir: Path
+    variant: Variant,
+    matching: dict[str, methods.MethodOutput],
+    out_dir: Path,
+    *,
+    cluster_llm: Callable[[], LLMClient] | None = None,
+    judge: str | None = None,
+    work: Path | None = None,
+    max_calls: int | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     gold_path = out_dir / "gold_clusters.csv"
@@ -264,17 +342,39 @@ def run_clustering(
         write_assignments(path, clusters, {k: v for k, v in outcomes.items() if v})
         predictions["via_xwalk_matching"] = [path]
 
+    extras: dict[str, dict[str, Any]] = {}
+    run_costs: dict[str, dict[str, Any]] = {}
+    cluster_error: str | None = None
+    if cluster_llm is not None:
+        try:
+            (path, extra), run_cost = measured(
+                lambda: run_xwalk_clustering(
+                    variant, work or out_dir, out_dir, cluster_llm(), max_calls
+                )
+            )
+        except RuntimeError as exc:  # e.g. a --max-calls below one record's decision
+            cluster_error = str(exc)
+        else:
+            predictions["xwalk_clustering"] = [path]
+            extras["xwalk_clustering"] = {**extra, "judge": judge}
+            run_costs["xwalk_clustering"] = run_cost
+
     results: dict[str, Any] = {}
     for name, paths in predictions.items():
         scored, cost = measured(functools.partial(evaluate_files, gold_path, paths))
         scored["gold"] = gold_path.name
         scored["predictions"] = [p.name for p in paths]
-        results[name] = {**scored, "cost": cost}
+        if name in run_costs:
+            cost = {"run": run_costs[name], "evaluation": cost}
+        results[name] = {**scored, **extras.get(name, {}), "cost": cost}
     results["_note"] = (
-        "Baselines only. xwalk clustering (task 04) is scored by passing its exported "
-        "assignments to `python -m benchmarks.cluster_eval`; via_xwalk_matching groups "
-        "mentions by their accepted catalog target and is not a clustering algorithm."
+        "xwalk_clustering is `xwalk cluster` with default settings over the mentions "
+        "(SYNTHETIC lexical judge in smoke mode); exact_mention and greedy_fuzzy_leader are "
+        "baselines; via_xwalk_matching groups mentions by their accepted catalog target "
+        "and is not a clustering algorithm."
     )
+    if cluster_error is not None:
+        results["_xwalk_clustering_error"] = cluster_error
     return results
 
 
@@ -435,7 +535,13 @@ def run(
             )
             if variant.construction.get("method") == "none":
                 report["tracks"]["clustering"][dataset] = run_clustering(
-                    variant, outputs, out / "clustering" / dataset
+                    variant,
+                    outputs,
+                    out / "clustering" / dataset,
+                    cluster_llm=cluster_llm_factory(mode, make_llm),
+                    judge=CLUSTER_JUDGE_SMOKE if mode == "smoke" else "the variant's llm",
+                    work=variant_work,
+                    max_calls=max_calls,
                 )
     (out / "results.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"

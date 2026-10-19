@@ -30,6 +30,10 @@ offline only (FakeDecider, no paid calls).
   metric functions moved from `benchmarks/clustering.py` to
   `xwalk.evaluate.clustering` (re-exported by the benchmark), which also reads
   `pending` outcomes and `source_id` columns.
+- The benchmark's clustering track runs `xwalk cluster` itself (`xwalk_clustering`,
+  default settings) beside the baselines and reports its scores, usage and gold-pair
+  co-exposure. In `--smoke` the judge is the offline lexical stand-in and the numbers
+  are SYNTHETIC; `--real` uses the variant's model under `--max-calls`.
 - `inspect`, `explain`, `results`, `export`, `review`, `eval`, `fit` and `compare`
   given a clustering run directory exit `2` with `cluster_run`, naming the exports and
   `xwalk cluster eval`, instead of `run_not_found` ("no manifest.json" although

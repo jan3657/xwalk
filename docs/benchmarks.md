@@ -100,7 +100,8 @@ classifier only. Gold targets that blocking never proposed are not in the table 
 reported separately as `blocking_misses`, which is exactly the retrieval failure this
 track cannot see.
 
-**Clustering.** `benchmarks/clustering.py` computes pairwise and B-cubed
+**Clustering.** `benchmarks/clustering.py` (re-exporting `xwalk.evaluate.clustering`,
+the code `xwalk cluster eval` uses) computes pairwise and B-cubed
 precision/recall/F1, false merges, splits, singleton behaviour, review coverage and
 order sensitivity from any predicted assignment file:
 
@@ -110,14 +111,23 @@ python -m benchmarks.cluster_eval --gold gold_clusters.csv \
 ```
 
 Predictions are `item_id,cluster_id[,outcome]` (CSV or JSONL) with the outcomes of
-CONTRACTS section 10 (`assigned`, `singleton`, `needs_review`, `failed`). Items outside
+CONTRACTS section 10 (`assigned`, `singleton`, `needs_review`, `failed`, `pending`). Items outside
 the accepted partition are scored two ways: as their own singletons (so sending
 everything to review cannot score well), and excluded (`accepted_only`). The pilot gold
-clusters group mentions with the same gold id set. xwalk clustering (task 04) is not
-scored yet; the smoke run scores three baselines: identical normalised mention text,
-an order-dependent greedy fuzzy leader run in two input orders, and grouping by the
-accepted catalog target of the `xwalk_full` run (a matching shortcut, not a clustering
-algorithm).
+clusters group mentions with the same gold id set. `xwalk_clustering` runs
+`xwalk cluster` with default settings (`order: label`, lexical pool, no dense head) over
+the dataset's mentions and scores its exported partition; its row also carries
+`run_state`, `usage`, `calls_per_item` and `exposure.gold_pairs_co_exposed` (gold pairs
+seen together in one judge prompt; a diagnostic, not a recall bound). In smoke mode its
+judge is `xwalk.ui.offline.lexical_cluster_model`, a word-overlap stand-in (the
+synthetic matching judge does not read the clustering prompts), so those numbers are
+SYNTHETIC like the rest; with `--real` it uses the variant's `llm` under `--max-calls`.
+A cap below one record's decision (4 calls by default) is reported as
+`_xwalk_clustering_error` instead of a row. It is one run in one order: order
+sensitivity is not measured for it. The smoke run also scores three baselines:
+identical normalised mention text, an order-dependent greedy fuzzy leader run in two
+input orders, and grouping by the accepted catalog target of the `xwalk_full` run (a
+matching shortcut, not a clustering algorithm).
 
 ## Metrics
 

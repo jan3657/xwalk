@@ -300,6 +300,15 @@ def test_the_smoke_run_is_labelled_synthetic_complete_and_deterministic(tmp_path
         )
     assert "ncbi_disease" in first["tracks"]["clustering"]
     assert (tmp_path / "out1" / "clustering" / "ncbi_disease" / "gold_clusters.csv").exists()
+    # xwalk's own clustering is scored, with the offline lexical judge in smoke mode
+    xc = first["tracks"]["clustering"]["ncbi_disease"]["xwalk_clustering"]
+    assert xc["scores"]["outcome_counts"]["missing"] == 0
+    assert sum(xc["scores"]["outcome_counts"].values()) == 5
+    assert xc["predictions"] == ["pred_xwalk_clustering.csv"]
+    assert xc["usage"]["calls"] > 0 and xc["run_state"] == "complete"
+    assert "SYNTHETIC" in xc["judge"]
+    assert xc["exposure"]["gold_pairs"] >= xc["exposure"]["gold_pairs_co_exposed"] >= 0
+    assert "xwalk_clustering" in summary
     assert first["not_run"]["linktransformer"].startswith("pending")
     assert _strip_costs(first) == _strip_costs(second)
 
