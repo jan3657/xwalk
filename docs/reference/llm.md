@@ -274,12 +274,18 @@ Differences from `OpenAICompatClient`, all of them deliberate:
   fallbacks), the extra upstream calls cannot be observed: each `complete` is counted
   as one call, and one that raises as one call with unknown usage. Keep
   `num_retries=0` when call counts must be exact.
-- **Error classification by string matching.** LiteLLM raises many provider-specific
-  exception types, so the type name and message are lowercased, underscores removed,
-  and scanned for markers. Fatal markers (`authentication`, `permissiondenied`,
-  `notfound`, `badrequest`, `invalidrequest`) are checked first, then retryable ones
-  (`ratelimit`, `timeout`, `serviceunavailable`, `internalserver`, `apiconnection`,
-  `overloaded`).
+- **Error classification by name, then message.** LiteLLM raises many
+  provider-specific exception types. The class name, lowercased with underscores
+  removed, is scanned first, so LiteLLM's public names decide on their own; only when
+  the name matches nothing is the message scanned too. Fatal markers are checked
+  before retryable ones. Fatal: `authentication`, `permissiondenied`, `notfound`,
+  `badrequest`, `invalidrequest`, `unprocessable`, `contextwindow`, `contentpolicy`,
+  `rejectedrequest`, `budgetexceeded`. Retryable: `ratelimit`, `timeout`,
+  `serviceunavailable`, `internalserver`, `apiconnection`, `overloaded`,
+  `responsevalidation` (LiteLLM's `APIResponseValidationError`, a malformed provider
+  response) and `apierror` (LiteLLM's `APIError`, its catch-all for statuses it does
+  not map one by one). Per-request rejections (context window, content policy) are
+  fatal on both adapters today: they abort the run, as CONTRACTS §3 is written.
 - **Unknown errors are fatal.** An unrecognised exception becomes `LLMFatalError`:
   retrying a permanent failure burns the budget without ever succeeding.
 - **Malformed responses are retryable.** A completion with no choices, a choice without

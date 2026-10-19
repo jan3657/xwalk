@@ -127,7 +127,12 @@ offline only (FakeDecider, no paid calls).
   were fatal), counted as calls with unknown usage. A 200 carrying an `error` object
   is fatal for auth, billing, model and request codes (400, 401, 402, 403, 404, 413,
   422) and retried otherwise. Invalid token counts make usage unknown and keep the
-  answer. Programming errors still raise.
+  answer. Programming errors still raise. LiteLLM exceptions are classified by
+  LiteLLM's public class names first: `APIResponseValidationError` (a malformed
+  response) and `APIError` (its catch-all for unmapped statuses) are now retryable
+  instead of aborting the run as unrecognised; `UnprocessableEntityError`,
+  `ContextWindowExceededError`, `ContentPolicyViolationError`, `RejectedRequestError`
+  and `BudgetExceededError` are fatal by name. Truly unrecognised exceptions stay fatal.
 - A Jev rubric `score` outside the offered levels (`99`, `inf` on a two-level rubric)
   became an automatic match. Scores must be finite and in `[0, len(criteria) - 1]`,
   never clamped, or the response is a `DecisionResponseError`; the decider policy

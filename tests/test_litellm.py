@@ -81,6 +81,60 @@ async def test_an_auth_error_becomes_fatal(monkeypatch):
         await client.complete(LLMRequest(system="", user="u"))
 
 
+async def _raise_named(monkeypatch, class_name: str, message: str):
+    """Raise an exception whose class has LiteLLM's public name (litellm not needed)."""
+    client = LiteLLMClient("fake/model")
+    error_type = type(class_name, (Exception,), {})
+
+    def boom(**kwargs):
+        raise error_type(message)
+
+    monkeypatch.setattr(client, "_acompletion", boom)
+    await client.complete(LLMRequest(system="", user="u"))
+
+
+@pytest.mark.parametrize(
+    "class_name",
+    [
+        # LiteLLM's own "the provider's response was malformed" error: recoverable (R1).
+        "APIResponseValidationError",
+        # LiteLLM's catch-all for provider statuses it does not map one by one (502...).
+        "APIError",
+        "RateLimitError",
+        "Timeout",
+        "ServiceUnavailableError",
+        "InternalServerError",
+        "APIConnectionError",
+    ],
+)
+async def test_litellm_transient_and_malformed_response_errors_are_retryable(
+    monkeypatch, class_name
+):
+    with pytest.raises(LLMRetryableError):
+        await _raise_named(monkeypatch, class_name, "upstream said no")
+
+
+@pytest.mark.parametrize(
+    "class_name",
+    [
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "NotFoundError",
+        "BadRequestError",
+        "UnprocessableEntityError",
+        "ContextWindowExceededError",
+        "ContentPolicyViolationError",
+        "RejectedRequestError",
+        "BudgetExceededError",
+    ],
+)
+async def test_litellm_auth_model_and_request_errors_are_fatal(monkeypatch, class_name):
+    # Classified by name, so a message that happens to mention a transient word cannot
+    # turn a request that will never succeed into a retry.
+    with pytest.raises(LLMFatalError):
+        await _raise_named(monkeypatch, class_name, "rejected; not a timeout")
+
+
 async def test_an_unrecognised_error_is_fatal_not_retried_forever(monkeypatch):
     """Retrying an error we do not understand burns budget on a permanent failure."""
     client = LiteLLMClient("fake/model")

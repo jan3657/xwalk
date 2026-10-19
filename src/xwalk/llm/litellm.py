@@ -39,6 +39,11 @@ _RETRYABLE_MARKERS = (
     "internalserver",
     "apiconnection",
     "overloaded",
+    # LiteLLM's malformed-response error: recoverable (CONTRACTS section 3).
+    "responsevalidation",
+    # LiteLLM's catch-all for provider statuses it does not map one by one (502, 504...).
+    # "apiconnectionerror" does not contain it.
+    "apierror",
 )
 _FATAL_MARKERS = (
     "authentication",
@@ -46,7 +51,33 @@ _FATAL_MARKERS = (
     "notfound",
     "badrequest",
     "invalidrequest",
+    "unprocessable",
+    # Per-request rejections; fatal on both adapters today. A per-record class for
+    # them needs a CONTRACTS section 3 amendment.
+    "contextwindow",
+    "contentpolicy",
+    "rejectedrequest",
+    "budgetexceeded",
 )
+
+
+def _classify(exc: Exception) -> type[LLMFatalError] | type[LLMRetryableError]:
+    """Fatal or retryable, by LiteLLM's public class names first, then the message.
+
+    The class name decides when it is one we know, so a message that mentions a
+    transient word cannot turn a request that will never succeed into a retry. An
+    error we do not recognise at all stays fatal.
+    """
+    name = type(exc).__name__.lower().replace("_", "")
+    for markers, kind in ((_FATAL_MARKERS, LLMFatalError), (_RETRYABLE_MARKERS, LLMRetryableError)):
+        if any(m in name for m in markers):
+            return kind
+    text = f"{name}{exc}".lower().replace("_", "")
+    if any(m in text for m in _FATAL_MARKERS):
+        return LLMFatalError
+    if any(m in text for m in _RETRYABLE_MARKERS):
+        return LLMRetryableError
+    return LLMFatalError
 
 
 def _field(obj: object, name: str) -> Any:
@@ -143,15 +174,9 @@ class LiteLLMClient:
         try:
             completion = await self._acompletion(**body)
         except Exception as exc:  # LiteLLM raises many provider-specific types
-            marker = f"{type(exc).__name__}{exc}".lower().replace("_", "")
-            unknown = Usage.unreported()
-            if any(m in marker for m in _FATAL_MARKERS):
-                raise LLMFatalError(str(exc), usage=unknown) from exc
-            if any(m in marker for m in _RETRYABLE_MARKERS):
-                raise LLMRetryableError(str(exc), usage=unknown) from exc
             # An error we do not recognise is treated as fatal: retrying a permanent
             # failure burns the budget without ever succeeding.
-            raise LLMFatalError(str(exc), usage=unknown) from exc
+            raise _classify(exc)(str(exc), usage=Usage.unreported()) from exc
 
         return self._parse(completion, structured=structured)
 
