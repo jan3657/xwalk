@@ -16,6 +16,10 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- Evaluation reports budget truncation only with explicit clipping evidence.
+  Retrieved gold with unknown presentation after selector failure is unavailable,
+  excluded from the ceiling denominator, rather than a recommendation to raise budgets.
+
 - Clustering read-only views resolve database symlinks before finding WAL sidecars,
   include committed log updates, and never assume an immutable database. Clean
   writable stores use query-only connections; active stores retain consistent snapshots.

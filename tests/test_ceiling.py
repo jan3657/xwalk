@@ -261,9 +261,9 @@ async def test_failed_screen_after_clipping_cannot_prove_a_retrieval_miss(tmp_pa
         assert classify_ceiling(stored, gold) is CeilingBucket.UNAVAILABLE
         report = evaluate(ledger, row.run_fingerprint, gold, policy=policy)
         assert report.ceiling.buckets == {CeilingBucket.UNAVAILABLE: 1}
-        # Retained positive evidence still establishes a bucket.
+        # Retention proves retrieval, but the failed screen leaves presentation unknown.
         retained = GoldSet({SOURCE.id: frozenset({"T1"})})
-        assert classify_ceiling(stored, retained) is CeilingBucket.TRUNCATED
+        assert classify_ceiling(stored, retained) is CeilingBucket.UNAVAILABLE
     finally:
         ledger.close()
 
@@ -282,3 +282,33 @@ def test_full_matcher_trace_can_prove_absence_despite_selector_truncation():
     assert classify_ceiling(row, GOLD, path="llm") is CeilingBucket.NEVER_RETRIEVED
     assert classify_ceiling(row, GOLD) is CeilingBucket.UNAVAILABLE
     assert classify_ceiling(row, GOLD, path="decider") is CeilingBucket.UNAVAILABLE
+
+
+async def test_selector_failure_with_gold_retrieved_has_unknown_presentation():
+    from tests.test_matcher import SOURCE, ScriptedRetriever, build
+    from xwalk.llm.base import LLMFatalError
+    from xwalk.llm.fake import FakeLLM
+    from xwalk.serde import result_from_dict, result_to_dict
+
+    row = await build(
+        FakeLLM([LLMFatalError("selector unavailable")]),
+        ScriptedRetriever({"glucose": ["T1", "T2"]}),
+    ).match(SOURCE)
+    row = result_from_dict(result_to_dict(row))
+    assert row.status is MatchStatus.FAILED
+    assert row.attempts[0].candidates_truncated == 0
+    assert row.attempts[0].issued_keys == {}
+    report = ceiling_report([row], GOLD, path="llm")
+    assert report.buckets == {CeilingBucket.UNAVAILABLE: 1}
+    assert report.evaluable == 0
+    assert "raise" not in report.recommendation
+
+
+def test_truncation_elsewhere_does_not_prove_gold_was_clipped():
+    row = result(
+        "s1",
+        None,
+        [attempt(0, [cand("T1"), cand("T9")], {}, truncated=1)],
+        status=MatchStatus.FAILED,
+    )
+    assert classify_ceiling(row, GOLD, path="llm") is CeilingBucket.UNAVAILABLE
