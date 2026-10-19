@@ -52,13 +52,13 @@ from xwalk.config import (
     RetrieverSpec,
     load_job,
 )
-from xwalk.decide.base import DecisionClient, DecisionResponse
-from xwalk.decide.budget import BudgetedDecider, DecisionCallLimitExceeded
+from xwalk.decide.base import DecisionClient
+from xwalk.decide.budget import BudgetedDecider
 from xwalk.decide.cache import CachingDecider
 from xwalk.fingerprint import hash_value
 from xwalk.ledger import Ledger
-from xwalk.llm.base import LLMClient, LLMRequest, LLMResponse
-from xwalk.llm.budget import CALL_LIMIT_CODE, BudgetedLLM, CallBudget, CallLimitExceeded
+from xwalk.llm.base import LLMClient
+from xwalk.llm.budget import CALL_LIMIT_CODE, BudgetedLLM, CallBudget
 from xwalk.records import MatchResult, MatchStatus, Record, RetrievalHit, Usage
 from xwalk.retrieval import bm25 as bm25_index
 from xwalk.retrieval import dense as dense_index
@@ -958,9 +958,6 @@ def _open_run(
     )
 
 
-# The marker the OpenAI-compatible and Jev clients put before the error that spent a
-# call limit inside their own retry loop.
-_LAST_ERROR = "; last provider error: "
 _FAILURE_CODES = frozenset({"provider_failure", "retriever_failure", "record_failure"})
 _FAILURE_GROUPS_SHOWN = 5
 
@@ -1010,79 +1007,7 @@ def _failure_groups(failures: Sequence[OpMessage]) -> list[tuple[int, str]]:
     return groups
 
 
-def _call_limit_message(limit: int | None, cause: str | None) -> str:
-    """The run-level stop. Raising the limit is the advice only when calls succeeded."""
-    if cause is None:
-        return (
-            f"call limit of {limit} reached; nothing more is dispatched in this invocation "
-            "(raise --max-calls and resume to continue)"
-        )
-    return (
-        f"call limit of {limit} reached while the provider was failing: {cause}. Fix the "
-        "endpoint, model or credentials before resuming; a higher --max-calls would only "
-        "spend more calls on retries"
-    )
-
-
-@dataclass
-class _ProviderHealth:
-    """The outcome of the run's latest finished provider call, across its clients.
-
-    A run that hits its call limit while every call fails has nothing committed to
-    explain itself; this is where the cause is still known. A success clears it, so a
-    transient failure the provider recovered from is not blamed for a spent limit.
-    """
-
-    last_error: str | None = None
-
-    def failed(self, exc: BaseException, *, refused: bool) -> None:
-        if not refused:
-            self.last_error = f"{type(exc).__name__}: {exc}"
-        elif _LAST_ERROR in str(exc):
-            # The client's own retries failed before the limit refused the next one.
-            self.last_error = str(exc).split(_LAST_ERROR, 1)[1]
-
-    def succeeded(self) -> None:
-        self.last_error = None
-
-
-class _ObservedLLM(BudgetedLLM):
-    """A `BudgetedLLM` that reports each call's outcome to the run's `_ProviderHealth`."""
-
-    def __init__(self, inner: LLMClient, budget: CallBudget, health: _ProviderHealth) -> None:
-        super().__init__(inner, budget)
-        self._health = health
-
-    async def complete(self, request: LLMRequest) -> LLMResponse:
-        try:
-            response = await super().complete(request)
-        except Exception as exc:
-            self._health.failed(exc, refused=isinstance(exc, CallLimitExceeded))
-            raise
-        self._health.succeeded()
-        return response
-
-
-class _ObservedDecider(BudgetedDecider):
-    """The decider-path counterpart of `_ObservedLLM`."""
-
-    def __init__(self, inner: DecisionClient, budget: CallBudget, health: _ProviderHealth) -> None:
-        super().__init__(inner, budget)
-        self._health = health
-
-    async def decide(self, state: Any, questions: Mapping[str, Any]) -> DecisionResponse:
-        try:
-            response = await super().decide(state, questions)
-        except Exception as exc:
-            self._health.failed(exc, refused=isinstance(exc, DecisionCallLimitExceeded))
-            raise
-        self._health.succeeded()
-        return response
-
-
-def _limit_normalizer(
-    budget: CallBudget, limit: int | None, health: _ProviderHealth
-) -> Callable[[list[BatchError]], list[BatchError]]:
+def _limit_normalizer(budget: CallBudget) -> Callable[[list[BatchError]], list[BatchError]]:
     """Merge the per-record call-limit stops into one run-level diagnostic, before
     `run_batch` records and exports them, so `match`, `inspect` and `manifest.json`
     say the same thing."""
@@ -1093,7 +1018,7 @@ def _limit_normalizer(
         kept = [e for e in errors if "call limit of" not in e.message]
         if len(kept) == len(errors):
             return errors
-        stop = BatchError(CALL_LIMIT_CODE, _call_limit_message(limit, health.last_error))
+        stop = BatchError(CALL_LIMIT_CODE, budget.limit_message())
         return [stop, *kept]
 
     return normalize
@@ -1181,23 +1106,22 @@ async def run_async(
     templates = spec.build_templates()
     targets, store = _read_targets(spec, operation)
     budget = CallBudget(max_calls)
-    health = _ProviderHealth()
     # Every metered client of this invocation; their usage is the run's accounting.
     meters: list[BudgetedLLM | BudgetedDecider] = []
     budgeted_decider: BudgetedDecider | None = None
     rewrite_llm: BudgetedLLM | None = None
     try:
         if spec.decider is None:
-            budgeted = _ObservedLLM(llm or spec.build_llm(), budget, health)
+            budgeted = BudgetedLLM(llm or spec.build_llm(), budget)
             meters.append(budgeted)
         else:
             client = decider or (decider_factory or JobSpec.build_decider)(spec)
             # The decider and the rewrite LLM draw on one --max-calls allowance.
-            budgeted_decider = _ObservedDecider(client, budget.share(), health)
+            budgeted_decider = BudgetedDecider(client, budget.share())
             meters.append(budgeted_decider)
             if spec.decider.rewrite is not None:
                 inner = llm or (rewrite_llm_factory or JobSpec.build_rewrite_llm)(spec)
-                rewrite_llm = _ObservedLLM(inner, budget.share(), health)
+                rewrite_llm = BudgetedLLM(inner, budget.share())
                 meters.append(rewrite_llm)
     except CredentialMissingError as exc:
         raise OpError(operation, "credential_missing", str(exc), exit_code=EXIT_USAGE) from None
@@ -1259,7 +1183,7 @@ async def run_async(
             },
             fingerprint_components=components,
             progress=progress,
-            normalize_errors=_limit_normalizer(budget, max_calls, health),
+            normalize_errors=_limit_normalizer(budget),
         )
     except Exception as exc:
         raise OpError(

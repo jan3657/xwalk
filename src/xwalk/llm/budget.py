@@ -13,6 +13,13 @@ request, so its retries and structured-output fallbacks are counted and limited 
 any other client is charged one reservation per `complete` call. Retries hidden inside a
 client that offers no hook (LiteLLM's own `num_retries`) cannot be observed or limited.
 
+The budget also knows how the dispatches it allowed ended: every reservation returns
+a dispatch index, and the client reports the outcome of that request with `settle`. The
+latest-dispatched request with a known outcome decides what a refusal says: if it
+failed, the provider is failing and the message names its error instead of advising a
+higher limit; a request that failed but was overtaken by a later success is not blamed,
+however late its failure (or its retry) arrives.
+
 `BudgetedLLM.usage` is the invocation's complete accounting: the usage reported by every
 call that returned or raised, plus every reserved dispatch that never reported back (a
 call cancelled in flight), counted as a call with unknown usage -- never as free.
@@ -50,6 +57,8 @@ class CallBudget:
         self.limit = limit
         self.dispatched = 0
         self.refused = 0
+        self._latest_settled = 0
+        self._latest_error: str | None = None
 
     @property
     def remaining(self) -> int | None:
@@ -60,17 +69,43 @@ class CallBudget:
         """True once a reservation has been refused."""
         return self.refused > 0
 
-    def acquire(self) -> None:
-        """Reserve one dispatch, or raise `CallLimitExceeded`. Call it immediately
-        before sending a request; it never awaits, so concurrent callers cannot overshoot."""
+    @property
+    def provider_error(self) -> str | None:
+        """The error of the latest-dispatched settled request, or None if it succeeded."""
+        return self._latest_error
+
+    def settle(self, index: int, error: str | None) -> None:
+        """Report how dispatch `index` (from `acquire`) ended: `error` None on success.
+
+        Only a request dispatched after every one settled so far changes the verdict, so
+        a late report of an earlier failure cannot overrule a later success.
+        """
+        if index > self._latest_settled:
+            self._latest_settled = index
+            self._latest_error = error
+
+    def limit_message(self) -> str:
+        """What a refusal says: raise the limit, or fix a provider that is failing."""
+        if self.provider_error is None:
+            return (
+                f"call limit of {self.limit} reached; nothing more is dispatched in this "
+                f"invocation (raise --max-calls and resume to continue)"
+            )
+        return (
+            f"call limit of {self.limit} reached while the provider was failing: "
+            f"{self.provider_error}. Fix the endpoint, model or credentials before "
+            f"resuming; a higher --max-calls would only spend more calls on retries"
+        )
+
+    def acquire(self) -> int:
+        """Reserve one dispatch and return its index (1, 2, ...), or raise
+        `CallLimitExceeded`. Call it immediately before sending a request; it never
+        awaits, so concurrent callers cannot overshoot."""
         if self.limit is not None and self.dispatched >= self.limit:
             self.refused += 1
-            raise CallLimitExceeded(
-                f"call limit of {self.limit} reached; nothing more is dispatched in this "
-                f"invocation (raise --max-calls and resume to continue)",
-                usage=Usage.zero(),
-            )
+            raise CallLimitExceeded(self.limit_message(), usage=Usage.zero())
         self.dispatched += 1
+        return self.dispatched
 
     def share(self) -> CallBudget:
         """A view that draws on this budget but counts its own dispatches.
@@ -94,13 +129,24 @@ class _SharedBudget(CallBudget):
     def exhausted(self) -> bool:
         return self._parent.exhausted
 
-    def acquire(self) -> None:
+    @property
+    def provider_error(self) -> str | None:
+        return self._parent.provider_error
+
+    def settle(self, index: int, error: str | None) -> None:
+        self._parent.settle(index, error)
+
+    def limit_message(self) -> str:
+        return self._parent.limit_message()
+
+    def acquire(self) -> int:
         try:
-            self._parent.acquire()
+            index = self._parent.acquire()
         except CallLimitExceeded:
             self.refused += 1
             raise
         self.dispatched += 1
+        return index
 
 
 class BudgetedLLM:
@@ -146,8 +192,8 @@ class BudgetedLLM:
         return self._reported + (Usage.unreported(missing) if missing > 0 else Usage.zero())
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
-        if not self._gated_inside:
-            self.budget.acquire()
+        # A client gated inside reserves and settles each HTTP request itself.
+        index = None if self._gated_inside else self.budget.acquire()
         try:
             response = await self._inner.complete(request)
         except Exception as exc:
@@ -155,7 +201,11 @@ class BudgetedLLM:
                 self._reported = self._reported + (exc.usage or Usage.zero())
             else:
                 self._reported = self._reported + failure_usage(exc)
+                if index is not None:
+                    self.budget.settle(index, f"{type(exc).__name__}: {exc}")
             raise
+        if index is not None:
+            self.budget.settle(index, None)
         self._reported = self._reported + response.usage
         return response
 

@@ -158,9 +158,12 @@ offline only (FakeDecider, no paid calls).
   dead endpoint was reported only as `call_limit_reached` with the advice to raise
   `--max-calls`; the message now names the provider's last error (`call limit of 5
   reached while the provider was failing: ... ConnectError: ...`) and advises fixing
-  the endpoint instead (both the OpenAI-compatible and the Jev client report the error
-  their own retries hit). The cause is the latest finished call's: a transient failure
-  the provider recovered from is not blamed. The one run-level message is what the
+  the endpoint instead. `CallBudget.acquire` now returns a dispatch index and clients
+  report each request's outcome with `CallBudget.settle` (`BudgetedLLM`,
+  `BudgetedDecider`, and per HTTP retry the OpenAI-compatible and Jev clients); the
+  refusal names the error of the latest-dispatched settled request, so a failure that
+  a later success overtook is not blamed, and `run_batch` used directly reports the
+  same message. The one run-level message is what the
   ledger records, so `match`, `inspect` and `manifest.json` agree. A run (and
   `inspect`) with `failed` rows lists their errors,
   deduplicated with counts and most common first, as `provider_failure` /

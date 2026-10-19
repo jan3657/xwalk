@@ -34,10 +34,11 @@ class DecisionCallLimitExceeded(DecisionFatalError):
     code = CALL_LIMIT_CODE
 
 
-def reserve(budget: CallBudget) -> None:
-    """Reserve one dispatch from `budget`, or raise `DecisionCallLimitExceeded`."""
+def reserve(budget: CallBudget) -> int:
+    """Reserve one dispatch from `budget` and return its index (settle it with
+    `budget.settle`), or raise `DecisionCallLimitExceeded`."""
     try:
-        budget.acquire()
+        return budget.acquire()
     except CallLimitExceeded as exc:
         raise DecisionCallLimitExceeded(str(exc), usage=Usage.zero()) from None
 
@@ -78,16 +79,20 @@ class BudgetedDecider:
         return self._reported + (Usage.unreported(missing) if missing > 0 else Usage.zero())
 
     async def decide(self, state: Any, questions: Mapping[str, Question]) -> DecisionResponse:
-        if not self._gated_inside:
-            reserve(self.budget)
+        # A client gated inside reserves and settles each HTTP request itself.
+        index = None if self._gated_inside else reserve(self.budget)
         try:
             response = await self._inner.decide(state, questions)
         except Exception as exc:
             if not isinstance(exc, DecisionCallLimitExceeded):
                 self._reported = self._reported + failure_usage(exc)
+                if index is not None:
+                    self.budget.settle(index, f"{type(exc).__name__}: {exc}")
             elif isinstance(exc.usage, Usage):
                 self._reported = self._reported + exc.usage
             raise
+        if index is not None:
+            self.budget.settle(index, None)
         self._reported = self._reported + response.usage
         return response
 

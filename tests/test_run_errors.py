@@ -180,3 +180,72 @@ def test_a_transient_failure_that_recovered_is_not_blamed_for_the_limit(tmp_path
     message = _limit_message(result.errors)
     assert "raise --max-calls" in message
     assert "provider was failing" not in message
+
+
+# --- the cause travels with the budget (review dx2 #2, #3) ---------------------------
+
+
+async def test_run_batch_reports_the_provider_error_that_spent_the_limit(tmp_path):
+    """The public run_batch API, without ops: the refusal itself names the cause."""
+    from tests.test_batch import RETRIEVER, SOURCES, make_matcher
+    from tests.test_matcher import ScriptedRetriever
+    from xwalk.batch import run_batch
+    from xwalk.llm.budget import BudgetedLLM, CallBudget
+
+    llm = BudgetedLLM(_dead_llm(), CallBudget(1))
+    report = await run_batch(
+        make_matcher(llm, ScriptedRetriever(RETRIEVER)), SOURCES, out=tmp_path / "run"
+    )
+    assert report.errors, report
+    message = report.errors[0].message
+    assert DEAD in message and "raise --max-calls" not in message
+
+
+def test_a_late_failure_of_an_earlier_request_does_not_override_a_later_success():
+    from xwalk.llm.budget import CallBudget, CallLimitExceeded
+
+    budget = CallBudget(2)
+    first, second = budget.acquire(), budget.acquire()
+    budget.settle(second, None)
+    budget.settle(first, "ConnectError: refused")  # reported after the later success
+    with pytest.raises(CallLimitExceeded) as refused:
+        budget.acquire()
+    assert "raise --max-calls" in str(refused.value)
+    assert "ConnectError" not in str(refused.value)
+
+
+async def test_a_delayed_retry_after_later_successes_does_not_blame_the_provider():
+    """Request A fails and backs off; B and C succeed; A's retry hits the limit."""
+    import asyncio
+
+    from tests.test_openai_compat import ok_body
+    from xwalk.llm.base import LLMRequest
+    from xwalk.llm.budget import BudgetedLLM, CallBudget, CallLimitExceeded
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if b"dead-request" in request.content:
+            raise httpx.ConnectError("All connection attempts failed")
+        return httpx.Response(200, json=ok_body())
+
+    client = OpenAICompatClient(
+        base_url="http://127.0.0.1:9/v1",
+        model="m",
+        backoff_base=0.05,
+        transport=httpx.MockTransport(handler),
+    )
+    llm = BudgetedLLM(client, CallBudget(3))
+
+    async def later(user: str):
+        await asyncio.sleep(0.01)
+        return await llm.complete(LLMRequest(system="", user=user))
+
+    a, b, c = await asyncio.gather(
+        llm.complete(LLMRequest(system="", user="dead-request")),
+        later("B"),
+        later("C"),
+        return_exceptions=True,
+    )
+    assert not isinstance(b, BaseException) and not isinstance(c, BaseException)
+    assert isinstance(a, CallLimitExceeded)
+    assert "raise --max-calls" in str(a) and "provider was failing" not in str(a)
+    assert "ConnectError" not in str(a)
