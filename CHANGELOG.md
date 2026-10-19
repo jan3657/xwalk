@@ -16,6 +16,24 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- `xwalk cluster eval --run DIR --gold CSV [--out FILE] [--json]` and
+  `ops.cluster_eval`: score a clustering run against a gold partition. Pairwise and
+  B-cubed precision, recall and F1 with records outside the accepted clusters as
+  singletons and over the accepted records only, false merges, splits, outcome
+  counts, usage summed over the run's invocations, and `gold_pairs_co_exposed`, the
+  gold pairs whose records were in one judge prompt together (a diagnostic that
+  separates search misses from judge misses; not an upper bound on recall, since
+  joins see a cluster's first members only and merges link records no prompt
+  showed together). Reads the exports and the store read-only: no model or
+  retriever call, nothing written in the run directory. Exit `0` scored, `2` unknown
+  or non-clustering run directory or unreadable gold, `3` unreadable store. The
+  metric functions moved from `benchmarks/clustering.py` to
+  `xwalk.evaluate.clustering` (re-exported by the benchmark), which also reads
+  `pending` outcomes and `source_id` columns.
+- `inspect`, `explain`, `results`, `export`, `review`, `eval`, `fit` and `compare`
+  given a clustering run directory exit `2` with `cluster_run`, naming the exports and
+  `xwalk cluster eval`, instead of `run_not_found` ("no manifest.json" although
+  there was one); `eval` and `compare` no longer create an empty `ledger.sqlite` there.
 - `xwalk ui` serves a workbench at `/app`: Runs, Results with a record inspector, and a
   Review queue with a fixed decision bar, built in React from the xwalk design system
   (`web/`, committed as `xwalk/ui/static/app`, so installs still need no Node; CI checks

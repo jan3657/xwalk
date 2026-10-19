@@ -99,7 +99,9 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 Taxonomy seeding, broader/narrower and multi-level hierarchy, fixed cluster counts,
 LLM naming/glosses and name verification (cluster representation is its members), a
 review overlay with clustering verbs (`unresolved.csv` is the worksheet; applying
-decisions is a later task), `inspect`/`explain` for cluster runs, concurrency.
+decisions is a later task), `inspect`/`explain` for cluster runs (they refuse a
+cluster run with `cluster_run` and point to the exports and `xwalk cluster eval`,
+added October 2026), concurrency.
 
 ## Scaling check
 
@@ -152,7 +154,7 @@ print(time.perf_counter() - start)
 | History reconstructable; selected-revision export correct | met | every stored prompt rebuilt from stored revisions; `test_exports_use_the_selected_revision...` |
 | Candidate and call bounds under refinement | met | per-step call bound, shown and member-evidence bounds, `--max-calls` exact |
 | No full index rebuild per mint; scaling measured | met | `test_the_pool_index_is_updated_per_change...`; table above |
-| Small labelled real sample evaluated | **not met** | no inference endpoint was configured; nothing was run against a real model |
+| Small labelled real sample evaluated | **not met** | no inference endpoint was configured; nothing was run against a real model. The tool now exists: `xwalk cluster eval` (October 2026) |
 
 Because the last gate is not met, and the thresholds are uncalibrated, clustering ships
 marked **experimental** (CLI warning `experimental`, manifest `experimental: true`,

@@ -128,13 +128,28 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="group one collection into clusters of equivalent records (experimental)",
     )
-    cluster.add_argument("--job", required=True, help="a kind: cluster job file")
-    cluster.add_argument("--out", required=True, help="run directory")
+    # `xwalk cluster --job J --out D` runs a job; `xwalk cluster eval ...` scores a run.
+    # --job/--out are checked in the handler, since `eval` takes neither.
+    cluster.add_argument("--job", help="a kind: cluster job file (required to run)")
+    cluster.add_argument("--out", help="run directory (required to run)")
     cluster.add_argument(
         "--max-calls",
         type=int,
         default=None,
         help="cap upstream LLM requests in this invocation; reaching it aborts (resumable)",
+    )
+    cluster_sub = cluster.add_subparsers(dest="cluster_command")
+    cluster_eval = cluster_sub.add_parser(
+        "eval",
+        parents=[common],
+        help="score a clustering run against gold clusters: no model calls",
+    )
+    cluster_eval.add_argument("--run", required=True, help="clustering run directory")
+    cluster_eval.add_argument(
+        "--gold", required=True, help="gold partition: item_id,cluster_id (CSV or JSONL)"
+    )
+    cluster_eval.add_argument(
+        "--out", dest="report_out", default=None, help="also write the report as JSON here"
     )
 
     search = sub.add_parser(
@@ -371,6 +386,16 @@ def _cluster_progress(source_id: str, outcome: str) -> None:
 def _cmd_cluster(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
+    if getattr(args, "cluster_command", None) == "eval":
+        return ops.cluster_eval(args.run, args.gold, out=args.report_out)
+    missing = [flag for flag, value in (("--job", args.job), ("--out", args.out)) if not value]
+    if missing:
+        raise OpError(
+            "cluster",
+            "usage",
+            f"xwalk cluster needs {' and '.join(missing)} (or `xwalk cluster eval`)",
+            exit_code=EXIT_USAGE,
+        )
     return ops.cluster(args.job, args.out, max_calls=args.max_calls, progress=_cluster_progress)
 
 
@@ -408,8 +433,10 @@ def _cmd_eval(args: argparse.Namespace) -> OpResult:
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.evaluate.report import evaluate, render_report, write_report
     from xwalk.ledger import Ledger
+    from xwalk.ops import refuse_cluster_run
 
     run_dir = Path(args.run)
+    refuse_cluster_run(run_dir, "eval")
     gold = load_gold_csv(args.gold)
     ledger = Ledger.open(run_dir / "ledger.sqlite")
     try:
@@ -478,6 +505,7 @@ def _cmd_fit(args: argparse.Namespace) -> OpResult:
         )
 
     run_dir = Path(args.run)
+    ops.refuse_cluster_run(run_dir, operation)
     if not (run_dir / "manifest.json").is_file() or not (run_dir / "ledger.sqlite").is_file():
         raise OpError(
             operation,
@@ -554,6 +582,7 @@ def _cmd_compare(args: argparse.Namespace) -> OpResult:
     from xwalk.evaluate.compare import RunSummary, compare_runs, summarise_run
     from xwalk.evaluate.gold import load_gold_csv
     from xwalk.ledger import Ledger
+    from xwalk.ops import refuse_cluster_run
 
     gold = load_gold_csv(args.gold)
     summaries: list[RunSummary] = []
@@ -564,6 +593,7 @@ def _cmd_compare(args: argparse.Namespace) -> OpResult:
             )
         label, _, path = entry.partition("=")
         run_dir = Path(path)
+        refuse_cluster_run(run_dir, "compare")
         ledger = Ledger.open(run_dir / "ledger.sqlite")
         try:
             summaries.append(summarise_run(ledger, _run_fingerprint_of(run_dir), gold, label=label))
@@ -757,7 +787,11 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], OpResult]] = {
 
 def _operation_name(args: argparse.Namespace) -> str:
     command = str(args.command)
-    sub = getattr(args, "prompts_command", None) or getattr(args, "review_command", None)
+    sub = (
+        getattr(args, "prompts_command", None)
+        or getattr(args, "review_command", None)
+        or getattr(args, "cluster_command", None)
+    )
     return f"{command} {sub}" if sub else command
 
 

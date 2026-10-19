@@ -24,7 +24,9 @@ run can be compared row for row.
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -168,6 +170,7 @@ class ClusterStore:
     def __init__(self, conn: sqlite3.Connection, path: Path) -> None:
         self._conn = conn
         self.path = path
+        self._scratch: tempfile.TemporaryDirectory[str] | None = None
 
     @classmethod
     def open(cls, path: str | Path) -> ClusterStore:
@@ -189,8 +192,46 @@ class ClusterStore:
             )
         return store
 
+    @classmethod
+    def open_readonly(cls, path: str | Path) -> ClusterStore:
+        """Open an existing store for reading only (evaluation, inspection).
+
+        Nothing is created or changed in the run directory: no schema, no row, and no
+        SQLite side file. A store closed cleanly (no `-wal` file) is opened `immutable`,
+        which reads it without locking files; one with a pending write-ahead log (a run
+        in progress or killed) is copied with its log to a temporary directory and read
+        there, so the committed steps in the log are seen. A missing file is an error,
+        not a new empty store."""
+        path = Path(path)
+        if not path.is_file():
+            raise ClusterStoreError(f"{path}: no clustering store")
+        wal = path.with_name(path.name + "-wal")
+        scratch: tempfile.TemporaryDirectory[str] | None = None
+        if wal.exists():
+            scratch = tempfile.TemporaryDirectory(prefix="xwalk-cluster-ro-")
+            copy = Path(scratch.name) / path.name
+            shutil.copyfile(path, copy)
+            shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
+            uri = f"{copy.as_uri()}?mode=ro"
+        else:
+            uri = f"{path.resolve().as_uri()}?mode=ro&immutable=1"
+        conn = sqlite3.connect(uri, uri=True)
+        conn.row_factory = sqlite3.Row
+        store = cls(conn, path)
+        store._scratch = scratch
+        version = store.get_meta("schema_version")
+        if version != SCHEMA_VERSION:
+            store.close()
+            raise ClusterStoreError(
+                f"{path} has cluster store schema {version}; this xwalk reads {SCHEMA_VERSION}"
+            )
+        return store
+
     def close(self) -> None:
         self._conn.close()
+        if self._scratch is not None:
+            self._scratch.cleanup()
+            self._scratch = None
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -442,6 +483,17 @@ class ClusterStore:
                 (_now(),),
             )
         return int(cursor.lastrowid or 0)
+
+    def invocations(self) -> list[dict[str, Any]]:
+        """Every invocation with its run state, usage and errors, oldest first."""
+        rows = self._conn.execute("SELECT * FROM invocations ORDER BY id")
+        out = []
+        for row in rows:
+            data = dict(row)
+            for key in ("usage", "errors"):
+                data[key] = json.loads(data[key]) if data[key] else None
+            out.append(data)
+        return out
 
     def finish_invocation(
         self,

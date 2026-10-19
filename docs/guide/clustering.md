@@ -7,7 +7,7 @@ made by the LLM over a bounded list of candidate clusters, every decision is sto
 a run is resumable.
 
 > **Experimental.** The workflow is tested end to end with a scripted judge (FakeLLM),
-> not evaluated on a real model. Its thresholds are provisional, processing is
+> not evaluated on a real model (`xwalk cluster eval` is the tool for doing so). Its thresholds are provisional, processing is
 > sequential, and there is no review-apply step for clusters yet. Use it on a sample you
 > can check by hand before you rely on it. The design decisions are recorded in
 > [the clustering decision record](../claude-upgrade/CLUSTERING_DECISIONS.md).
@@ -156,6 +156,26 @@ failed reverification, or a search that did not reach `mint_requires`), `failed`
 provider error or unparseable answer, retried in every round and on resume), `pending` (not reached
 before the run stopped). Accepted clusters are a partition: no record is in two.
 
+## Scoring a run against gold
+
+With a gold partition (`item_id,cluster_id` rows; records with the same `cluster_id`
+are equivalent), `xwalk cluster eval` scores the exported partition. It reads the
+exports and the store, calls no model, and writes nothing in the run directory:
+
+```console
+$ xwalk cluster eval --run runs/food --gold food_gold.csv --out runs/food-eval.json
+```
+
+It reports pairwise and B-cubed precision, recall and F1 twice: with every record
+outside the accepted clusters scored as a singleton (`as_singletons`, so sending
+records to review cannot raise the score), and over the accepted records only
+(`accepted_only`). It also counts outcomes and reports `gold_pairs_co_exposed`: how
+many gold pairs the judge ever saw together in one prompt. When recall is low and
+that share is low too, the search never put the records in front of the judge (try
+`dense:` or a higher `scan_below`); when the share is high, the judge rejected what it
+saw. It is a diagnostic, not a ceiling: merges and joins on a cluster's first members
+link records no prompt showed together. Details: [`cluster eval`](../reference/cli.md#cluster-eval).
+
 Cluster ids are `K` + a hash of the run fingerprint and the record that started the
 cluster. They are stable for a run and change when anything in its identity changes.
 
@@ -175,5 +195,5 @@ run; `130` interrupted (resume continues).
 - A different processing order can change the result when the evidence is
   contradictory (A~B, B~C, but not A~C): whichever end arrives first keeps the middle and
   the other goes to review. `order: label` makes the order independent of the input file.
-- `inspect`, `explain` and `review apply` do not read clustering runs yet; use the
-  exports.
+- `inspect`, `explain` and `review apply` do not read clustering runs yet; they say so
+  and point to the exports and `xwalk cluster eval`.

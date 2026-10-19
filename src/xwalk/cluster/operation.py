@@ -12,9 +12,12 @@ another run; 130 interrupted.
 from __future__ import annotations
 
 import importlib.util
+import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+from xwalk.cluster.evaluate import ClusterEvalError, evaluate_cluster_run
 from xwalk.cluster.job import ClusterJobSpec, load_cluster_job
 from xwalk.cluster.run import ClusterRunError, order_sources, run_clustering
 from xwalk.cluster.store import ClusterStoreError
@@ -251,4 +254,106 @@ async def cluster_operation(
     return result
 
 
-__all__ = ["EXPERIMENTAL_NOTE", "cluster_operation", "load_job", "validate_cluster"]
+EVAL_OPERATION = "cluster eval"
+
+
+def _fmt(value: Any) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.3f}" if isinstance(value, float) else str(value)
+
+
+def cluster_eval_operation(
+    run_dir: str | Path, gold: str | Path, *, out: str | Path | None = None
+) -> OpResult:
+    """Score a clustering run's exported partition against a gold partition.
+
+    Reads the exports and the store (read-only); calls no model and no retriever and
+    writes nothing in the run directory. Exit 0 when scored (a partial run is scored
+    with its `pending` records as singletons and a `partial_run` warning); 2 for an
+    unknown run directory, a run that is not a clustering run, or an unreadable gold
+    file; 3 for an unreadable store or an IO error.
+    """
+    try:
+        report = evaluate_cluster_run(run_dir, gold)
+    except ClusterEvalError as exc:
+        raise OpError(EVAL_OPERATION, exc.code, str(exc), exit_code=EXIT_USAGE) from None
+    except ClusterStoreError as exc:
+        raise OpError(
+            EVAL_OPERATION, "store_unreadable", str(exc), exit_code=EXIT_RUNTIME
+        ) from None
+    scores = report["scores"]
+    outcome_counts = scores["outcome_counts"]
+    result = OpResult(
+        operation=EVAL_OPERATION,
+        exit_code=EXIT_OK,
+        run={
+            "dir": report["run"],
+            "run_fingerprint": report["run_fingerprint"],
+            "run_state": report["run_state"],
+        },
+        counts={"gold_items": report["gold_items"], **outcome_counts},
+        usage={**report["usage"], "paid_calls_made_by_eval": 0},
+        warnings=[OpMessage("experimental", EXPERIMENTAL_NOTE)],
+        data=report,
+    )
+    if report["run_state"] != "complete" or outcome_counts.get("pending"):
+        result.warnings.append(
+            OpMessage(
+                "partial_run",
+                f"the run is {report['run_state']}; {outcome_counts.get('pending', 0)} "
+                "pending record(s) are scored as singletons",
+            )
+        )
+    if outcome_counts.get("missing"):
+        result.warnings.append(
+            OpMessage(
+                "gold_not_in_run",
+                f"{outcome_counts['missing']} gold item(s) are not records of this run; "
+                "they are scored as singletons",
+            )
+        )
+    if out is not None:
+        path = Path(out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        result.artifacts["report"] = str(path)
+
+    exposure = report["exposure"]
+    result.lines.append(
+        f"clustering run {report['run']} against {report['gold']} "
+        f"({report['gold_items']} gold items; run {report['run_state']})"
+    )
+    for name in ("as_singletons", "accepted_only"):
+        row = scores.get(name)
+        if row is None:
+            result.lines.append(f"  {name:<14}: no accepted items")
+            continue
+        result.lines.append(
+            f"  {name:<14}: pairwise P/R/F1 {_fmt(row['pairwise_precision'])} / "
+            f"{_fmt(row['pairwise_recall'])} / {_fmt(row['pairwise_f1'])}   B-cubed P/R/F1 "
+            f"{_fmt(row['bcubed_precision'])} / {_fmt(row['bcubed_recall'])} / "
+            f"{_fmt(row['bcubed_f1'])}"
+        )
+    result.lines.append(
+        "  outcomes      : " + ", ".join(f"{n} {o}" for o, n in outcome_counts.items() if n)
+    )
+    result.lines.append(
+        f"  co-exposed    : {exposure['gold_pairs_co_exposed']} of {exposure['gold_pairs']} "
+        "gold pairs were in one judge prompt together (a diagnostic, not a recall bound)"
+    )
+    result.lines.append(
+        f"  usage         : {report['usage']['calls']} calls over "
+        f"{report['usage']['invocations']} invocation(s); this evaluation made none"
+    )
+    return result
+
+
+__all__ = [
+    "EVAL_OPERATION",
+    "EXPERIMENTAL_NOTE",
+    "cluster_eval_operation",
+    "cluster_operation",
+    "load_job",
+    "validate_cluster",
+]
