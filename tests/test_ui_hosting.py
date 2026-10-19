@@ -27,6 +27,7 @@ from xwalk.ui import make_server
 from xwalk.ui.api import ApiError, Workspace, dispatch
 from xwalk.ui.hosting import (
     PublicRefusal,
+    SessionRateLimited,
     Sessions,
     check_public_url,
     endpoint_client,
@@ -80,7 +81,16 @@ def library_dir(tmp_path: Path, served: str) -> tuple[Path, Path]:
     """A pre-built library (and its index cache), as the image build makes it."""
     out, cache = tmp_path / "library", tmp_path / "cache"
     code = _build_script().main(
-        ["--out", str(out), "--cache", str(cache), "--only", "--url", f"toy={served}/toy.obo"]
+        [
+            "--out",
+            str(out),
+            "--cache",
+            str(cache),
+            "--allow-local-urls",
+            "--only",
+            "--url",
+            f"toy={served}/toy.obo",
+        ]
     )
     assert code == 0
     return out, cache
@@ -99,9 +109,13 @@ def test_the_build_script_parses_indexes_and_keeps(
     assert list(cache.glob("*/projects/*/index/bm25"))
     capsys.readouterr()
     build = _build_script()
-    assert build.main(["--out", str(out), "--only", "--url", f"toy={served}/toy.obo"]) == 0
+    local = ["--out", str(out), "--allow-local-urls", "--only", "--url"]
+    assert build.main([*local, f"toy={served}/toy.obo"]) == 0
     assert "kept" in capsys.readouterr().out
-    assert build.main(["--out", str(out), "--only", "--url", f"gone={served}/gone.obo"]) == 1
+    assert build.main([*local, f"gone={served}/gone.obo"]) == 1
+    # Without the opt-in, a local http URL is refused (and reported, exit 1).
+    assert build.main(["--out", str(out), "--only", "--url", f"other={served}/toy.obo"]) == 1
+    assert "https" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         build.main(["--out", str(out), "--only", "nope"])
 
@@ -164,6 +178,53 @@ def test_the_endpoint_client_takes_the_visitor_key(monkeypatch: pytest.MonkeyPat
     assert "visitor-key" in repr(vars(client)) and "server-key" not in repr(vars(client))
 
 
+def test_the_endpoint_is_called_at_the_address_that_was_checked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DNS rebinding: the name answers a public address for the check, then a private
+    one. The connection must go to the checked address, never by name again."""
+    import asyncio
+
+    import httpcore
+    import httpx
+
+    answers = iter(["93.184.215.14", "10.1.2.3", "10.1.2.3", "10.1.2.3"])
+    lookups: list[str] = []
+
+    def rebinding(host: str, *args: Any, **kwargs: Any) -> list[Any]:
+        lookups.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (next(answers), 443))]
+
+    connects: list[tuple[str, int]] = []
+
+    async def no_network(self: Any, host: str, port: int, *args: Any, **kwargs: Any) -> Any:
+        connects.append((host, port))
+        raise httpcore.ConnectError("no network in tests")
+
+    monkeypatch.setattr(socket, "getaddrinfo", rebinding)
+    monkeypatch.setattr(httpcore.AnyIOBackend, "connect_tcp", no_network)
+    # A proxy from the environment would resolve the name itself; it must not be used.
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid:3128")
+    spec = LLMSpec(model="m", base_url="https://rebind.example.com/v1", api_key_env="K")
+    client = endpoint_client(spec, {"K": "visitor-key"})
+    with pytest.raises(httpx.ConnectError):
+        asyncio.run(client._post({"model": "m"}))  # type: ignore[attr-defined]
+    assert connects == [("93.184.215.14", 443)]
+    assert lookups == ["rebind.example.com"]
+
+
+def test_a_pinned_connection_refuses_any_other_host() -> None:
+    import asyncio
+
+    import httpcore
+
+    from xwalk.ui.egress import PinnedAsyncBackend
+
+    backend = PinnedAsyncBackend("api.example.com", ["93.184.215.14"])
+    with pytest.raises(httpcore.ConnectError, match="other.example.com"):
+        asyncio.run(backend.connect_tcp("other.example.com", 443))
+
+
 # --- sessions -----------------------------------------------------------------------------
 
 
@@ -187,9 +248,124 @@ def test_sessions_are_private_and_expire(tmp_path: Path) -> None:
 
 def test_sessions_are_bounded(tmp_path: Path) -> None:
     sessions = Sessions(tmp_path / "s", make_workspace=lambda d: Workspace(d), max_sessions=1)
-    sessions.create()
+    first = sessions.create()
+    (tmp_path / "s" / first / "in-use.txt").write_text("x")  # a used session is kept
     with pytest.raises(PublicRefusal, match="busy"):
         sessions.create()
+
+
+def test_issuing_a_session_key_allocates_nothing(tmp_path: Path) -> None:
+    sessions = Sessions(tmp_path / "s", make_workspace=lambda d: Workspace(d))
+    keys = {sessions.issue() for _ in range(50)}
+    assert len(keys) == 50 and all(valid_session_id(k) for k in keys)
+    assert list((tmp_path / "s").iterdir()) == [] and sessions.count() == 0
+    key = keys.pop()
+    assert sessions.get(key) is None  # issued, not yet used
+    workspace = sessions.open(key, client="198.51.100.7")
+    assert workspace is not None and sessions.open(key, client="198.51.100.7") is workspace
+    assert sessions.get(key) is workspace and sessions.count() == 1
+    # A key the server did not sign never becomes a session.
+    forged = key[:-4] + ("AAAA" if not key.endswith("AAAA") else "BBBB")
+    assert sessions.open(forged, client="198.51.100.7") is None
+    assert sessions.open("A" * 43, client="198.51.100.7") is None
+
+
+def test_an_old_unused_key_cannot_be_opened(tmp_path: Path) -> None:
+    import time
+
+    sessions = Sessions(tmp_path / "s", make_workspace=lambda d: Workspace(d), ttl=60)
+    key = sessions.issue(now=time.time() - 3600)
+    assert sessions.open(key, client="198.51.100.7") is None
+
+
+def test_new_sessions_are_rate_limited_per_client(tmp_path: Path) -> None:
+    sessions = Sessions(tmp_path / "s", make_workspace=lambda d: Workspace(d), new_per_client=2)
+    for _ in range(2):
+        assert sessions.open(sessions.issue(), client="198.51.100.7") is not None
+    with pytest.raises(SessionRateLimited, match="too many new sessions"):
+        sessions.open(sessions.issue(), client="198.51.100.7")
+    assert sessions.count() == 2
+    assert sessions.open(sessions.issue(), client="203.0.113.9") is not None  # someone else
+
+
+def test_empty_sessions_are_reclaimed_quickly(tmp_path: Path) -> None:
+    import time
+
+    sessions = Sessions(
+        tmp_path / "s", make_workspace=lambda d: Workspace(d), ttl=24 * 3600, empty_ttl=60
+    )
+    idle, used = sessions.create(), sessions.create()
+    (tmp_path / "s" / used / "notes.txt").write_text("mine")
+    removed = sessions.sweep(now=time.time() + 120, force=True)
+    assert removed == [idle] and sessions.get(used) is not None
+
+
+def test_a_full_pool_makes_room_by_dropping_an_empty_session(tmp_path: Path) -> None:
+    sessions = Sessions(tmp_path / "s", make_workspace=lambda d: Workspace(d), max_sessions=2)
+    used, empty = sessions.create(), sessions.create()
+    (tmp_path / "s" / used / "notes.txt").write_text("mine")
+    newest = sessions.create()
+    assert sessions.get(empty) is None and not (tmp_path / "s" / empty).exists()
+    assert sessions.get(used) is not None and sessions.get(newest) is not None
+
+
+def test_a_session_in_use_by_a_request_is_never_dropped(tmp_path: Path) -> None:
+    import time
+
+    sessions = Sessions(
+        tmp_path / "s", make_workspace=lambda d: Workspace(d), max_sessions=1, empty_ttl=60
+    )
+    alice = sessions.issue()
+    workspace = sessions.open(alice, client="198.51.100.7", lease=True)
+    assert workspace is not None
+    # While Alice's request runs, her (still empty) session is neither evicted for a
+    # newcomer nor swept as idle.
+    with pytest.raises(PublicRefusal, match="busy"):
+        sessions.open(sessions.issue(), client="203.0.113.9")
+    assert sessions.sweep(now=time.time() + 3600, force=True) == []
+    sessions.release(alice)
+    assert sessions.get(alice) is workspace
+    # Released and still empty: now it may make room.
+    assert sessions.open(sessions.issue(), client="203.0.113.9") is not None
+    assert sessions.get(alice) is None
+
+
+def test_eviction_cannot_lose_a_credential_being_set(
+    public: UIServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Alice's first request (setting a key) is paused inside its handler while Bob
+    arrives at a full pool. Her key must still be there afterwards."""
+    from xwalk.ui import workbench
+
+    assert public.sessions is not None
+    public.sessions.max_sessions = 1
+    entered, proceed = threading.Event(), threading.Event()
+    original = workbench.ROUTES[("POST", "/api/credentials")]
+
+    def paused(ws: Workspace, params: Any) -> Any:
+        entered.set()
+        assert proceed.wait(10)
+        return original(ws, params)
+
+    monkeypatch.setitem(workbench.ROUTES, ("POST", "/api/credentials"), paused)
+    alice, bob = Visitor(public), Visitor(public)
+    alice.page()
+    bob.page()
+    result: list[tuple[int, Any]] = []
+    thread = threading.Thread(
+        target=lambda: result.append(
+            alice.call("/api/credentials", {"env": "OPENAI_API_KEY", "value": "sk-alice"})
+        )
+    )
+    thread.start()
+    assert entered.wait(10)
+    status, error = bob.call("/api/info")
+    assert status == 503 and error["error"]["code"] == "busy"
+    proceed.set()
+    thread.join(10)
+    assert result[0][0] == 200 and result[0][1]["set"] is True
+    keys = {c["env"]: c["set"] for c in alice.call("/api/credentials")[1]["credentials"]}
+    assert keys["OPENAI_API_KEY"] is True
 
 
 # --- the public server --------------------------------------------------------------------
@@ -283,6 +459,90 @@ def test_each_visitor_gets_a_private_workspace(public: UIServer) -> None:
     assert status == 401 and error["error"]["code"] == "session_expired"
     info = alice.call("/api/info")[1]
     assert info["public"] is True and str(public.workspace.root) not in info["root"]
+
+
+def test_page_views_create_no_sessions(public: UIServer) -> None:
+    assert public.sessions is not None
+    for _ in range(30):
+        assert "Set-Cookie" in Visitor(public).page()  # a cookieless crawler, every time
+    assert public.sessions.count() == 0 and list(public.sessions.root.iterdir()) == []
+    alice = Visitor(public)
+    alice.page()
+    assert alice.call("/api/files")[0] == 200  # the first API request opens it
+    assert public.sessions.count() == 1 and len(list(public.sessions.root.iterdir())) == 1
+
+
+def test_a_pages_first_requests_share_one_session(public: UIServer) -> None:
+    assert public.sessions is not None
+    alice = Visitor(public)
+    alice.page()
+    statuses: list[int] = []
+    threads = [
+        threading.Thread(target=lambda: statuses.append(alice.call("/api/info")[0]))
+        for _ in range(8)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert statuses == [200] * 8 and public.sessions.count() == 1
+
+
+def test_too_many_new_sessions_from_one_address_are_refused(public: UIServer) -> None:
+    assert public.sessions is not None
+    public.sessions.new_per_client = 2
+    early = [Visitor(public), Visitor(public)]
+    for visitor in early:
+        visitor.page()
+        assert visitor.call("/api/info")[0] == 200
+    late = Visitor(public)
+    late.page()
+    status, error = late.call("/api/info")
+    assert status == 429 and error["error"]["code"] == "too_many_sessions"
+    assert all(visitor.call("/api/files")[0] == 200 for visitor in early)
+    assert public.sessions.count() == 2
+
+
+@pytest.mark.parametrize("trust_proxy", [False, True])
+def test_the_client_address_comes_from_the_proxy_only_when_trusted(
+    tmp_path: Path, trust_proxy: bool
+) -> None:
+    server = make_server(str(tmp_path), port=0, token="t", public=True, trust_proxy=trust_proxy)
+    assert server.sessions is not None
+    server.sessions.new_per_client = 1
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        statuses = []
+        for address in ("198.51.100.7", "203.0.113.9"):
+            visitor = Visitor(server)
+            visitor.page()
+            request = urllib.request.Request(
+                server.url + "api/info",
+                headers={**visitor._headers(), "X-Forwarded-For": f"10.9.9.9, {address}"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    statuses.append(response.status)
+            except urllib.error.HTTPError as error:
+                statuses.append(error.code)
+    finally:
+        server.shutdown()
+        server.server_close()
+    # Trusted: the address the proxy appended (the last one) is the client. Untrusted:
+    # both come from 127.0.0.1, so the second is over the limit of one.
+    assert statuses == ([200, 200] if trust_proxy else [200, 429])
+
+
+def test_public_mode_keeps_the_token_and_the_page_policy(public: UIServer) -> None:
+    alice = Visitor(public)
+    headers = alice.page()
+    assert "default-src 'self'" in headers["Content-Security-Policy"]
+    assert headers["X-Frame-Options"] == "DENY"
+    request = urllib.request.Request(public.url + "api/info", headers={"Cookie": alice.cookie})
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=10)
+    assert caught.value.code == 403 and public.sessions is not None
+    assert public.sessions.count() == 0  # a request without the token opens nothing
 
 
 def test_visitors_share_the_parsed_library_and_its_index(public: UIServer) -> None:
@@ -411,3 +671,44 @@ def test_local_mode_is_unchanged(tmp_path: Path) -> None:
     assert isinstance(result, dict) and result["root"] == str(tmp_path.resolve())
     with pytest.raises(ApiError):
         ws.path("../elsewhere")
+
+
+# --- transport security from a proxy ----------------------------------------------------
+
+
+def _page_cookie(server: UIServer, headers: dict[str, str]) -> str:
+    request = urllib.request.Request(server.url, headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return dict(response.headers)["Set-Cookie"]
+
+
+@pytest.mark.parametrize("trust_proxy", [False, True])
+def test_secure_cookies_follow_the_operator_not_the_client(
+    tmp_path: Path, trust_proxy: bool
+) -> None:
+    server = make_server(str(tmp_path), port=0, public=True, trust_proxy=trust_proxy)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        forwarded = _page_cookie(server, {"X-Forwarded-Proto": "https"})
+        plain = _page_cookie(server, {})
+    finally:
+        server.shutdown()
+        server.server_close()
+    # Without --trust-proxy a client's own X-Forwarded-Proto decides nothing.
+    assert ("; Secure" in forwarded) is trust_proxy
+    assert "; Secure" not in plain
+
+
+def test_trust_proxy_is_for_public_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="--public"):
+        make_server(str(tmp_path), port=0, trust_proxy=True)
+
+
+def test_local_downloads_cannot_be_allowed_in_public_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="--public"):
+        make_server(str(tmp_path), port=0, public=True, allow_local_downloads=True)
+    server = make_server(str(tmp_path), port=0, allow_local_downloads=True)
+    try:
+        assert server.workspace.allow_local_downloads is True
+    finally:
+        server.server_close()

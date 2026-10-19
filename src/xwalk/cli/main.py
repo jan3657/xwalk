@@ -279,6 +279,24 @@ def _build_parser() -> argparse.ArgumentParser:
     ui.add_argument(
         "--frame-ancestors", default=None, help="origins allowed to embed the page in a frame"
     )
+    ui.add_argument(
+        "--trust-proxy",
+        action="store_true",
+        help="public mode: trust X-Forwarded-Proto/-For from the HTTPS proxy in front "
+        "(only when every request reaches the server through it)",
+    )
+    ui.add_argument(
+        "--sessions-per-ip",
+        type=int,
+        default=20,
+        help="public mode: new visitor sessions one address may open per 10 minutes (0: no limit)",
+    )
+    ui.add_argument(
+        "--allow-local-downloads",
+        action="store_true",
+        help="let library downloads use http and private addresses (an intranet mirror); "
+        "not with --public",
+    )
     ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
     ui.add_argument(
         "--chatgpt-login",
@@ -822,6 +840,9 @@ def _serve_ui(args: argparse.Namespace) -> int:
             chatgpt_login=args.chatgpt_login,
             dense=args.dense,
             dense_device=args.dense_device,
+            trust_proxy=args.trust_proxy,
+            sessions_per_ip=args.sessions_per_ip,
+            allow_local_downloads=args.allow_local_downloads,
         )
     except KeyboardInterrupt:
         return EXIT_OK

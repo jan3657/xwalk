@@ -317,7 +317,7 @@ def library_download(ws: Workspace, params: Params) -> Response:
                 task.add_event({"status": "downloading", "bytes": received, "total": total})
 
         try:
-            download(url, dest, progress=progress)
+            download(url, dest, progress=progress, allow_local=ws.allow_local_downloads)
             task.add_event({"status": "parsing"})
             records = files.target_records(
                 dest, fmt, id_column="id", label_column="label", synonyms_column="synonyms"

@@ -181,6 +181,41 @@ offline only (FakeDecider, no paid calls).
   (rerun with `--rebuild-index`), and `BM25Retriever.open` raises `IndexMismatchError`
   even without `expected`, since searching it would silently miss exact hits.
 
+### Security
+
+- `xwalk ui --public` no longer lets a request's own `X-Forwarded-Proto` header decide
+  whether the session cookie is `Secure`. The header counts only with the new
+  `--trust-proxy` flag, for deployments where every request comes through an HTTPS
+  proxy (the `Dockerfile` sets it). `--trust-proxy` without `--public` is refused.
+- `xwalk ui --public`: a page view no longer creates a session. It sets a signed cookie
+  only; the workspace is made by the page's first API request. Previously every
+  cookieless `GET /` made a session directory, so about 500 requests filled the pool
+  and new visitors got `503` for up to `--session-hours`. New sessions are limited per
+  client address (`--sessions-per-ip`, 20 per 10 minutes, then `429
+  too_many_sessions`), unused sessions are deleted after 10 minutes idle, and a full
+  pool drops the longest-idle unused session before refusing anyone.
+- `xwalk ui --public`: model-endpoint requests now connect to the addresses that passed
+  the public-address check (new `xwalk.ui.egress`), instead of resolving the host again
+  when connecting. A host with a short-TTL record (DNS rebinding) could pass the check
+  with a public address and then be reached at a private or cloud-metadata one. TLS
+  still verifies the certificate for the host name (SNI and `Host` are unchanged), the
+  client follows no redirects, and proxy variables in the server's environment are
+  ignored for these requests. `OpenAICompatClient` gains a `trust_env` argument
+  (default `True`, unchanged).
+- `xwalk ui` (local mode) ontology downloads are `https` only, to hosts that resolve to
+  public addresses, connected at the checked addresses, with at most 5 redirects, each
+  checked again. Before, any `http(s)` URL was fetched and redirects were followed
+  freely, so the server could be pointed at its own network or a cloud metadata
+  address. `--allow-local-downloads` (refused with `--public`) restores `http` and
+  private addresses for an intranet mirror; `scripts/build_ontology_library.py` has
+  `--allow-local-urls` for the same. The catalog now names its OBO PURLs by `https`
+  (`https://purl.obolibrary.org/obo/...`), except ChEBI, whose PURL redirects to plain
+  `http`: it is downloaded from
+  `https://ftp.ebi.ac.uk/pub/databases/chebi/ontology/chebi.obo`. The other nine PURLs
+  redirect to `https` targets according to the PURL service's configuration (not
+  fetched end to end here). `library.download` gains `allow_local` and
+  `max_redirects`.
+
 ## [0.2.0rc1] — 2026-10-05
 
 Release candidate for 0.2.0. Not published: tagging and uploading are the maintainer's
