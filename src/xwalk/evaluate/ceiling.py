@@ -18,7 +18,7 @@ from enum import Enum
 from typing import Any, Literal
 
 from xwalk.evaluate.gold import GoldSet
-from xwalk.records import MatchResult
+from xwalk.records import DecisionReason, MatchResult
 
 
 class CeilingBucket(Enum):
@@ -74,7 +74,19 @@ def classify_ceiling(
     if expected & _issued_ids(result):
         return CeilingBucket.MISJUDGED
     if expected & _retrieved_ids(result):
-        return CeilingBucket.TRUNCATED
+        # A missing key alone is not clipping evidence: selection may have failed
+        # before returning its presentation map. Decider traces retain only the
+        # post-budget slate, so their retained gold cannot prove a budget cut.
+        if path != "decider" and any(
+            expected.intersection(c.id for c in a.candidates)
+            and a.candidates_truncated > 0
+            and len(a.candidates) == a.candidate_count
+            and len(a.candidates) == len(a.issued_keys) + a.candidates_truncated
+            and (a.issued_keys or a.reason is DecisionReason.CANDIDATE_BUDGET_EXCEEDED)
+            for a in result.attempts
+        ):
+            return CeilingBucket.TRUNCATED
+        return CeilingBucket.UNAVAILABLE
     # Positive evidence survives missing traces; absence requires a complete slate.
     if not result.attempts or any(
         len(a.candidates) < a.candidate_count

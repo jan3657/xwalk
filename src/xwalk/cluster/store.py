@@ -24,6 +24,7 @@ run can be compared row for row.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -198,9 +199,10 @@ class ClusterStore:
 
         No row is written and no schema created. Three cases:
 
-        - Closed cleanly (no `-wal`): opened `immutable`, which reads the file without
-          creating any side file.
-        - A live writer (`-wal` and `-shm`, a run in progress): read through SQLite with
+        - Closed cleanly (no sidecars): a writable file and directory use a normal
+          connection with `query_only`, safe if a writer starts later. Otherwise the
+          file is copied to a temporary directory. Never assume `immutable`.
+        - Shared memory exists (even with an empty or absent `-wal`): read through SQLite with
           `mode=ro` and snapshotted with `Connection.backup()` into a temporary file, so
           the copy is one consistent transaction, never a torn file copy taken during a
           checkpoint. As any reader of a WAL database does, SQLite may update the
@@ -211,7 +213,8 @@ class ClusterStore:
 
         A missing file is an error, not a new empty store; an unreadable or corrupt one
         is a `ClusterStoreError`."""
-        path = Path(path)
+        # Sidecars belong to the resolved database, never to its symlink alias.
+        path = Path(path).resolve()
         if not path.is_file():
             raise ClusterStoreError(f"{path}: no clustering store")
         wal = path.with_name(path.name + "-wal")
@@ -219,11 +222,12 @@ class ClusterStore:
         scratch: tempfile.TemporaryDirectory[str] | None = None
         conn: sqlite3.Connection | None = None
         try:
-            if wal.exists():
+            writable = os.access(path, os.W_OK) and os.access(path.parent, os.W_OK)
+            if wal.exists() or shm.exists() or not writable:
                 scratch = tempfile.TemporaryDirectory(prefix="xwalk-cluster-ro-")
                 copy = Path(scratch.name) / path.name
                 if shm.exists():
-                    source = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+                    source = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
                     try:
                         target = sqlite3.connect(copy)
                         try:
@@ -234,11 +238,13 @@ class ClusterStore:
                         source.close()
                 else:
                     shutil.copyfile(path, copy)
-                    shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
+                    if wal.exists():
+                        shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
                 uri = f"{copy.as_uri()}?mode=ro"
             else:
-                uri = f"{path.resolve().as_uri()}?mode=ro&immutable=1"
+                uri = f"{path.as_uri()}?mode=rw"
             conn = sqlite3.connect(uri, uri=True)
+            conn.execute("PRAGMA query_only=ON")
             conn.row_factory = sqlite3.Row
             store = cls(conn, path)
             store._scratch = scratch

@@ -10,7 +10,6 @@ import asyncio
 import dataclasses
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 
@@ -24,11 +23,11 @@ from xwalk.decide.base import (
     question_to_dict,
 )
 from xwalk.decide.budget import reserve
-from xwalk.fingerprint import hash_value
+from xwalk.fingerprint import hash_value, redact_url
 from xwalk.llm.budget import CallBudget
 from xwalk.records import Usage
 
-ADAPTER_VERSION = 1
+ADAPTER_VERSION = 2
 RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504, 529})
 
 
@@ -90,8 +89,7 @@ class JevClient:
             {
                 "adapter": "jev",
                 "adapter_version": ADAPTER_VERSION,
-                "host": urlparse(self._url).netloc,
-                "path": urlparse(self._url).path,
+                "endpoint": redact_url(self._url),
                 "model": self._model,
             }
         )
@@ -117,16 +115,9 @@ class JevClient:
                     exc.usage = Usage.unreported(posts)
                     raise
             posts += 1
+            dispatch_error: str | None = None
             try:
                 response = await self._http.post(self._url, json=body)
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
-                self._settle(index, last_error)
-            else:
-                status = response.status_code
-                self._settle(
-                    index, None if status == 200 else f"HTTP {status}: {_error_message(response)}"
-                )
                 if response.status_code == 200:
                     try:
                         payload = response.json()
@@ -143,24 +134,29 @@ class JevClient:
                     except DecisionResponseError as exc:
                         exc.usage = Usage.unreported(posts)
                         raise
-                    # Earlier posts of this decision were retried away; their usage is
-                    # unknown, but they were dispatched and count as calls.
+                    # Earlier posts were dispatched but their usage is unknown.
                     return dataclasses.replace(
                         parsed,
                         usage=parsed.usage
                         + (Usage.unreported(posts - 1) if posts > 1 else Usage.zero()),
                     )
-                if response.status_code not in RETRYABLE_STATUSES:
-                    raise DecisionFatalError(
-                        f"HTTP {response.status_code}: {_error_message(response)}",
-                        usage=Usage.unreported(posts),
-                    )
                 last_error = f"HTTP {response.status_code}: {_error_message(response)}"
+                dispatch_error = last_error
+                if response.status_code not in RETRYABLE_STATUSES:
+                    raise DecisionFatalError(last_error, usage=Usage.unreported(posts))
                 header = response.headers.get("retry-after")
                 try:
                     retry_after = float(header) if header else None
                 except ValueError:
                     retry_after = None
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_error = dispatch_error = f"{type(exc).__name__}: {exc}"
+            except BaseException as exc:
+                dispatch_error = f"{type(exc).__name__}: {exc}"
+                raise
+            finally:
+                # HTTP 200 is not a success until the answer has been interpreted.
+                self._settle(index, dispatch_error)
             if attempt < self._max_retries:
                 delay = (
                     retry_after

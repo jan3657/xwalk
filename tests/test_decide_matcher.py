@@ -432,3 +432,32 @@ async def test_a_null_alias_is_not_searched_as_the_text_none():
     result = await _matcher(retrievers=[retriever]).match(source)
     assert retriever.queries == ["glucose"]
     assert result.status is MatchStatus.MATCHED
+
+
+async def test_rewritten_candidates_survive_a_failed_second_screen_and_serialization():
+    from xwalk.evaluate.ceiling import CeilingBucket, classify_ceiling
+    from xwalk.evaluate.gold import GoldSet
+    from xwalk.llm.fake import FakeLLM
+    from xwalk.serde import result_from_dict, result_to_dict
+
+    def fail_on_rewritten_gold(state, questions):
+        if any("glucose" in text for text in state.get("candidates", {}).values()):
+            raise DecisionRetryableError("second screen failed")
+        return confident(state, questions)
+
+    retriever = Scripted({"blood sugar": ["T2"], "glucose": ["T2", "T1"]})
+    row = await _matcher(
+        FakeDecider(handler=fail_on_rewritten_gold),
+        [retriever],
+        rewriter=_rewriter(FakeLLM([TWO_QUERIES])),
+    ).match(MISS)
+    assert row.status is MatchStatus.FAILED
+    for result in (row, result_from_dict(result_to_dict(row))):
+        attempt = result.attempts[0]
+        assert [c.id for c in result.candidates] == ["T2", "T1"]
+        assert [c.id for c in attempt.candidates] == ["T2", "T1"]
+        assert attempt.candidate_count == 2
+        assert set(attempt.issued_keys.values()) == {"T2"}
+        assert attempt.candidates[1].evidence[0].retriever == "bm25"
+        gold = GoldSet({MISS.id: frozenset({"T1"})})
+        assert classify_ceiling(result, gold, path="decider") is CeilingBucket.UNAVAILABLE

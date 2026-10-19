@@ -75,25 +75,41 @@ class Roots:
 
         xwalk writes and reads beneath `out`, `index_dir` and `run`; a pre-existing link
         such as `index/bm25 -> /elsewhere` would carry those writes out of the roots.
-        Links that stay inside are allowed; links are not followed while walking.
+        Links that stay inside are followed; directory identities break cycles.
         """
         if not top.is_dir():
             return
-        for directory, dirnames, filenames in os.walk(top, followlinks=False):
-            for name in (*dirnames, *filenames):
-                entry = Path(directory) / name
-                if not entry.is_symlink():
+        pending = [top]
+        visited: set[tuple[int, int]] = set()
+        while pending:
+            directory = pending.pop()
+            try:
+                stat = directory.stat()
+                identity = (stat.st_dev, stat.st_ino)
+                if identity in visited:
                     continue
-                try:
-                    target = entry.resolve()
-                except (OSError, RuntimeError):
-                    target = None
-                if target is None or not self._inside(target):
-                    raise PathRefused(
-                        f"{what}: {str(value)!r} contains a symlink "
-                        f"{str(entry.relative_to(top))!r} that leads outside the allowed "
-                        f"roots ({self.describe()})"
-                    )
+                visited.add(identity)
+                for entry in directory.iterdir():
+                    target = entry
+                    if entry.is_symlink():
+                        try:
+                            target = entry.resolve()
+                        except (OSError, RuntimeError):
+                            raise PathRefused(
+                                f"{what}: {str(value)!r} contains an unusable symlink "
+                                f"{str(entry)!r}"
+                            ) from None
+                        if not self._inside(target):
+                            raise PathRefused(
+                                f"{what}: {str(value)!r} contains a symlink {str(entry)!r} "
+                                f"that leads outside the allowed roots ({self.describe()})"
+                            )
+                    if target.is_dir():
+                        pending.append(target)
+            except OSError as exc:
+                raise PathRefused(
+                    f"{what}: {str(value)!r} cannot check directory {str(directory)!r} ({exc})"
+                ) from None
 
     def resolve(self, value: str | Path, *, what: str, tree: bool = False) -> Path:
         """`value` resolved inside a root, or `PathRefused` naming the argument `what`.

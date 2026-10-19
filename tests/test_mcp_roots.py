@@ -291,3 +291,30 @@ def test_a_differently_cased_path_to_the_same_root_is_accepted(root, outside):
     other = Path(str(outside.parent / outside.name.upper()))
     with pytest.raises(PathRefused):
         roots.resolve(str(other / "secret.yaml"), what="job")
+
+
+@pytest.mark.parametrize("other_root", [False, True])
+def test_tree_follows_allowed_directory_links_and_checks_their_descendants(
+    root, outside, tmp_path, other_root
+):
+    index = root / "index"
+    index.mkdir()
+    target = tmp_path / "allowed" if other_root else root / "allowed"
+    target.mkdir()
+    _symlink(index / "bm25", target)
+    _symlink(target / "back", index)  # cycles must not hide the other entries
+    _symlink(target / "xwalk_meta.json", outside / "new.json")
+    roots = Roots([root, target] if other_root else [root])
+    with pytest.raises(PathRefused, match="xwalk_meta.json"):
+        roots.resolve(index, what="index_dir", tree=True)
+    assert not (outside / "new.json").exists()
+
+
+def test_tree_accepts_directory_link_cycles_inside_roots(root):
+    run = root / "run"
+    run.mkdir()
+    target = root / "target"
+    target.mkdir()
+    _symlink(run / "alias", target)
+    _symlink(target / "back", run)
+    assert Roots([root]).resolve(run, what="out", tree=True) == run.resolve()

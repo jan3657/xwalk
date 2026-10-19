@@ -109,7 +109,11 @@ def redact_url(url: str) -> str:
     if not parts.scheme and not parts.netloc:
         return url
     host = parts.hostname or ""
+    if ":" in host:  # IPv6: keep the brackets that separate the address from the port
+        host = f"[{host}]"
     if parts.port is not None:
         host = f"{host}:{parts.port}"
-    query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if not is_secret_name(k)])
+    query = urlencode(
+        [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not is_secret_name(k)]
+    )
     return urlunsplit((parts.scheme, host, parts.path, query, parts.fragment))

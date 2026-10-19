@@ -124,3 +124,11 @@ def test_secret_parameter_names_are_recognised_without_catching_generation_setti
         assert is_secret_name(name), name
     for name in ("max_tokens", "api_base", "seed", "temperature", "model"):
         assert not is_secret_name(name), name
+
+
+def test_redact_url_keeps_ipv6_brackets_apart_from_the_port():
+    from xwalk.fingerprint import redact_url
+
+    assert redact_url("http://[::1]:8080/decide") == "http://[::1]:8080/decide"
+    assert redact_url("http://[::1:8080]/decide") == "http://[::1:8080]/decide"
+    assert redact_url("http://user:pw@[::1]:8080/x?api_key=s") == "http://[::1]:8080/x"
