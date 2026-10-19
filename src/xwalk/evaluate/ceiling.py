@@ -12,7 +12,7 @@ on every attempt, so this reads a completed run and calls nothing.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -22,6 +22,8 @@ from xwalk.records import MatchResult
 
 
 class CeilingBucket(Enum):
+    UNAVAILABLE = "unavailable"
+    GOLD_UNREACHABLE = "gold_unreachable"
     FOUND = "found"
     NEVER_RETRIEVED = "never_retrieved"
     TRUNCATED = "truncated"
@@ -30,7 +32,12 @@ class CeilingBucket(Enum):
     UNLABELLED = "unlabelled"  # excluded from every total
 
 
-_NOT_A_CEILING_QUESTION = (CeilingBucket.UNLABELLED, CeilingBucket.NO_GOLD)
+_NOT_A_CEILING_QUESTION = (
+    CeilingBucket.UNLABELLED,
+    CeilingBucket.NO_GOLD,
+    CeilingBucket.UNAVAILABLE,
+    CeilingBucket.GOLD_UNREACHABLE,
+)
 
 
 def _retrieved_ids(result: MatchResult) -> set[str]:
@@ -41,7 +48,9 @@ def _issued_ids(result: MatchResult) -> set[str]:
     return {rid for attempt in result.attempts for rid in attempt.issued_keys.values()}
 
 
-def classify_ceiling(result: MatchResult, gold: GoldSet) -> CeilingBucket:
+def classify_ceiling(
+    result: MatchResult, gold: GoldSet, *, target_ids: Collection[str] | None = None
+) -> CeilingBucket:
     """Precedence matters: presented beats retrieved beats absent.
 
     A record that reached the model is never reported as a budget miss, and a record the
@@ -52,12 +61,27 @@ def classify_ceiling(result: MatchResult, gold: GoldSet) -> CeilingBucket:
         return CeilingBucket.UNLABELLED
     if not expected:
         return CeilingBucket.NO_GOLD
+    if target_ids is not None and not expected.intersection(target_ids):
+        return CeilingBucket.GOLD_UNREACHABLE
     if result.matched_id is not None and result.matched_id in expected:
         return CeilingBucket.FOUND
     if expected & _issued_ids(result):
         return CeilingBucket.MISJUDGED
     if expected & _retrieved_ids(result):
         return CeilingBucket.TRUNCATED
+    # Positive evidence survives missing traces; absence requires a complete slate.
+    if not result.attempts or any(
+        len(a.candidates) < a.candidate_count
+        or (
+            a.candidates_truncated > 0
+            and (
+                bool(a.signals) or len(a.candidates) != len(a.issued_keys) + a.candidates_truncated
+            )
+        )
+        or a.retrieval_failures
+        for a in result.attempts
+    ):
+        return CeilingBucket.UNAVAILABLE
     return CeilingBucket.NEVER_RETRIEVED
 
 
@@ -79,13 +103,15 @@ class CeilingReport:
         }
 
 
-def ceiling_report(results: Sequence[MatchResult], gold: GoldSet) -> CeilingReport:
+def ceiling_report(
+    results: Sequence[MatchResult], gold: GoldSet, *, target_ids: Collection[str] | None = None
+) -> CeilingReport:
     buckets: Counter[CeilingBucket] = Counter()
     by_retriever: Counter[str] = Counter()
     by_attempt: Counter[int] = Counter()
 
     for result in results:
-        bucket = classify_ceiling(result, gold)
+        bucket = classify_ceiling(result, gold, target_ids=target_ids)
         buckets[bucket] += 1
         if bucket in _NOT_A_CEILING_QUESTION:
             continue
@@ -134,6 +160,11 @@ def ceiling_report(results: Sequence[MatchResult], gold: GoldSet) -> CeilingRepo
                 f"otherwise -- spend effort on prompts, not retrieval"
             ),
         }[worst]
+
+    if buckets[CeilingBucket.UNAVAILABLE]:
+        recommendation += "; retrieval ceiling unavailable for incomplete traces or searches"
+    if buckets[CeilingBucket.GOLD_UNREACHABLE]:
+        recommendation += "; gold_unreachable excluded (no gold id in target catalogue)"
 
     return CeilingReport(
         evaluable=evaluable,

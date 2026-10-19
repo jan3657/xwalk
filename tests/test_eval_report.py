@@ -12,6 +12,7 @@ async def ledger(tmp_path):
     led = Ledger.open(tmp_path / "l.sqlite")
     await led.put_result(result("s1", "T1", [attempt(0, [cand("T1")], {"C01": "T1"})]))
     await led.put_result(result("s3", "T9", [attempt(0, [cand("T9")], {"C01": "T9"})]))
+    led.put_manifest("fp1", {"fingerprint_components": {"policy": {"accept_at": 0.6}}})
     yield led
     led.close()
 

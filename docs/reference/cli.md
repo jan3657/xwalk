@@ -500,6 +500,25 @@ to convert a run you will not write to again.
 |---|---|---|---|
 | `--run` | yes | — | run directory |
 
+## `eval`
+
+```sh
+xwalk eval --run run/ --gold gold.csv --job original.yaml --replay-policy proposed.yaml --json
+```
+
+`--run` and `--gold` are required. Optional `--job` supplies target ids for reachable
+gold and compares acquisition blocks with `--replay-policy`. Optional `--replay-policy`
+reads classification thresholds from a job YAML and replays stored attempts without
+model or retriever calls. Changed verification, retrieval, screening, routing and
+attempt bounds are refused or flagged as requiring unrecorded calls. Results are
+conditional on recorded attempts, with historical reducer versions explicitly flagged.
+`--out STEM` writes JSON and text reports, including replay when requested.
+
+The operation is `ops.evaluate_run`; the JSON envelope has `data.report` (recorded
+metrics, ceiling and conditional curve) and optional `data.replay` (status/gold
+transitions, stage diagnostics and descriptive retry counts). See the
+[evaluation reference](evaluation.md#policy-replay) for definitions and limitations.
+
 ## `export`
 
 Writes one explicit view of a run.

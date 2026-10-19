@@ -130,9 +130,9 @@ def test_gold_retrieved_in_a_later_attempt_still_counts_as_retrieved():
     assert classify_ceiling(r, GOLD) is CeilingBucket.MISJUDGED
 
 
-def test_a_result_with_no_attempts_is_never_retrieved():
+def test_a_result_with_no_attempts_is_unavailable():
     r = result("s1", None, [], status=MatchStatus.FAILED)
-    assert classify_ceiling(r, GOLD) is CeilingBucket.NEVER_RETRIEVED
+    assert classify_ceiling(r, GOLD) is CeilingBucket.UNAVAILABLE
 
 
 def test_multi_gold_counts_any_listed_id_as_retrieved():
@@ -215,3 +215,34 @@ def test_report_recommends_prompts_when_misjudgement_dominates():
 def test_a_clean_run_says_so_rather_than_recommending_at_random():
     results = [result("s1", "T1", [attempt(0, [cand("T1")], {"C01": "T1"})])]
     assert "no ceiling failures" in ceiling_report(results, GOLD).recommendation
+
+
+def test_trace_off_is_unavailable_not_a_proven_retrieval_miss():
+    from dataclasses import replace
+
+    a = replace(attempt(0, [], {"C01": "T9"}), candidate_count=2)
+    row = result("s1", "T9", [a])
+    report = ceiling_report([row], GOLD)
+    assert classify_ceiling(row, GOLD).value == "unavailable"
+    assert report.evaluable == 0
+    assert "unavailable" in report.recommendation
+
+
+def test_clipped_decider_trace_cannot_prove_absence():
+    a = attempt(0, [cand("T9")], {"C01": "T9"}, truncated=2)
+    row = result("s1", "T9", [a])
+    assert classify_ceiling(row, GOLD).value == "unavailable"
+
+
+def test_unreachable_gold_is_excluded_and_any_reachable_alternative_counts():
+    rows = [result("s1", "T9", [attempt(0, [cand("T9")], {"C01": "T9"})])]
+    report = ceiling_report(rows, GOLD, target_ids={"T9"})
+    assert report.buckets[CeilingBucket.GOLD_UNREACHABLE] == 1
+    assert report.evaluable == 0
+    gold = GoldSet({"s1": frozenset({"missing", "T1"})})
+    assert ceiling_report(rows, gold, target_ids={"T1", "T9"}).evaluable == 1
+
+
+def test_full_matcher_trace_can_prove_absence_despite_selector_truncation():
+    row = result("s1", "T9", [attempt(0, [cand("T9"), cand("T8")], {"C01": "T9"}, truncated=1)])
+    assert classify_ceiling(row, GOLD) is CeilingBucket.NEVER_RETRIEVED

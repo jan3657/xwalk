@@ -16,6 +16,17 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- Zero-call, conditional policy replay for both matcher paths, exposed through
+  `ops.evaluate_run` and `xwalk eval --replay-policy JOB.yaml`. Reports recorded/gold
+  transitions, historical reducer versions, stage suppression diagnostics and
+  descriptive recovered/broken-by-retry counts. Acquisition changes are refused or
+  explicitly flagged. Threshold curves use production reducers, preserving verifier,
+  property and failure gates; reports omit curves without recorded policy metadata.
+
+- Evaluation separates unavailable retrieval evidence and `gold_unreachable` (when
+  target ids are supplied), excluding both from the ceiling denominator. No-match
+  metrics now share the benchmark definition: only `unmatched` predicts no match.
+
 - `xwalk cluster eval --run DIR --gold CSV [--out FILE] [--json]` and
   `ops.cluster_eval`: score a clustering run against a gold partition. Pairwise and
   B-cubed precision, recall and F1 with records outside the accepted clusters as

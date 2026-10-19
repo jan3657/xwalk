@@ -15,9 +15,9 @@ gold file is excluded entirely):
 - error_rate          : FAILED / labelled
 - unresolved_rate     : reason == UNRESOLVED_OUTPUT / labelled
 - recall_at_any_status: of labelled results with a non-empty gold set, the fraction whose
-                        matched_id is in the gold set at *any* status -- the ceiling that
-                        perfect threshold tuning could reach
-- no_match_precision  : of results predicted no-match (matched_id is None, not FAILED),
+                        matched_id is in the gold set at *any* status
+                        (proposal recall, not an automation ceiling)
+- no_match_precision  : of results predicted no-match (status is UNMATCHED),
                         the fraction whose gold set is empty
 - no_match_recall     : of results whose gold set is empty, the fraction predicted no-match
 - duplicate_target_conflicts : target ids selected by more than one source record
@@ -29,16 +29,24 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import mean
 from typing import Any
 
+from xwalk.decide.policy import DecisionPolicy
 from xwalk.evaluate.gold import GoldSet
+from xwalk.evaluate.replay import Policy, replay_result
 from xwalk.ledger import Ledger
+from xwalk.policy import MatchPolicy
 from xwalk.records import DecisionReason, MatchResult, MatchStatus
 
 _MIN_CALIBRATION_SAMPLES = 3
 _MIN_SEPARATION = 0.10
+
+
+def predicts_no_match(status: MatchStatus | str) -> bool:
+    """A settled UNMATCHED status, independent of any retained proposal."""
+    return status == MatchStatus.UNMATCHED or status == MatchStatus.UNMATCHED.value
 
 
 def _ratio(numerator: int, denominator: int) -> float | None:
@@ -52,6 +60,7 @@ class ThresholdPoint:
     precision: float | None
     accepted: int
     correct: int
+    conditional_on_recorded_attempts: bool = True
 
 
 @dataclass(frozen=True)
@@ -113,14 +122,10 @@ def evaluate_results(results: Sequence[MatchResult], gold: GoldSet) -> EvalRepor
         if r.matched_id is not None and gold.is_correct(r.source_id, r.matched_id)
     )
 
-    predicted_no_match = [
-        r for r in labelled if r.matched_id is None and r.status is not MatchStatus.FAILED
-    ]
+    predicted_no_match = [r for r in labelled if predicts_no_match(r.status)]
     no_match_correct = sum(1 for r in predicted_no_match if not gold.get(r.source_id))
     gold_no_match = [r for r in labelled if gold.get(r.source_id) == frozenset()]
-    no_match_found = sum(
-        1 for r in gold_no_match if r.matched_id is None and r.status is not MatchStatus.FAILED
-    )
+    no_match_found = sum(1 for r in gold_no_match if predicts_no_match(r.status))
 
     target_counts = Counter(r.matched_id for r in results if r.matched_id is not None)
     duplicates = sum(1 for count in target_counts.values() if count > 1)
@@ -162,24 +167,36 @@ def threshold_curve(
     gold: GoldSet,
     *,
     steps: int = 21,
+    policy: Policy | None = None,
 ) -> list[ThresholdPoint]:
-    """What precision and coverage would be if `accept_at` were set differently.
+    """Policy replay, conditional on recorded attempts (not a fresh-run forecast).
 
-    Re-derived from recorded confidences, so it costs nothing and needs no re-run.
+    Missing attempts are unavailable, not reconstructed from final confidence.
+    Matcher points below review_floor lower that classification floor as well.
+    Decider points below shortlist_floor are invalid and omitted: changing the
+    shortlist would require calls. Supply the recorded policy for non-default runs.
     """
     results = list(results)
-    scored = [
-        (r.confidence, gold.is_correct(r.source_id, r.matched_id))
-        for r in results
-        if r.source_id in gold and r.confidence is not None and r.matched_id is not None
-    ]
+    base = policy or (DecisionPolicy() if any(r.signals for r in results) else MatchPolicy())
     labelled_total = sum(1 for r in results if r.source_id in gold)
-
     points: list[ThresholdPoint] = []
     for i in range(steps):
         threshold = i / (steps - 1) if steps > 1 else 0.0
-        accepted = [correct for confidence, correct in scored if confidence >= threshold]
-        correct = sum(1 for c in accepted if c)
+        if isinstance(base, MatchPolicy):
+            proposed: Policy = replace(
+                base, accept_at=threshold, review_floor=min(base.review_floor, threshold)
+            )
+        else:
+            if threshold < base.shortlist_floor:
+                continue
+            proposed = replace(base, accept_at=threshold)
+        accepted = [
+            replayed
+            for r in results
+            if r.source_id in gold and r.attempts
+            if (replayed := replay_result(r, proposed)).status is MatchStatus.MATCHED
+        ]
+        correct = sum(bool(gold.is_correct(r.source_id, r.matched_id)) for r in accepted)
         points.append(
             ThresholdPoint(
                 threshold=threshold,

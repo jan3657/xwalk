@@ -28,7 +28,7 @@ The binding 0.2 decisions are in
 
 - **Front ends only format.** `cli/main.py` and `mcp_server.py` call one `xwalk.ops`
   operation and print or return its `OpResult` (the `--json` envelope, schema 1). Logic
-  that decides anything lives below `ops`. (`eval`, `compare`, `ablate` and `prompts`
+  that decides anything lives below `ops`. (`compare`, `ablate` and `prompts`
   are still assembled in the CLI.)
 - **`ops` owns orchestration**: strict job loading, preflight (files, extras,
   credentials by name), reading targets once, planning and opening/building indexes by

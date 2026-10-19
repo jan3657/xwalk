@@ -1923,6 +1923,116 @@ def interrupted(operation: str, run_dir: str | Path | None) -> OpResult:
     return result
 
 
+def evaluate_run(
+    run_dir: str | Path,
+    gold: str | Path,
+    *,
+    job: JobRef | None = None,
+    replay_policy: JobRef | None = None,
+    out: str | Path | None = None,
+) -> OpResult:
+    """Read-only evaluation and conditional policy replay; no acquisition builders."""
+    from xwalk.evaluate.gold import load_gold_csv
+    from xwalk.evaluate.replay import policy_from_components, replay_results
+    from xwalk.evaluate.report import evaluate, render_report, write_report
+
+    operation = "eval"
+    view, ledger = _open_run(run_dir, operation)
+    result = OpResult(operation=operation)
+    try:
+        labels = load_gold_csv(gold)
+        components = view.manifest.get("fingerprint_components", {})
+        recorded = policy_from_components(components)
+        spec = None if job is None else load_valid_job(job, operation=operation)
+        target_ids = view.manifest.get("target_ids")
+        if spec is not None:
+            store = spec.build_store()
+            if components.get("target") is not None and store.fingerprint != components["target"]:
+                raise ValueError("--job target snapshot differs from the recorded catalogue")
+            target_ids = {r.id for r in store}
+        report = evaluate(
+            ledger, view.run_fingerprint, labels, policy=recorded, target_ids=target_ids
+        )
+        result.data = {"report": report.as_dict()}
+        result.lines.append(render_report(report))
+        if replay_policy is not None:
+            if recorded is None:
+                raise ValueError(
+                    "replay needs a recorded policy in the run's fingerprint_components"
+                )
+            proposed = load_valid_job(replay_policy, operation=operation)
+            if spec is not None:
+                # Whole-job changes cannot silently masquerade as threshold changes.
+                for name in (
+                    "retrievers",
+                    "templates",
+                    "selector",
+                    "prompts",
+                    "target",
+                    "llm",
+                    "decider",
+                ):
+                    if getattr(spec, name) != getattr(proposed, name):
+                        raise ValueError(f"changed {name} would require unrecorded calls")
+            policy = (
+                proposed.build_decision_policy() if proposed.decider else proposed.build_policy()
+            )
+            replay = replay_results(
+                list(ledger.iter_results(view.run_fingerprint)),
+                labels,
+                recorded_policy=recorded,
+                policy=policy,
+                recorded_semantics_version=components.get("policy", {}).get("status_semantics"),
+            )
+            result.data["replay"] = replay.as_dict()
+            result.warnings.extend(OpMessage("conditional_replay", w) for w in replay.warnings)
+            result.warnings.append(
+                OpMessage(
+                    "acquisition_fixed",
+                    "Only the policy block is replayed. Retrieval, templates, models and routing "
+                    "remain the recorded evidence; other job settings are not applied. "
+                    + (
+                        "Compared with --job."
+                        if spec
+                        else "No --job: acquisition changes in this YAML cannot be verified."
+                    ),
+                )
+            )
+            result.lines.append(
+                "Replay status transitions: " + json.dumps(replay.status_transitions)
+            )
+            result.lines.append("Replay gold transitions: " + json.dumps(replay.gold_transitions))
+            result.lines.append(
+                "Decision diagnostics (overlapping): " + json.dumps(replay.misjudged)
+            )
+            result.lines.append("Retry metrics: " + json.dumps(replay.retry_metrics))
+            result.lines.append(replay.as_dict()["retry_definition"])
+        if out is not None:
+            write_report(report, out)
+            result.artifacts = {
+                "json": str(Path(out).with_suffix(".json")),
+                "text": str(Path(out).with_suffix(".txt")),
+            }
+            if "replay" in result.data:
+                # Keep the usual report layout and add replay alongside it.
+                data = {**report.as_dict(), "replay": result.data["replay"]}
+                Path(out).with_suffix(".json").write_text(
+                    json.dumps(data, indent=2), encoding="utf-8"
+                )
+                with Path(out).with_suffix(".txt").open("a", encoding="utf-8") as handle:
+                    handle.write("\n" + "\n".join(result.lines[1:]) + "\n")
+    except (ValueError, OSError) as exc:
+        raise OpError(
+            operation,
+            "replay_unavailable" if replay_policy else "eval_unavailable",
+            str(exc),
+            exit_code=EXIT_USAGE,
+        ) from None
+    finally:
+        ledger.close()
+    return result
+
+
 __all__ = [
     "EXIT_ATTENTION",
     "EXIT_INTERRUPTED",
@@ -1940,6 +2050,7 @@ __all__ = [
     "cluster_async",
     "cluster_eval",
     "explain",
+    "evaluate_run",
     "export",
     "index",
     "init",

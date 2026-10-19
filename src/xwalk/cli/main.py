@@ -209,6 +209,12 @@ def _build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--run", required=True, help="run directory")
     ev.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
     ev.add_argument("--out", default=None, help="write <out>.json and <out>.txt")
+    ev.add_argument("--job", default=None, help="original job; supplies target ids for the ceiling")
+    ev.add_argument(
+        "--replay-policy",
+        default=None,
+        help="job YAML whose policy is replayed on recorded attempts",
+    )
 
     fit = sub.add_parser(
         "fit",
@@ -552,25 +558,11 @@ def _cmd_upgrade(args: argparse.Namespace) -> OpResult:
 
 
 def _cmd_eval(args: argparse.Namespace) -> OpResult:
-    from xwalk.evaluate.gold import load_gold_csv
-    from xwalk.evaluate.report import evaluate, render_report, write_report
-    from xwalk.ledger import Ledger
-    from xwalk.ops import refuse_cluster_run
+    from xwalk import ops
 
-    run_dir = Path(args.run)
-    refuse_cluster_run(run_dir, "eval")
-    gold = load_gold_csv(args.gold)
-    ledger = Ledger.open(run_dir / "ledger.sqlite", read_only=True)
-    try:
-        report = evaluate(ledger, _run_fingerprint_of(run_dir), gold)
-    finally:
-        ledger.close()
-    result = OpResult(operation="eval", lines=[render_report(report)])
-    result.data = {"report": report.as_dict()}
-    if args.out:
-        write_report(report, args.out)
-        result.artifacts = {"json": f"{args.out}.json", "text": f"{args.out}.txt"}
-    return result
+    return ops.evaluate_run(
+        args.run, args.gold, job=args.job, replay_policy=args.replay_policy, out=args.out
+    )
 
 
 def _write_fitted_job(job_path: str, out_path: str, point: FitPoint) -> None:
