@@ -122,14 +122,17 @@ collections load, are non-empty and have unique ids (empty rendered texts are wa
 
 ```console
 $ xwalk validate --job job.yaml
-job 'quickstart' is invalid
+job 'quickstart' is valid; the environment is not ready: OPENAI_API_KEY is not set (use --no-credentials to check the file alone)
   targets : 5 records
   sources : 4 records
   OPENAI_API_KEY: missing
 error: credential_missing: environment variable OPENAI_API_KEY (llm.api_key_env) is not set
 ```
 
-Returns `0` when valid, `2` otherwise.
+Returns `0` when valid, `2` otherwise. A job whose only problems are a missing
+credential variable or optional extra is reported as a valid job in an environment that
+is not ready (still exit `2`, since `match` would fail); any other error makes it
+`invalid`.
 
 ## `index`
 

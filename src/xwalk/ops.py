@@ -359,6 +359,32 @@ def _scan(
     return count, errors, warnings
 
 
+# Problems of the machine the job is checked on, not of the job file.
+_ENVIRONMENT_CODES = frozenset({"credential_missing", "missing_extra"})
+
+
+def _validate_headline(name: str, errors: Sequence[OpMessage]) -> str:
+    """`valid`/`invalid`, except that a job whose only problems are a missing credential
+    variable or optional extra is a valid job in an environment that is not ready."""
+    if not errors:
+        return f"job {name!r} is valid"
+    if any(e.code not in _ENVIRONMENT_CODES for e in errors):
+        return f"job {name!r} is invalid"
+    missing = []
+    for error in errors:
+        if error.code == "credential_missing":
+            variable = error.message.removeprefix("environment variable ").split(" ", 1)[0]
+            missing.append(f"{variable} is not set")
+        else:
+            missing.append(error.message.split(": ", 1)[-1])
+    hint = (
+        " (use --no-credentials to check the file alone)"
+        if any(e.code == "credential_missing" for e in errors)
+        else ""
+    )
+    return f"job {name!r} is valid; the environment is not ready: {'; '.join(missing)}{hint}"
+
+
 def validate(
     job: JobRef,
     *,
@@ -437,8 +463,7 @@ def validate(
         "retrievers": [r.index_name for r in spec.retrievers],
         "paid_calls": 0,
     }
-    verdict = "invalid" if errors else "valid"
-    result.lines.append(f"job {spec.name!r} is {verdict}")
+    result.lines.append(_validate_headline(spec.name, errors))
     for role in ("targets", "sources"):
         if role in result.counts:
             result.lines.append(f"  {role:<8}: {result.counts[role]} records")

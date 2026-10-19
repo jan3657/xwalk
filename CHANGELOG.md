@@ -123,6 +123,11 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- `xwalk validate` no longer calls a job "invalid" when the file is fine and only the
+  environment lacks something: a missing credential variable or optional extra prints
+  `job 'x' is valid; the environment is not ready: OPENAI_API_KEY is not set (use
+  --no-credentials to check the file alone)`. The exit code (`2`) and error codes are
+  unchanged.
 - Every CLI flag and positional has help text in `--help` (40 had none, among them
   `--job`, `--run`, `--out`, `--gold`, `--view` and every flag of `prompts` and
   `review`), and `xwalk review --help` / `xwalk prompts --help` describe their

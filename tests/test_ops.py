@@ -81,6 +81,39 @@ def test_validate_reports_a_missing_credential(monkeypatch):
     assert ops.validate(JOB, check_credentials=False).exit_code == 0
 
 
+def test_a_missing_credential_is_not_called_an_invalid_job(monkeypatch):
+    """The file is fine; the environment is not (review dx F7e)."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    result = ops.validate(JOB)
+    headline = result.lines[0]
+    assert "invalid" not in headline
+    assert headline.startswith("job 'tiny' is valid")
+    assert "OPENAI_API_KEY is not set" in headline
+    assert "--no-credentials" in headline
+
+
+def test_a_missing_extra_is_named_in_the_headline(tmp_path, monkeypatch):
+    real = ops.importlib.util.find_spec
+    monkeypatch.setattr(
+        ops.importlib.util,
+        "find_spec",
+        lambda name, *a: None if name == "litellm" else real(name, *a),
+    )
+    path = _job_file(tmp_path, lambda d: d["llm"].__setitem__("kind", "litellm"))
+    result = ops.validate(path, check_credentials=False)
+    assert result.exit_code == 2
+    assert result.lines[0].startswith("job 'tiny' is valid")
+    assert "xwalk[litellm]" in result.lines[0]
+
+
+def test_a_job_with_real_errors_is_still_invalid(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = _job_file(tmp_path)
+    sources = tmp_path / "sources_tiny.csv"
+    sources.write_text(sources.read_text(encoding="utf-8") + "s1,again,,\n", encoding="utf-8")
+    assert ops.validate(path).lines[0] == "job 'tiny' is invalid"
+
+
 def test_a_misspelled_key_fails_preflight(tmp_path):
     path = _job_file(tmp_path, lambda d: d["policy"].__setitem__("acept_at", 0.9))
     result = ops.validate(path, check_credentials=False)
