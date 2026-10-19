@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from xwalk.decide.policy import DecisionPolicy
 from xwalk.evaluate.ceiling import CeilingBucket, CeilingReport, ceiling_report
 from xwalk.evaluate.gold import GoldSet
 from xwalk.evaluate.metrics import (
@@ -83,7 +84,16 @@ def evaluate(
 
     return FullReport(
         metrics=evaluate_results(results, gold),
-        ceiling=ceiling_report(results, gold, target_ids=target_ids),
+        ceiling=ceiling_report(
+            results,
+            gold,
+            target_ids=target_ids,
+            path=None
+            if policy is None
+            else "decider"
+            if isinstance(policy, DecisionPolicy)
+            else "llm",
+        ),
         thresholds=()
         if policy is None
         else tuple(threshold_curve(results, gold, steps=threshold_steps, policy=policy)),

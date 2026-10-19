@@ -15,7 +15,7 @@ from collections import Counter
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from xwalk.evaluate.gold import GoldSet
 from xwalk.records import MatchResult
@@ -49,12 +49,18 @@ def _issued_ids(result: MatchResult) -> set[str]:
 
 
 def classify_ceiling(
-    result: MatchResult, gold: GoldSet, *, target_ids: Collection[str] | None = None
+    result: MatchResult,
+    gold: GoldSet,
+    *,
+    target_ids: Collection[str] | None = None,
+    path: Literal["llm", "decider"] | None = None,
 ) -> CeilingBucket:
     """Precedence matters: presented beats retrieved beats absent.
 
     A record that reached the model is never reported as a budget miss, and a record the
     budget cut is never reported as a retrieval miss.
+    Only the LLM path retains candidates cut by the selector budget. A clipped
+    decider or unknown path cannot prove absence from the original retrieved slate.
     """
     expected = gold.get(result.source_id)
     if expected is None:
@@ -74,9 +80,7 @@ def classify_ceiling(
         len(a.candidates) < a.candidate_count
         or (
             a.candidates_truncated > 0
-            and (
-                bool(a.signals) or len(a.candidates) != len(a.issued_keys) + a.candidates_truncated
-            )
+            and (path != "llm" or len(a.candidates) != len(a.issued_keys) + a.candidates_truncated)
         )
         or a.retrieval_failures
         for a in result.attempts
@@ -104,14 +108,18 @@ class CeilingReport:
 
 
 def ceiling_report(
-    results: Sequence[MatchResult], gold: GoldSet, *, target_ids: Collection[str] | None = None
+    results: Sequence[MatchResult],
+    gold: GoldSet,
+    *,
+    target_ids: Collection[str] | None = None,
+    path: Literal["llm", "decider"] | None = None,
 ) -> CeilingReport:
     buckets: Counter[CeilingBucket] = Counter()
     by_retriever: Counter[str] = Counter()
     by_attempt: Counter[int] = Counter()
 
     for result in results:
-        bucket = classify_ceiling(result, gold, target_ids=target_ids)
+        bucket = classify_ceiling(result, gold, target_ids=target_ids, path=path)
         buckets[bucket] += 1
         if bucket in _NOT_A_CEILING_QUESTION:
             continue

@@ -234,6 +234,40 @@ def test_clipped_decider_trace_cannot_prove_absence():
     assert classify_ceiling(row, GOLD).value == "unavailable"
 
 
+async def test_failed_screen_after_clipping_cannot_prove_a_retrieval_miss(tmp_path):
+    from tests.test_decide_matcher import SOURCE, Scripted, _matcher
+    from xwalk.decide.base import DecisionRetryableError
+    from xwalk.decide.fake import FakeDecider
+    from xwalk.decide.policy import DecisionPolicy
+    from xwalk.evaluate.report import evaluate
+    from xwalk.ledger import Ledger
+
+    policy = DecisionPolicy(max_candidates=1)
+    row = await _matcher(
+        decider=FakeDecider(handler=lambda s, q: DecisionRetryableError("screen failed")),
+        retrievers=[Scripted({"glucose": ["T1", "T2"]})],
+        policy=policy,
+    ).match(SOURCE)
+    assert row.status is MatchStatus.FAILED
+    a = row.attempts[0]
+    assert a.signals == a.issued_keys == {}
+    assert [c.id for c in a.candidates] == ["T1"]
+    assert a.candidates_truncated == 1
+    gold = GoldSet({SOURCE.id: frozenset({"T2"})})
+    ledger = Ledger.open(tmp_path / "ledger.sqlite")
+    try:
+        await ledger.put_result(row)
+        stored = list(ledger.iter_results(row.run_fingerprint))[0]
+        assert classify_ceiling(stored, gold) is CeilingBucket.UNAVAILABLE
+        report = evaluate(ledger, row.run_fingerprint, gold, policy=policy)
+        assert report.ceiling.buckets == {CeilingBucket.UNAVAILABLE: 1}
+        # Retained positive evidence still establishes a bucket.
+        retained = GoldSet({SOURCE.id: frozenset({"T1"})})
+        assert classify_ceiling(stored, retained) is CeilingBucket.TRUNCATED
+    finally:
+        ledger.close()
+
+
 def test_unreachable_gold_is_excluded_and_any_reachable_alternative_counts():
     rows = [result("s1", "T9", [attempt(0, [cand("T9")], {"C01": "T9"})])]
     report = ceiling_report(rows, GOLD, target_ids={"T9"})
@@ -245,4 +279,6 @@ def test_unreachable_gold_is_excluded_and_any_reachable_alternative_counts():
 
 def test_full_matcher_trace_can_prove_absence_despite_selector_truncation():
     row = result("s1", "T9", [attempt(0, [cand("T9"), cand("T8")], {"C01": "T9"}, truncated=1)])
-    assert classify_ceiling(row, GOLD) is CeilingBucket.NEVER_RETRIEVED
+    assert classify_ceiling(row, GOLD, path="llm") is CeilingBucket.NEVER_RETRIEVED
+    assert classify_ceiling(row, GOLD) is CeilingBucket.UNAVAILABLE
+    assert classify_ceiling(row, GOLD, path="decider") is CeilingBucket.UNAVAILABLE
