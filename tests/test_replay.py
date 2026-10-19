@@ -70,12 +70,22 @@ async def test_same_policy_replays_generated_matcher_ledgers(tmp_path, reply):
 
 
 @pytest.mark.parametrize(
-    "case", ["match", "property", "none", "low_screen", "empty", "provider", "retriever"]
+    "case",
+    [
+        "match",
+        "property",
+        "none",
+        "empty_shortlist",
+        "low_screen",
+        "empty",
+        "provider",
+        "retriever",
+    ],
 )
 async def test_same_policy_replays_generated_decider_ledgers(tmp_path, case):
     from tests.test_decide_matcher import SOURCE as DSOURCE
     from tests.test_decide_matcher import Scripted, _matcher, confident
-    from xwalk.decide.base import DecisionError
+    from xwalk.decide.base import DecisionError, NoulAnswer
     from xwalk.decide.fake import FakeDecider
     from xwalk.evaluate.replay import replay_results
     from xwalk.ledger import Ledger
@@ -87,10 +97,25 @@ async def test_same_policy_replays_generated_decider_ledgers(tmp_path, case):
     decider = FakeDecider(handler=confident)
     if case == "property":
         policy = replace(policy, property_floor=1.0)
-    elif case == "none":
-        policy = replace(policy, screen_floor=0.0)
+    elif case in ("none", "empty_shortlist"):
+        policy = replace(
+            policy,
+            screen_floor=0.0,
+            shortlist_floor=0.2,
+            none_at=0.0,
+        )
         source = Record("s", {"mention": "other", "alias": "", "note": ""})
         retrievers = [Scripted({"other": ["T2"]})]
+        if case == "none":
+
+            def abstain(state, questions):
+                answers = confident(state, questions)
+                for name in questions:
+                    if name.startswith("n_"):
+                        answers[name] = NoulAnswer(noul=0.3)
+                return answers
+
+            decider = FakeDecider(handler=abstain)
     elif case == "low_screen":
         policy = replace(policy, screen_floor=1.0)
     elif case == "empty":
@@ -104,6 +129,17 @@ async def test_same_policy_replays_generated_decider_ledgers(tmp_path, case):
     elif case == "retriever":
         retrievers = [Scripted({}, fail=True)]
     row = await _matcher(decider=decider, retrievers=retrievers, policy=policy).match(source)
+    if case == "empty_shortlist":
+        assert len(decider.calls) == 1
+        assert row.signals == {"screen_best": 0.05}
+        assert row.attempts[0].resolution == "abstain"
+        assert (row.status, row.reason) == (
+            MatchStatus.NEEDS_REVIEW,
+            DecisionReason.UNRESOLVED_OUTPUT,
+        )
+    elif case == "none":
+        assert len(decider.calls) == 2
+        assert row.reason is DecisionReason.SELECTOR_ABSTAINED
     ledger = Ledger.open(tmp_path / "ledger.sqlite")
     try:
         await ledger.put_result(row)

@@ -98,7 +98,9 @@ def replay_result(result: MatchResult, policy: Policy) -> MatchResult:
                         or best.reason is DecisionReason.RETRIEVER_FAILURE
                     )
                 ),
-                resolution=best.resolution,
+                # Attempts store "abstain" even when no chooser ran. A chooser
+                # outcome always records p_choice, including zero probability.
+                resolution=best.resolution if "p_choice" in best.signals else None,
             )
             signals = replace(signals, retrieval_degraded=bool(best.retrieval_failures))
             status, reason = derive_decision_status(signals, policy)
