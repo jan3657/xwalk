@@ -767,14 +767,15 @@ def build_run_fingerprint(
     selector_policy: SelectorPolicy,
     retriever_limit: int = 20,
     rrf_k: int = 60,
-    selector: Selector | None = None,
-    scorer: Scorer | None = None,
-    verifier: Verifier | None = None,
-    rewriter: QueryRewriter | None = None,
+    selector: Selector,
+    scorer: Scorer,
+    verifier: Verifier,
+    rewriter: QueryRewriter,
 ) -> str
 ```
 
 Everything whose change should invalidate prior results, hashed into one digest.
+All four stage arguments are required: pass the actual stages handed to `Matcher`.
 `run_fingerprint_components(...)` (same arguments) returns the unhashed dict, which
 `run_batch(fingerprint_components=...)` stores in the manifest:
 

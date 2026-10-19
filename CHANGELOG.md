@@ -234,10 +234,11 @@ offline only (FakeDecider, no paid calls).
 - `--max-calls` covers the decider path: Jev requests (each HTTP retry counts) and
   rewrite LLM requests share one limit. A failed decision request counts as a call with
   unknown usage instead of nothing; cache replays count as `cache_hits`.
-- A job needs exactly one of `llm:` or `decider:`. A decider job refuses `selector:`; an
-  `llm:` job refuses `templates.queries` with more than one entry (the LLM matcher
-  searches one query per attempt). `xwalk ablate` and `xwalk prompts` refuse decider
-  jobs (exit 2).
+- A job needs exactly one of `llm:` or `decider:`. A decider job refuses `selector:`.
+  Since engine batch 5, LLM jobs accept multiple `templates.queries`, with separate
+  RRF votes for initial queries and the original query list retained on retries.
+  Existing single-query requests and the legacy `query` plus one alternate behavior
+  are preserved. `xwalk ablate` and `xwalk prompts` refuse decider jobs (exit 2).
 - `PromptSet.fingerprint` is unchanged for jobs that do not use slot `properties`.
   **Compatibility:** `TemplateSet.fingerprint` now includes `TEMPLATE_RENDER_VERSION`
   (2), because null fields render differently (see Fixed), so every run fingerprint
