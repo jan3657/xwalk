@@ -36,8 +36,9 @@ DEFAULT_MAX_DOWNLOAD = 2 * 1024**3
 MAX_REDIRECTS = 5
 _SLUG = re.compile(r"[^a-z0-9]+")
 
-# OBO Foundry ontologies by permanent URL (https://purl.obolibrary.org/obo/<id>.obo). Sizes
-# change with every release; the UI does not quote them.
+# OBO Foundry ontologies by permanent URL (https://purl.obolibrary.org/obo/<id>.obo), except
+# where the PURL redirects to plain http (ChEBI), which names the publisher's https URL.
+# Sizes change with every release; the UI does not quote them.
 CATALOG: list[dict[str, str]] = [
     {
         "id": "hp",
@@ -67,7 +68,8 @@ CATALOG: list[dict[str, str]] = [
         "id": "chebi",
         "name": "ChEBI",
         "domain": "chemical entities (large: hundreds of MB)",
-        "url": "https://purl.obolibrary.org/obo/chebi.obo",
+        # Not the PURL: it redirects to plain http, which downloads refuse.
+        "url": "https://ftp.ebi.ac.uk/pub/databases/chebi/ontology/chebi.obo",
     },
     {
         "id": "uberon",

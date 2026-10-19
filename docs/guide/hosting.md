@@ -13,7 +13,8 @@ docker build --build-arg ONTOLOGIES="hp mondo chebi" -t xwalk-explorer .
 
 `ONTOLOGIES` takes catalog ids from `xwalk.ui.library.CATALOG`: `hp`, `mondo`, `doid`,
 `go-basic`, `chebi`, `uberon`, `cl`, `pato`, `uo`, `envo`. The default is all of them
-except ChEBI, which is large. Each is downloaded from its OBO Foundry permanent URL by
+except ChEBI, which is large. Each is downloaded from its OBO Foundry permanent URL
+(ChEBI from EBI's `https` server, since its PURL redirects to plain `http`) by
 `scripts/build_ontology_library.py`, which also builds its search index. Measured
 outside the image on this machine: HPO (19,894 terms) took 3 s and Mondo (58,690 terms)
 took 10 s, including the index.

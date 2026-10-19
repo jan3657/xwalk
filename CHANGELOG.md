@@ -140,7 +140,11 @@ offline only (FakeDecider, no paid calls).
   address. `--allow-local-downloads` (refused with `--public`) restores `http` and
   private addresses for an intranet mirror; `scripts/build_ontology_library.py` has
   `--allow-local-urls` for the same. The catalog now names its OBO PURLs by `https`
-  (`https://purl.obolibrary.org/obo/...`). `library.download` gains `allow_local` and
+  (`https://purl.obolibrary.org/obo/...`), except ChEBI, whose PURL redirects to plain
+  `http`: it is downloaded from
+  `https://ftp.ebi.ac.uk/pub/databases/chebi/ontology/chebi.obo`. The other nine PURLs
+  redirect to `https` targets according to the PURL service's configuration (not
+  fetched end to end here). `library.download` gains `allow_local` and
   `max_redirects`.
 
 ## [0.2.0rc1] — 2026-10-05

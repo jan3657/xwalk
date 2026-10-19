@@ -68,6 +68,8 @@ def tls_server(tmp_path: Path) -> Iterator[tuple[int, Path, dict[str, Any]]]:
                 "/hop-http": f"http://{NAME}:{port}/toy.obo",
                 "/hop-ok": "/toy.obo",
                 "/loop": "/loop",
+                # What purl.obolibrary.org answers for ChEBI (https -> http).
+                "/obo/chebi.obo": "http://ftp.ebi.ac.uk/pub/databases/chebi/ontology/chebi.obo",
             }
             if self.path in redirects:
                 self.send_response(302)
@@ -207,3 +209,14 @@ def test_each_redirect_is_checked_again(
     with pytest.raises(FileProblem, match="redirects"):
         download(f"https://{NAME}:{port}/loop", tmp_path / "c.obo")
     assert not list(tmp_path.glob("*.obo*"))
+
+
+def test_a_purl_that_redirects_to_http_is_refused(
+    mirror: tuple[int, list[str], list[str]], tmp_path: Path
+) -> None:
+    """The ChEBI PURL's redirect: refused before anything is fetched from the http
+    target, which is why the catalog names ChEBI by its https URL at EBI."""
+    port, lookups, connects = mirror
+    with pytest.raises(FileProblem, match="only https"):
+        download(f"https://{NAME}:{port}/obo/chebi.obo", tmp_path / "chebi.obo")
+    assert "ftp.ebi.ac.uk" not in lookups and set(connects) == {"93.184.215.14"}

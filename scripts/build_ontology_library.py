@@ -11,7 +11,7 @@ image (see `deploy/Dockerfile`):
     python scripts/build_ontology_library.py --out lib --url "HPO=https://github.com/obophenotype/human-phenotype-ontology/releases/latest/download/hp.obo"
 
 Entries already in `<out>` are kept (pass `--refresh` to rebuild them). The default set is
-the catalog in `xwalk.ui.library.CATALOG` (OBO Foundry permanent URLs).
+the catalog in `xwalk.ui.library.CATALOG` (OBO Foundry permanent URLs; ChEBI from EBI).
 """
 
 from __future__ import annotations

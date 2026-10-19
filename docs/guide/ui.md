@@ -70,7 +70,8 @@ retrievable at all. It is not a decision; the first candidate is the best text m
 - *Imported*: an OBO, OWL (needs `xwalk[ontology]` at import time only), CSV, TSV or
   JSONL file, parsed once into `<root>/.xwalk-ui/library/<name>/terms.jsonl`.
 - *Downloaded*: any OBO Foundry ontology from the catalog (HPO, Mondo, DOID, GO, ChEBI,
-  Uberon, CL, PATO, UO, ENVO by their permanent `purl.obolibrary.org` URLs), or any
+  Uberon, CL, PATO, UO, ENVO by their permanent `purl.obolibrary.org` URLs; ChEBI from
+  EBI's `https` server, because its PURL redirects to plain `http`), or any
   `https` URL ending in `.obo`, `.owl`, `.csv`, `.tsv` or `.jsonl` (gzip is
   unpacked). The download runs as a background task with progress. The host must
   resolve to public addresses only (no localhost, private ranges or the cloud metadata

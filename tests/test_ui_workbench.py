@@ -247,9 +247,33 @@ def test_combined_terms_tag_their_ontology_and_report_overlaps(tmp_path: Path) -
         combined_terms(library, [])
 
 
-def test_the_catalog_names_obo_purls() -> None:
+# Where each OBO Foundry PURL in the catalog redirects, from the PURL service's own
+# configuration (github.com/OBOFoundry/purl.obolibrary.org, config/<id>.yml, read on
+# 19 Oct 2026). Downloads refuse an https -> http redirect, so a PURL whose target is
+# http cannot be in the catalog; ChEBI's is, so ChEBI is named by EBI's https URL.
+PURL_TARGETS = {
+    "hp": "https://github.com/obophenotype/human-phenotype-ontology/releases/latest/download/hp.obo",
+    "mondo": "https://github.com/monarch-initiative/mondo/releases/latest/download/mondo.obo",
+    "doid": "https://raw.githubusercontent.com/DiseaseOntology/HumanDiseaseOntology/main/src/ontology/doid.obo",
+    "go-basic": "https://current.geneontology.org/ontology/go-basic.obo",
+    "chebi": "http://ftp.ebi.ac.uk/pub/databases/chebi/ontology/chebi.obo",
+    "uberon": "https://github.com/obophenotype/uberon/releases/latest/download/uberon.obo",
+    "cl": "https://github.com/obophenotype/cell-ontology/releases/latest/download/cl.obo",
+    "pato": "https://raw.githubusercontent.com/pato-ontology/pato/master/pato.obo",
+    "uo": "https://raw.githubusercontent.com/bio-ontology-research-group/unit-ontology/master/uo.obo",
+    "envo": "https://raw.githubusercontent.com/EnvironmentOntology/envo/master/envo.obo",
+}
+
+
+def test_the_catalog_names_https_urls_that_stay_https() -> None:
     assert len({c["id"] for c in CATALOG}) == len(CATALOG)
-    assert all(c["url"].startswith("https://purl.obolibrary.org/obo/") for c in CATALOG)
+    assert {c["id"] for c in CATALOG} == set(PURL_TARGETS)
+    for entry in CATALOG:
+        assert entry["url"].startswith("https://"), entry
+        if entry["url"].startswith("https://purl.obolibrary.org/obo/"):
+            assert PURL_TARGETS[entry["id"]].startswith("https://"), entry
+    chebi = next(c for c in CATALOG if c["id"] == "chebi")
+    assert chebi["url"] == "https://ftp.ebi.ac.uk/pub/databases/chebi/ontology/chebi.obo"
 
 
 @pytest.fixture
