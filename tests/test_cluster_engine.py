@@ -608,7 +608,9 @@ async def test_resuming_a_finished_run_retries_its_failed_sources(tmp_path):
     assert resumed.exported_revision == resumed.selected_revision == first.last_revision + 1
     after = _dump(run)
     for table in ("decisions", "assignments", "cluster_revisions", "state_revisions", "steps"):
-        assert after[table][: len(before[table])] == before[table], table  # history kept
+        # history kept: every earlier row is still there. (Rows are dumped in key order,
+        # and cluster ids are hashes, so new rows need not sort after the old ones.)
+        assert set(before[table]) <= set(after[table]), table
 
     again = Oracle(concepts(CHOCOLATE))
     exports = _exports(run)

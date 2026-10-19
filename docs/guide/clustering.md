@@ -81,7 +81,9 @@ clustered 1200 records into 431 clusters in runs/food
 
 (The numbers above are illustrative.) The run directory follows the same rules as
 `match`: the same job and the same source collection resume; any change to either is a
-different run and is refused, so pick a new `--out`. `--max-calls` caps the upstream
+different run and is refused, so pick a new `--out`. Adding or removing `dense:`, or changing its encoder,
+is such a change. A directory written before format 2 is refused with
+`run_format_outdated`: its identity did not record the retrieval heads. `--max-calls` caps the upstream
 requests of one invocation; when it is reached the run stops at a step boundary (exit
 `3`, error `call_limit_reached`) and the next `xwalk cluster` continues from there.
 Because a step is stored only when it finishes and one record's decision may need

@@ -114,6 +114,17 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- **`xwalk cluster` run identity includes the pool's retrieval heads.** The fingerprint
+  components stored the retrieval identity (lexical engine, dense encoder name,
+  dimension and settings, fusion) under `pool` and then overwrote it with the pool
+  settings, so a lexical run and a dense run of the same job shared a fingerprint and
+  adding `dense:` resumed a lexical run with zero calls. The heads are now their own
+  `retrieval` component, and a changed head (lexical to dense or back, another encoder,
+  other encoder settings) is refused with `run_fingerprint_mismatch` naming
+  `retrieval.*`, before anything is written or called. The clustering format goes to 2:
+  a run directory written by an earlier version is refused with `run_format_outdated`
+  (exit 3) because its fingerprint cannot say which heads ran; cluster again into a new
+  `--out`.
 - `xwalk cluster` exports describe a cluster the same way in both files after its seed
   leaves it (a failed reverification or a switch during reassignment). The member left
   alone was exported `assigned` with `cluster_size` 1 while `clusters.csv` called the
