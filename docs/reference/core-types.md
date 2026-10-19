@@ -543,20 +543,21 @@ source. `HistoryEntry(result, revision, current)`.
 - `open(path, read_only=True)` is what read-only commands use (`inspect`, `explain`,
   `results`, `export`, `eval`, `fit`, `compare`, `review export`, the UI's views). The
   file must exist (`FileNotFoundError` otherwise) and is never created, upgraded or
-  written; every write raises `ReadOnlyLedgerError`. A symlink is resolved first. A
-  ledger with a pending write-ahead log (a run is writing) is opened with `mode=ro`,
-  which reads the log and is safe against the writer (or, if the directory does not
-  allow SQLite's -shm file, the file and log are copied to a temporary directory). One
-  with no pending log is read directly: with a `query_only` connection when this
-  process may write the file and its directory (the -wal/-shm files it creates are
-  removed when it closes, so the directory is left byte-identical), or with
-  `immutable=1` when it may not, which is what makes read-only files and directories
-  work. SQLite requires an immutable file not to change while open; a writer needs
-  write access, so none with this process's permissions can exist, but a writer under
-  another account with write access is not detected. A 0.1.1 ledger is copied with
-  `backup()` into a temporary file and upgraded there (`migrated_from == 1`, no
-  backup; `snapshot_path` names the copy, removed on `close`). Nothing is copied into
-  memory, so a reader's memory does not grow with the ledger.
+  written; every write raises `ReadOnlyLedgerError`. A symlink is resolved first.
+  `immutable=1` is never used, since nothing can prove a writer will not start. When a
+  -wal or -shm file exists (a writer may be active, even with an empty log) and the log
+  is not empty or the directory is not writable, the ledger is opened with `mode=ro`,
+  which reads the log and is safe against a writer of any account; if SQLite cannot
+  open it that way (no -shm and no right to create one), the file and its sidecars are
+  copied to a temporary directory. Otherwise, when this process may write the file and
+  its directory, a `query_only` connection reads it directly (the -wal/-shm files it
+  creates are removed when it closes, so the directory is left byte-identical); when it
+  may not, the file is copied to a temporary directory. A 0.1.1 ledger is copied with
+  `backup()` into a temporary file and upgraded there (`migrated_from == 1`, no backup).
+  `snapshot_path` names any temporary copy, removed on `close`. Nothing is copied into
+  memory, so a reader's memory does not grow with the ledger. A file that cannot be
+  opened for lack of permission raises `sqlite3.OperationalError`, not
+  `UnsupportedLedgerError`.
 - `put_result` on an existing `result_key` moves the previous row to history and
   stores the new one as the next revision; nothing is overwritten in place.
 - The current view is the latest snapshot's entries joined to their results. Without a

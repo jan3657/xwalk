@@ -330,6 +330,79 @@ def test_an_old_ledger_is_read_through_a_temporary_file_removed_on_close(run_dir
     assert not snapshot.exists()
 
 
+def _lock_down(*paths: Path) -> None:
+    for path in paths:
+        path.chmod(0o555 if path.is_dir() else 0o444)
+
+
+def _unlock(*paths: Path) -> None:
+    for path in paths:
+        if path.exists():
+            path.chmod(0o755 if path.is_dir() else 0o644)
+
+
+def test_a_writer_with_an_empty_log_in_a_read_only_directory_is_read_live(tmp_path):
+    """Sidecars mean a writer may be active: never read such a file immutably
+    (review dx3 #1). A checkpoint truncated the log to zero bytes; the directory is
+    0555; the same-user writer still commits."""
+    import os
+
+    path = tmp_path / "run" / "ledger.sqlite"
+    writer = Ledger.open(path)
+    try:
+        writer.put_manifest("fp", {"job": "old"})
+        writer._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        assert path.with_name("ledger.sqlite-wal").stat().st_size == 0
+        _lock_down(path.parent)
+        if os.access(path.parent, os.W_OK):  # pragma: no cover - running as root
+            pytest.skip("permissions are not enforced for this user")
+        reader = Ledger.open(path, read_only=True)
+        try:
+            assert reader.get_manifest("fp") == {"job": "old"}
+            writer.put_manifest("fp", {"job": "new"})
+            assert reader.get_manifest("fp") == {"job": "new"}
+            writer._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            assert reader.get_manifest("fp") == {"job": "new"}
+        finally:
+            reader.close()
+    finally:
+        _unlock(path.parent)
+        writer.close()
+
+
+def test_a_pending_log_without_shm_in_read_only_files_is_read_through_a_copy(tmp_path):
+    """mode=ro cannot create the -shm here; the temporary-copy fallback must run
+    instead of reporting 'not an SQLite database' (review dx3 #2)."""
+    import os
+    import shutil as sh
+
+    live = tmp_path / "live" / "ledger.sqlite"
+    writer = Ledger.open(live)
+    try:
+        writer.put_manifest("fp", {"job": "pending"})
+        frozen = tmp_path / "frozen"
+        frozen.mkdir()
+        sh.copy2(live, frozen / "ledger.sqlite")
+        sh.copy2(live.with_name("ledger.sqlite-wal"), frozen / "ledger.sqlite-wal")
+    finally:
+        writer.close()
+    assert (frozen / "ledger.sqlite-wal").stat().st_size > 0
+    files = [frozen / "ledger.sqlite", frozen / "ledger.sqlite-wal"]
+    _lock_down(*files, frozen)
+    try:
+        if os.access(frozen, os.W_OK):  # pragma: no cover - running as root
+            pytest.skip("permissions are not enforced for this user")
+        before = tree(frozen)
+        reader = Ledger.open(frozen / "ledger.sqlite", read_only=True)
+        try:
+            assert reader.get_manifest("fp") == {"job": "pending"}
+        finally:
+            reader.close()
+        assert tree(frozen) == before
+    finally:
+        _unlock(frozen, *files)
+
+
 def test_a_read_only_open_works_on_read_only_files_and_directories(tmp_path):
     import os
     import stat

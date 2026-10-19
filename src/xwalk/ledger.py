@@ -286,26 +286,28 @@ class Ledger:
     def _open_read_only(cls, path: Path) -> Ledger:
         """See `open`. Memory stays bounded: nothing is copied into RAM.
 
-        How the file is read, and what that guarantees:
+        How the file is read, and what that guarantees. `immutable=1` is never used:
+        SQLite allows it only for a file that cannot change, and nothing here can prove
+        that a writer will not start.
 
-        - **A pending write-ahead log** (a run is writing, or one stopped without a
-          checkpoint): ``mode=ro``, which reads the log too and is safe against a
-          concurrent writer. SQLite keeps its -shm beside the file, as the writer does.
-          If the directory does not allow that, the file and its log are copied to a
-          temporary directory and read there.
-        - **No pending log, and this process may write the file and its directory**: a
-          normal connection with ``PRAGMA query_only``. It is safe against a writer
-          that starts meanwhile (ordinary WAL locking), never changes the database,
-          and as the last connection to close it removes the -wal/-shm files it
-          created, so the directory is left as it was.
-        - **No pending log, and this process may not write the file or its
-          directory**: ``immutable=1``, which needs no lock files. SQLite requires an
-          immutable file not to change while it is open; a writer needs write access
-          to the file and its directory, so no writer running with this process's
-          permissions can exist. A writer under another account that does have write
-          access is not detected.
+        - **A -wal or -shm file exists** (a writer may be active, even with an empty
+          log) **and either the log is not empty or this process may not write the
+          directory**: ``mode=ro``, which reads the log and is safe against a
+          concurrent writer, whatever its account. If SQLite cannot open it that way
+          (no -shm and no right to create one), the file and its sidecars are copied
+          to a temporary directory and read there.
+        - **Otherwise, when this process may write the file and its directory**: a
+          normal connection with ``PRAGMA query_only``. It is safe against a writer that
+          starts meanwhile, never changes the database, and as the last connection to
+          close it removes the -wal/-shm files it created, so the directory is left as
+          it was.
+        - **Otherwise** (no sidecars, and the file or directory is not writable by this
+          process): the file is copied to a temporary directory and read there; no
+          WAL-mode writer can start without creating a -wal beside it.
         - **An older schema** (0.1.1, or an empty file): ``backup()`` into a temporary
-          file, upgraded there; the temporary directory is removed on `close`.
+          file, upgraded there.
+
+        Temporary copies are removed on `close`.
         """
         # The write-ahead log lives beside the real file, not beside a symlink to it.
         path = path.resolve()
@@ -313,25 +315,23 @@ class Ledger:
             raise FileNotFoundError(f"no ledger at {path}")
         uri = path.as_uri()
         wal = path.with_name(path.name + "-wal")
+        shm = path.with_name(path.name + "-shm")
         pending_log = wal.exists() and wal.stat().st_size > 0
+        sidecars = wal.exists() or shm.exists()
         writable = os.access(path, os.W_OK) and os.access(path.parent, os.W_OK)
         snapshot: Path | None = None
         try:
-            if pending_log:
+            if sidecars and (pending_log or not writable):
                 try:
-                    conn = _connect_uri(f"{uri}?mode=ro")
-                    version = cls._detect_version(conn, path)
+                    conn, version = cls._probe(f"{uri}?mode=ro", path)
                 except sqlite3.OperationalError:
                     snapshot = _copy_with_log(path)
-                    conn = _connect_uri(snapshot.as_uri())
-                    version = cls._detect_version(conn, path)
+                    conn, version = cls._probe(snapshot.as_uri(), path)
             elif writable:
-                conn = _connect_uri(f"{uri}?mode=rw")
-                conn.execute("PRAGMA query_only = ON")
-                version = cls._detect_version(conn, path)
+                conn, version = cls._probe(f"{uri}?mode=rw", path, query_only=True)
             else:
-                conn = _connect_uri(f"{uri}?mode=ro&immutable=1")
-                version = cls._detect_version(conn, path)
+                snapshot = _copy_with_log(path)
+                conn, version = cls._probe(snapshot.as_uri(), path)
         except BaseException:
             if snapshot is not None:
                 shutil.rmtree(snapshot.parent, ignore_errors=True)
@@ -363,11 +363,29 @@ class Ledger:
             snapshot_path=snapshot,
         )
 
+    @classmethod
+    def _probe(
+        cls, uri: str, path: Path, *, query_only: bool = False
+    ) -> tuple[sqlite3.Connection, int]:
+        """Connect and read the schema version; the connection is closed on failure."""
+        conn = _connect_uri(uri)
+        try:
+            if query_only:
+                conn.execute("PRAGMA query_only = ON")
+            return conn, cls._detect_version(conn, path)
+        except BaseException:
+            conn.close()
+            raise
+
     @staticmethod
     def _detect_version(conn: sqlite3.Connection, path: Path) -> int:
         """0 = empty file, 1 = 0.1.1 layout, 2 = current. Anything else raises."""
         try:
             tables = _tables(conn)
+        except sqlite3.OperationalError:
+            # Cannot open or lock it (permissions, I/O): a problem of access, not of
+            # format. The caller decides whether another way of reading it works.
+            raise
         except sqlite3.DatabaseError as exc:
             raise UnsupportedLedgerError(f"{path} is not an SQLite database: {exc}") from exc
         if not tables:
