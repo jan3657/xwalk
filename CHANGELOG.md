@@ -140,6 +140,13 @@ offline only (FakeDecider, no paid calls).
   and CSS match the previous build except for CSS-module hashes. `FilterChip`, unused
   by the screens and absent from the bundle, follows the design system's version.
   `web/tsconfig.tsbuildinfo`, a compiler cache, is no longer tracked.
+- `/app` no longer goes blank on a clustering run's URL. `/api/run` returns a manifest
+  and no `inspect` for clustering runs, which the Results screen read unguarded; with no
+  error boundary React unmounted the whole page. Results and Review now say that
+  clustering runs open in the classic explorer and link there, `RunView` is typed as a
+  matching or clustering run so the compiler checks the difference, and an error
+  boundary (inside the shell, and around it) shows the error with links to the classic
+  explorer and the runs list.
 
 ## [0.2.0rc1] — 2026-10-05
 

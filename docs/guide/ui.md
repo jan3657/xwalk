@@ -150,7 +150,9 @@ setting jobs up. It has three screens:
   result that changed since the queue loaded is reported as a conflict to reload.
 
 Setting up jobs, uploads, the ontology library, evaluation and clustering stay on the
-classic explorer, which the workbench links to. The source and its design notes are in
+classic explorer, which the workbench links to. A clustering run opened in the workbench
+(by a link or a typed URL) says so and links to its classic run page; a screen that fails
+to render shows the error and a way back instead of a blank page. The source and its design notes are in
 [`web/`](../../web/README.md).
 
 ## Which model answers

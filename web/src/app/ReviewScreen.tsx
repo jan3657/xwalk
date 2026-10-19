@@ -5,6 +5,7 @@ import {
 } from '../components';
 import { api, ApiError, downloadUrl, OperationError } from '../api/client';
 import type { ExplainData, MappingPage, MappingRow, TargetRecord, WorksheetRow, WorkspaceJob } from '../api/types';
+import { ClusterRunNotice } from './ClusterRunNotice';
 import { cli, fmt } from './format';
 import { isTyping, useLoad, useStored, useWidth } from './hooks';
 import { AttemptTree, CandidateList, HistoryList, candidatesOf, labelOf, reviewFor } from './RecordParts';
@@ -108,7 +109,8 @@ interface ReviewScreenProps {
   sel: string | undefined;
   jobs: WorkspaceJob[];
   pageSize: number;
-  onQueueCount: (n: number) => void;
+  /** The queue length for the top bar; null when there is no queue (a clustering run). */
+  onQueueCount: (n: number | null) => void;
 }
 
 export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: ReviewScreenProps) {
@@ -139,7 +141,11 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
   const [chosenJob, setChosenJob] = useState('');
   const job = runJob ?? (chosenJob || matchJobs[0]?.path || '');
 
-  useEffect(() => { if (queueLoad.state === 'ready') onQueueCount(queueLoad.data.length); }, [queueLoad, onQueueCount]);
+  const isCluster = run.data?.kind === 'cluster';
+  useEffect(() => {
+    if (isCluster) onQueueCount(null);
+    else if (queueLoad.state === 'ready') onQueueCount(queueLoad.data.length);
+  }, [queueLoad, isCluster, onQueueCount]);
 
   const idx = queue.findIndex((e) => e.sheet.source_id === sel);
   const current = idx >= 0 ? queue[idx]! : null;
@@ -235,8 +241,9 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
     return m;
   }, [ex]);
 
-  const counts = run.data?.inspect.counts ?? {};
-  const policy = run.data?.inspect.data?.fingerprint_components?.policy ?? {};
+  const matchRun = run.data?.kind === 'match' ? run.data : null;
+  const counts = matchRun?.inspect.counts ?? {};
+  const policy = matchRun?.inspect.data?.fingerprint_components?.policy ?? {};
   const open = queue.filter(isOpen).length;
   const decided = queue.length - open;
   const crumbs = [
@@ -253,6 +260,7 @@ export function ReviewScreen({ go, dir, sel, jobs, pageSize, onQueueCount }: Rev
     />
   );
 
+  if (run.data?.kind === 'cluster') return <ClusterRunNotice run={run.data} go={go} screen="Review" />;
   if (queueLoad.state === 'error' && !queueLoad.data) {
     return <>{header}<div className={s.pad}><Banner tone="danger" title="Could not load the review queue" actions={<Button size="sm" onClick={reloadQueue}>Retry</Button>}>{queueLoad.error.message}</Banner></div></>;
   }

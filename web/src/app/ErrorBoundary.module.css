@@ -1,0 +1,37 @@
+/* A screen that failed to render: a typeset note with the error, not a blank page. */
+.wrap { max-width: 720px; padding: 48px 24px; }
+.eyebrow { display: flex; align-items: center; gap: 8px; font: var(--type-caps); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--danger); }
+.sq { width: 6px; height: 6px; background: var(--danger); }
+.title { margin: 12px 0 8px; font: 600 22px/1.2 var(--font-sans); letter-spacing: -0.02em; color: var(--text-strong); }
+.text { margin: 0 0 16px; font: 400 13.5px/1.5 var(--font-sans); color: var(--text-body); }
+.error {
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--danger);
+  font: 400 12px/1.5 var(--font-mono);
+  color: var(--text-strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.primary, .link {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+.link:hover { background: var(--surface-subtle); color: var(--text-strong); }
+.primary { background: var(--gray-900); border-color: var(--gray-900); color: var(--text-inverse); }
+.primary:hover { background: var(--gray-700); border-color: var(--gray-700); }
