@@ -187,3 +187,16 @@ def test_the_module_imports_without_the_extra():
     import xwalk.retrieval.dense as module
 
     assert hasattr(module, "DenseRetriever")
+
+
+def test_a_null_target_field_ties_the_index_to_the_template_render_version():
+    """Null fields used to render as "None" in the indexed text; such an index must not
+    be reused under the new rendering. Indexes without nulls keep their identity."""
+    from xwalk.retrieval.dense import index_components
+    from xwalk.templates import TEMPLATE_RENDER_VERSION
+
+    clean = index_components(RECORDS, TEMPLATES, ToyEncoder())
+    assert "template_render_version" not in clean
+    with_null = [*RECORDS, Record(id="T4", fields={"label": "sucrose", "parent": None})]
+    marked = index_components(with_null, TEMPLATES, ToyEncoder())
+    assert marked["template_render_version"] == TEMPLATE_RENDER_VERSION

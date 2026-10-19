@@ -423,3 +423,12 @@ async def test_a_rewrite_with_nothing_new_is_skipped_with_a_note():
     assert retriever.queries == ["blood sugar", "bs"]
     assert "rewrite: skipped (no new queries)" in _notes(result)
     assert result.status is MatchStatus.UNMATCHED
+
+
+async def test_a_null_alias_is_not_searched_as_the_text_none():
+    # The second query template is `{{ alias }}`; a JSON null used to render "None".
+    retriever = Scripted({"glucose": ["T1", "T2"], "None": ["T3"]})
+    source = Record(id="s3", fields={"mention": "glucose", "alias": None, "note": None})
+    result = await _matcher(retrievers=[retriever]).match(source)
+    assert retriever.queries == ["glucose"]
+    assert result.status is MatchStatus.MATCHED

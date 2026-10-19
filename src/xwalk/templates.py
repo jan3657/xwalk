@@ -20,6 +20,19 @@ from jinja2 import TemplateSyntaxError as JinjaSyntaxError
 from xwalk.fingerprint import hash_value
 from xwalk.records import Record
 
+# Bumped whenever the same template source can render differently for the same record.
+# 2: null fields render as missing ones (they used to render as "None" or raise).
+TEMPLATE_RENDER_VERSION = 2
+
+
+def has_null_field(record: Record) -> bool:
+    """Whether `record` renders differently under render version 2 than before it.
+
+    Index identities add `template_render_version` only when some target has a null
+    field, so indexes whose text cannot have changed keep the identity they had.
+    """
+    return any(value is None for value in record.fields.values())
+
 
 class TemplateError(Exception):
     """A template failed to compile or to render."""
@@ -76,7 +89,10 @@ class TemplateSet:
                 raise TemplateError(f"queries[{index}] template failed to compile: {exc}") from exc
 
     def _render(self, name: str, record: Record) -> str:
-        variables: dict[str, Any] = dict(record.fields)
+        # A null field is a missing field: omitted, so it reaches the template as
+        # undefined and `default`, `is defined` and `join` treat it as absent instead of
+        # rendering the text "None" or raising. Bumps TEMPLATE_RENDER_VERSION.
+        variables: dict[str, Any] = {k: v for k, v in record.fields.items() if v is not None}
         variables["id"] = record.id  # record identity always wins over a field named "id"
         try:
             return _tidy(self._compiled[name].render(**variables))
@@ -112,6 +128,9 @@ class TemplateSet:
     @property
     def fingerprint(self) -> str:
         identity: dict[str, Any] = {
+            # Rendering semantics are part of what a template means: results rendered
+            # under an older version must not be resumed as if nothing changed.
+            "render_version": TEMPLATE_RENDER_VERSION,
             "query": self.query,
             "context": self.context,
             "doc": self.doc,

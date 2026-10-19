@@ -22,7 +22,7 @@ import tantivy
 from xwalk.fingerprint import hash_record, hash_value
 from xwalk.records import Record, RetrievalHit
 from xwalk.retrieval.base import IndexMismatchError, SearchRequest, component_differences
-from xwalk.templates import TemplateSet
+from xwalk.templates import TEMPLATE_RENDER_VERSION, TemplateSet, has_null_field
 
 _META_FILE = "xwalk_meta.json"
 # Bump when the on-disk layout changes, or when exact-form normalisation (`exact_form`)
@@ -49,7 +49,12 @@ def index_components(
     `analyzer` and `fuzzy_distance` enter the components only when they differ from the
     defaults, so a default index keeps the identity it had before these options existed.
     """
-    digests = sorted(hash_record(record) for record in records)
+    digests: list[str] = []
+    nulls = False
+    for record in records:
+        digests.append(hash_record(record))
+        nulls = nulls or has_null_field(record)
+    digests.sort()
     components: dict[str, Any] = {
         "engine": "tantivy-bm25",
         "format_version": INDEX_FORMAT_VERSION,
@@ -59,6 +64,9 @@ def index_components(
         "record_count": len(digests),
         "records": hash_value(digests),
     }
+    if nulls:
+        # The indexed text of a record with a null field changed with render version 2.
+        components["template_render_version"] = TEMPLATE_RENDER_VERSION
     if analyzer != "default":
         components["analyzer"] = analyzer
     if fuzzy_distance:

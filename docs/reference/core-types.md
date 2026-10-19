@@ -344,6 +344,11 @@ Rendering rules:
   sparse in practice; aborting a 100k-row run because one row lacks an optional
   column is the wrong trade, and a silently-empty slot is visible in the rendered
   output and in the attempt trace.
+- A field whose value is `null`/`None` is treated exactly like a missing one: it is
+  not passed to the template, so `default(...)` applies, `is defined` is false and
+  `join` yields nothing (before render version 2 it rendered as the text `None`, or
+  raised in `join`). `TEMPLATE_RENDER_VERSION` is part of `TemplateSet.fingerprint`,
+  and of an index's identity when some target has a null field.
 - Whitespace is tidied after rendering: runs of spaces and tabs collapse to one
   space, lines are stripped, blank lines are dropped, and the result is stripped.
   Conditionals therefore never leave ragged gaps in what the model sees.

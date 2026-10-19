@@ -471,6 +471,43 @@ async def test_an_unset_request_uses_the_client_defaults():
     assert (bodies[0]["temperature"], bodies[0]["max_tokens"]) == (0.0, 1024)
 
 
+# --- engine revision R3: a JSONL null renders like a missing field -------------------
+
+
+async def test_a_null_source_field_from_jsonl_does_not_raise_out_of_match(tmp_path):
+    from xwalk.sources.tabular import jsonl_source
+
+    path = tmp_path / "sources.jsonl"
+    path.write_text(
+        '{"id": "s1", "mention": "glucose", "aliases": null, "context_left": null}\n',
+        encoding="utf-8",
+    )
+    (source,) = list(jsonl_source(path, id_field="id"))
+    templates = TemplateSet(
+        query="{{ mention }} {{ aliases | join(' ') }}",
+        context="{{ context_left | default('') }} [{{ mention }}]",
+        doc=TEMPLATES.doc,
+        candidate=TEMPLATES.candidate,
+    )
+    llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
+    retriever = ScriptedRetriever({"glucose": ["T1"]})
+    matcher = Matcher(
+        templates=templates,
+        retrievers=[retriever],
+        store=STORE,
+        selector=Selector(llm, PROMPTS, templates),
+        scorer=Scorer(llm, PROMPTS, templates),
+        verifier=Verifier(llm, PROMPTS, templates),
+        rewriter=QueryRewriter(llm, PROMPTS, templates),
+        policy=ONE_ATTEMPT,
+        run_fingerprint="fp1",
+    )
+    result = await matcher.match(source)
+    assert result.status is MatchStatus.MATCHED
+    assert retriever.queries == ["glucose"]
+    assert "None" not in llm.requests[0].user.split("## Context")[1].split("##")[0]
+
+
 # --- engine revision R1: malformed HTTP 200 bodies stay inside the record ----------
 
 _MALFORMED_BODIES = {

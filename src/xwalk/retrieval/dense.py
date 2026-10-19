@@ -24,7 +24,7 @@ from xwalk._extras import require
 from xwalk.fingerprint import hash_record, hash_value
 from xwalk.records import Record, RetrievalHit
 from xwalk.retrieval.base import IndexMismatchError, SearchRequest, component_differences
-from xwalk.templates import TemplateSet
+from xwalk.templates import TEMPLATE_RENDER_VERSION, TemplateSet, has_null_field
 
 _META_FILE = "xwalk_meta.json"
 _VECTOR_FILE = "vectors.f32"
@@ -126,8 +126,13 @@ def index_components(
     records: Iterable[Record], templates: TemplateSet, encoder: Encoder
 ) -> dict[str, Any]:
     """The identity of a dense index, computed without encoding anything."""
-    digests = sorted(hash_record(record) for record in records)
-    return {
+    digests: list[str] = []
+    nulls = False
+    for record in records:
+        digests.append(hash_record(record))
+        nulls = nulls or has_null_field(record)
+    digests.sort()
+    components: dict[str, Any] = {
         "engine": "dense",
         "format_version": INDEX_FORMAT_VERSION,
         "doc_template": templates.doc,
@@ -135,6 +140,10 @@ def index_components(
         "records": hash_value(digests),
         "encoder": encoder_identity(encoder),
     }
+    if nulls:
+        # The embedded text of a record with a null field changed with render version 2.
+        components["template_render_version"] = TEMPLATE_RENDER_VERSION
+    return components
 
 
 def read_components(index_dir: str | Path) -> dict[str, Any] | None:

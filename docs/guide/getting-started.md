@@ -112,7 +112,7 @@ templates = TemplateSet(
 
 Two behaviours worth knowing now. Templates compile immediately, so a syntax error
 raises `TemplateError` here rather than on record 40,000. And a field a record does not
-have renders as an empty string rather than raising — sparse collections are normal, and
+have, or holds as `null`, renders as an empty string rather than raising — sparse collections are normal, and
 aborting a long run over one missing optional column is the wrong trade.
 
 The `doc` template deserves real attention. It decides what is findable at all: a target

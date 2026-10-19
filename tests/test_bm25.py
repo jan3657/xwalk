@@ -301,6 +301,20 @@ def test_a_fuzzy_distance_outside_0_to_2_is_refused_at_build(tmp_path, distance)
     assert not (tmp_path / "idx").exists()
 
 
+def test_a_null_target_field_ties_the_index_to_the_template_render_version():
+    """Null fields used to render as "None" in the indexed text; such an index must not
+    be reused under the new rendering. Indexes without nulls keep their identity."""
+    from xwalk.records import Record
+    from xwalk.retrieval.bm25 import index_components
+    from xwalk.templates import TEMPLATE_RENDER_VERSION
+
+    clean = [Record(id="T1", fields={"label": "glucose", "synonyms": ["dextrose"]})]
+    assert "template_render_version" not in index_components(clean, DOC_TEMPLATES)
+    with_null = [*clean, Record(id="T2", fields={"label": "sucrose", "synonyms": None})]
+    marked = index_components(with_null, DOC_TEMPLATES)
+    assert marked["template_render_version"] == TEMPLATE_RENDER_VERSION
+
+
 async def test_a_query_the_parser_rejects_falls_back_to_plain_words(retriever):
     """An apostrophe survives `sanitise_query` and trips tantivy's parser."""
     assert isinstance(await retriever.search(SearchRequest(text="sodium's", limit=5)), list)

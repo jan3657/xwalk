@@ -23,6 +23,39 @@ def test_missing_field_renders_empty_not_an_error():
     assert ts.render_context(Record(id="s1", fields={"mention": "glucose"})) == ""
 
 
+def test_a_null_field_renders_like_a_missing_one():
+    # `aliases: null` in a JSONL row used to reach `join` as None and raise TemplateError
+    # out of Matcher.match; elsewhere it rendered as the text "None".
+    ts = TemplateSet(
+        query="{{ mention }} {{ aliases | join(' ') }}",
+        context="{{ note | default('no note') }}|{% if note is defined %}defined{% endif %}",
+        doc="{{ label }} {{ synonyms | join(' ') }}",
+        candidate="{{ label }} {{ parent }}",
+    )
+    record = Record(id="s1", fields={"mention": "glucose", "aliases": None, "note": None})
+    assert ts.render_query(record) == "glucose"
+    assert ts.render_context(record) == "no note|"
+    target = Record(id="t1", fields={"label": "glucose", "synonyms": None, "parent": None})
+    assert ts.render_doc(target) == "glucose"
+    assert ts.render_candidate(target) == "glucose"
+
+
+def test_a_null_record_field_does_not_hide_a_real_template_bug():
+    ts = TemplateSet(**{**TINY, "query": "{{ mention.upper() }} {{ helper() }}"})
+    with pytest.raises(TemplateError, match="query template failed"):
+        ts.render_query(Record(id="s1", fields={"mention": "glucose"}))
+
+
+def test_the_rendering_version_is_part_of_the_fingerprint():
+    from xwalk.fingerprint import hash_value
+    from xwalk.templates import TEMPLATE_RENDER_VERSION
+
+    ts = TemplateSet(**TINY)
+    old_identity = hash_value({k: TINY[k] for k in ("query", "context", "doc", "candidate")})
+    assert TEMPLATE_RENDER_VERSION == 2
+    assert ts.fingerprint != old_identity
+
+
 def test_record_id_is_available_as_id():
     ts = TemplateSet(**TINY)
     out = ts.render_candidate(Record(id="CHEBI:17234", fields={"label": "glucose"}))
