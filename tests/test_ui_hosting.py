@@ -67,7 +67,7 @@ def served(tmp_path: Path) -> Iterator[str]:
             pass
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
     try:
         yield f"http://127.0.0.1:{server.server_address[1]}"
     finally:
@@ -210,7 +210,7 @@ def public(tmp_path: Path, library_dir: tuple[Path, Path]) -> Iterator[UIServer]
         lookup_cache=str(cache),
         max_tasks=1,
     )
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
     try:
         yield server
     finally:
@@ -390,7 +390,7 @@ def test_health_and_framing(tmp_path: Path) -> None:
     server = make_server(
         str(tmp_path), port=0, public=True, frame_ancestors="https://huggingface.co"
     )
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True).start()
     try:
         with urllib.request.urlopen(server.url + "healthz", timeout=10) as response:
             assert response.read() == b"ok"
