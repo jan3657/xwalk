@@ -25,7 +25,8 @@ offline only (FakeDecider, no paid calls).
   separates search misses from judge misses; not an upper bound on recall, since
   joins see a cluster's first members only and merges link records no prompt
   showed together). Reads the exports and the store read-only: no model or
-  retriever call, nothing written in the run directory. Exit `0` scored, `2` unknown
+  retriever call, no data written in the run directory (a run in progress is
+  snapshotted with SQLite's backup API). Exit `0` scored, `2` unknown
   or non-clustering run directory or unreadable gold, `3` unreadable store. The
   metric functions moved from `benchmarks/clustering.py` to
   `xwalk.evaluate.clustering` (re-exported by the benchmark), which also reads

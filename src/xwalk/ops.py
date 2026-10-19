@@ -1207,7 +1207,7 @@ def cluster_eval(
     Pairwise and B-cubed precision/recall/F1 (records outside the accepted partition as
     singletons, and accepted records only), outcome counts, and the share of gold pairs
     co-exposed in one judge prompt (a diagnostic, not a recall bound). Reads the run's
-    exports and store; makes no model or retriever call and writes nothing in the run
+    exports and store; makes no model or retriever call and writes no data in the run
     directory. `out` also writes the report as JSON.
     """
     from xwalk.cluster.operation import cluster_eval_operation

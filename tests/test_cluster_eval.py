@@ -116,7 +116,12 @@ def test_evaluation_makes_no_model_or_retriever_call_and_writes_nothing(
     assert _files(chocolate_run) == before  # no file added, none changed
 
 
-def test_a_store_with_a_pending_log_is_read_without_touching_it(tmp_path, chocolate_run):
+def _data_files(run: Path) -> dict[str, bytes]:
+    """Every file but SQLite's shared-memory index, which any WAL reader may update."""
+    return {name: data for name, data in _files(run).items() if not name.endswith("-shm")}
+
+
+def test_a_store_with_a_live_writer_is_snapshotted_without_writing_it(tmp_path, chocolate_run):
     # A writer holding the store open (a run in progress) leaves -wal and -shm files.
     from xwalk.cluster.store import ClusterStore
 
@@ -124,12 +129,88 @@ def test_a_store_with_a_pending_log_is_read_without_touching_it(tmp_path, chocol
     try:
         writer.set_meta("probe", 1)  # a committed write that lives in the log for now
         assert (chocolate_run / "cluster.sqlite-wal").exists()
-        before = _files(chocolate_run)
+        before = _data_files(chocolate_run)
+        reader = ClusterStore.open_readonly(chocolate_run / "cluster.sqlite")
+        try:
+            assert reader.get_meta("probe") == 1  # the log's committed write is seen
+        finally:
+            reader.close()
         result = ops.cluster_eval(chocolate_run, _gold(tmp_path / "gold.csv", CHOCOLATE))
         assert result.data["exposure"]["gold_pairs_co_exposed"] == 4
-        assert _files(chocolate_run) == before
+        assert _data_files(chocolate_run) == before  # database and log not written
+        assert set(_files(chocolate_run)) == set(before) | {"cluster.sqlite-shm"}
     finally:
         writer.close()
+
+
+def test_a_killed_run_with_a_left_over_log_is_read_without_touching_it(tmp_path, chocolate_run):
+    # A killed writer leaves -wal without a live -shm: copy that state elsewhere.
+    import shutil
+
+    from xwalk.cluster.store import ClusterStore
+
+    killed = tmp_path / "killed"
+    writer = ClusterStore.open(chocolate_run / "cluster.sqlite")
+    try:
+        writer.set_meta("probe", 1)
+        killed.mkdir()
+        for item in chocolate_run.iterdir():
+            if item.is_file() and not item.name.endswith("-shm"):
+                shutil.copyfile(item, killed / item.name)
+    finally:
+        writer.close()
+    assert (killed / "cluster.sqlite-wal").exists()
+    before = _files(killed)
+    reader = ClusterStore.open_readonly(killed / "cluster.sqlite")
+    try:
+        assert reader.get_meta("probe") == 1
+    finally:
+        reader.close()
+    result = ops.cluster_eval(killed, _gold(tmp_path / "gold.csv", CHOCOLATE))
+    assert result.data["exposure"]["gold_pairs_co_exposed"] == 4
+    assert _files(killed) == before  # nothing added, nothing changed
+
+
+def test_a_cleanly_closed_store_is_opened_read_only(chocolate_run):
+    import sqlite3
+
+    from xwalk.cluster.store import ClusterStore
+
+    before = _files(chocolate_run)
+    store = ClusterStore.open_readonly(chocolate_run / "cluster.sqlite")
+    try:
+        assert store.get_meta("run_fingerprint")
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            store._conn.execute("INSERT INTO meta (key, value) VALUES ('x', '1')")
+    finally:
+        store.close()
+    assert _files(chocolate_run) == before  # no side file created, nothing changed
+
+
+def test_a_corrupt_store_is_store_unreadable(tmp_path, chocolate_run, capsys):
+    (chocolate_run / "cluster.sqlite").write_bytes(b"not a database" * 100)
+    gold = _gold(tmp_path / "gold.csv", CHOCOLATE)
+    code = main(["cluster", "eval", "--run", str(chocolate_run), "--gold", str(gold), "--json"])
+    envelope = json.loads(capsys.readouterr().out)
+    assert code == envelope["exit_code"] == 3
+    assert envelope["errors"][0]["code"] == "store_unreadable"
+
+
+def test_an_invocation_that_never_finished_makes_usage_a_lower_bound(tmp_path, chocolate_run):
+    import sqlite3
+
+    # A killed process leaves its invocation row without usage.
+    conn = sqlite3.connect(chocolate_run / "cluster.sqlite")
+    conn.execute(
+        "INSERT INTO invocations (started_at, run_state) VALUES ('2026-10-19', 'interrupted')"
+    )
+    conn.commit()
+    conn.close()
+    result = ops.cluster_eval(chocolate_run, _gold(tmp_path / "gold.csv", CHOCOLATE))
+    assert result.usage["invocations"] == 2
+    assert result.usage["invocations_without_usage"] == 1
+    assert "usage_incomplete" in [w.code for w in result.warnings]
+    assert any("at least" in line for line in result.lines)
 
 
 async def test_merges_count_as_exposure_the_bridge(tmp_path):

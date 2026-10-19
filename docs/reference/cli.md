@@ -281,7 +281,12 @@ naming the exports and `xwalk cluster eval`, and create nothing in it.
 
 Scores a clustering run's exported partition against a gold partition. Reads
 `manifest.json`, `members.csv` and `cluster.sqlite` (read-only); calls no model and no
-retriever and writes nothing in the run directory.
+retriever and writes no data in the run directory. (While a run is still in progress,
+SQLite may update its shared-memory index `cluster.sqlite-shm` as it does for any
+reader; the store is snapshotted with SQLite's backup API and the database and its
+log are not written.) Usage is summed over the run's invocations; an invocation that
+never finished recorded none, which makes the totals a lower bound (`usage_incomplete`
+warning, `usage.invocations_without_usage`).
 
 | Flag | Required | Default | Meaning |
 |---|---|---|---|
@@ -320,7 +325,8 @@ prompt showed together.
 Exit codes: `0` scored (a run that is not `complete` is scored with a `partial_run`
 warning, its `pending` records as singletons); `2` unknown run directory, a
 directory that is not a clustering run (`not_a_cluster_run`) or an unreadable or
-duplicate-id gold file (`gold_unreadable`); `3` an unreadable store or IO error. From
+duplicate-id gold file (`gold_unreadable`); `3` an unreadable or corrupt store
+(`store_unreadable`) or IO error. From
 Python: `ops.cluster_eval(run_dir, gold, out=None)`.
 
 ## `search`

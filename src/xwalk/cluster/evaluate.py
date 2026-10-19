@@ -20,13 +20,14 @@ misses from judge misses when recall is low.
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections import defaultdict
 from collections.abc import Mapping
 from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-from xwalk.cluster.store import ClusterStore
+from xwalk.cluster.store import ClusterStore, ClusterStoreError
 from xwalk.evaluate.clustering import evaluate_clustering, read_assignments
 
 CO_EXPOSURE_NOTE = (
@@ -115,14 +116,21 @@ def co_exposure(
 
 
 def _usage(store: ClusterStore) -> dict[str, Any]:
-    """Model usage summed over every invocation of the run, as each recorded it."""
+    """Model usage summed over every invocation of the run, as each recorded it.
+
+    An invocation that never finished (a killed process) recorded no usage; it is
+    counted in `invocations_without_usage`, and the totals are then a lower bound."""
     totals = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "unknown_calls": 0}
     invocations = store.invocations()
+    missing = 0
     for invocation in invocations:
-        usage = invocation.get("usage") or {}
+        usage = invocation.get("usage")
+        if not usage:
+            missing += 1
+            continue
         for key in totals:
             totals[key] += int(usage.get(key) or 0)
-    return {**totals, "invocations": len(invocations)}
+    return {**totals, "invocations": len(invocations), "invocations_without_usage": missing}
 
 
 def evaluate_cluster_run(run_dir: str | Path, gold_path: str | Path) -> dict[str, Any]:
@@ -155,6 +163,8 @@ def evaluate_cluster_run(run_dir: str | Path, gold_path: str | Path) -> dict[str
     try:
         exposure = co_exposure(store, gold, member_evidence)
         usage = _usage(store)
+    except sqlite3.DatabaseError as exc:  # corruption past the header
+        raise ClusterStoreError(f"{store.path}: unreadable clustering store ({exc})") from None
     finally:
         store.close()
 

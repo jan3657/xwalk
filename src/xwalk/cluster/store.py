@@ -196,30 +196,59 @@ class ClusterStore:
     def open_readonly(cls, path: str | Path) -> ClusterStore:
         """Open an existing store for reading only (evaluation, inspection).
 
-        Nothing is created or changed in the run directory: no schema, no row, and no
-        SQLite side file. A store closed cleanly (no `-wal` file) is opened `immutable`,
-        which reads it without locking files; one with a pending write-ahead log (a run
-        in progress or killed) is copied with its log to a temporary directory and read
-        there, so the committed steps in the log are seen. A missing file is an error,
-        not a new empty store."""
+        No row is written and no schema created. Three cases:
+
+        - Closed cleanly (no `-wal`): opened `immutable`, which reads the file without
+          creating any side file.
+        - A live writer (`-wal` and `-shm`, a run in progress): read through SQLite with
+          `mode=ro` and snapshotted with `Connection.backup()` into a temporary file, so
+          the copy is one consistent transaction, never a torn file copy taken during a
+          checkpoint. As any reader of a WAL database does, SQLite may update the
+          shared-memory index (`-shm`) while reading; the database and log are not
+          written.
+        - A killed run (`-wal` without `-shm`, so no writer): the file and its log are
+          copied to a temporary directory and read there, committed steps included.
+
+        A missing file is an error, not a new empty store; an unreadable or corrupt one
+        is a `ClusterStoreError`."""
         path = Path(path)
         if not path.is_file():
             raise ClusterStoreError(f"{path}: no clustering store")
         wal = path.with_name(path.name + "-wal")
+        shm = path.with_name(path.name + "-shm")
         scratch: tempfile.TemporaryDirectory[str] | None = None
-        if wal.exists():
-            scratch = tempfile.TemporaryDirectory(prefix="xwalk-cluster-ro-")
-            copy = Path(scratch.name) / path.name
-            shutil.copyfile(path, copy)
-            shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
-            uri = f"{copy.as_uri()}?mode=ro"
-        else:
-            uri = f"{path.resolve().as_uri()}?mode=ro&immutable=1"
-        conn = sqlite3.connect(uri, uri=True)
-        conn.row_factory = sqlite3.Row
-        store = cls(conn, path)
-        store._scratch = scratch
-        version = store.get_meta("schema_version")
+        conn: sqlite3.Connection | None = None
+        try:
+            if wal.exists():
+                scratch = tempfile.TemporaryDirectory(prefix="xwalk-cluster-ro-")
+                copy = Path(scratch.name) / path.name
+                if shm.exists():
+                    source = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+                    try:
+                        target = sqlite3.connect(copy)
+                        try:
+                            source.backup(target)
+                        finally:
+                            target.close()
+                    finally:
+                        source.close()
+                else:
+                    shutil.copyfile(path, copy)
+                    shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
+                uri = f"{copy.as_uri()}?mode=ro"
+            else:
+                uri = f"{path.resolve().as_uri()}?mode=ro&immutable=1"
+            conn = sqlite3.connect(uri, uri=True)
+            conn.row_factory = sqlite3.Row
+            store = cls(conn, path)
+            store._scratch = scratch
+            version = store.get_meta("schema_version")
+        except sqlite3.DatabaseError as exc:
+            if conn is not None:
+                conn.close()
+            if scratch is not None:
+                scratch.cleanup()
+            raise ClusterStoreError(f"{path}: unreadable clustering store ({exc})") from None
         if version != SCHEMA_VERSION:
             store.close()
             raise ClusterStoreError(

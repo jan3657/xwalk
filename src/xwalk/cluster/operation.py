@@ -269,7 +269,7 @@ def cluster_eval_operation(
     """Score a clustering run's exported partition against a gold partition.
 
     Reads the exports and the store (read-only); calls no model and no retriever and
-    writes nothing in the run directory. Exit 0 when scored (a partial run is scored
+    writes no data in the run directory. Exit 0 when scored (a partial run is scored
     with its `pending` records as singletons and a `partial_run` warning); 2 for an
     unknown run directory, a run that is not a clustering run, or an unreadable gold
     file; 3 for an unreadable store or an IO error.
@@ -303,6 +303,15 @@ def cluster_eval_operation(
                 "partial_run",
                 f"the run is {report['run_state']}; {outcome_counts.get('pending', 0)} "
                 "pending record(s) are scored as singletons",
+            )
+        )
+    usage = report["usage"]
+    if usage["invocations_without_usage"]:
+        result.warnings.append(
+            OpMessage(
+                "usage_incomplete",
+                f"{usage['invocations_without_usage']} invocation(s) never finished and "
+                "recorded no usage: the call and token totals are a lower bound",
             )
         )
     if outcome_counts.get("missing"):
@@ -342,9 +351,10 @@ def cluster_eval_operation(
         f"  co-exposed    : {exposure['gold_pairs_co_exposed']} of {exposure['gold_pairs']} "
         "gold pairs were in one judge prompt together (a diagnostic, not a recall bound)"
     )
+    at_least = "at least " if usage["invocations_without_usage"] else ""
     result.lines.append(
-        f"  usage         : {report['usage']['calls']} calls over "
-        f"{report['usage']['invocations']} invocation(s); this evaluation made none"
+        f"  usage         : {at_least}{usage['calls']} calls over "
+        f"{usage['invocations']} invocation(s); this evaluation made none"
     )
     return result
 
