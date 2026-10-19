@@ -13,12 +13,12 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 | # | Conflict | Resolution in 0.2 |
 |---|---|---|
 | 1 | Assignment to an immutable taxonomy node vs merging/modifying it | No taxonomy in 0.2 (CONTRACTS 10.1). Every cluster is minted in-run; the plan's taxonomy-wins merge rule and `Provenance.TAXONOMY` are not built. Assigning to an external node is a later, separate operation; nothing here can mutate an external record. |
-| 2 | Source collection and order must be part of run identity | The run fingerprint hashes the *ordered* snapshot `[(id, hash)]` after the ordering rule is applied, the ordering rule itself, templates, prompts, LLM, pool settings and policy, and the pool's retrieval heads (`retrieval`: lexical engine, dense encoder identity, fusion; format 2, review fix October 2026 -- format 1 let the pool settings overwrite them, and its run directories are refused with `run_format_outdated`). Cluster ID = `hash(run_fp, seed_member_id)`. Default order: stable sort on case-folded, whitespace-collapsed query text, then id (input permutation does not change the run); `order: input` keeps file order and makes order part of identity. |
+| 2 | Source collection and order must be part of run identity | The run fingerprint hashes the *ordered* snapshot `[(id, hash)]` after the ordering rule is applied, the ordering rule itself, templates, prompts, LLM, pool settings and policy, and the pool's retrieval heads (`retrieval`: lexical engine, dense encoder identity, fusion; format 2, review fix October 2026 -- format 1 let the pool settings overwrite them, and its run directories are refused with `run_format_outdated`). Cluster ID = `hash(run_fp, seed_member_id)`. Default order: stable sort on case-folded, whitespace-collapsed query text, then id (input permutation does not change the run); `order: input` keeps file order and makes order part of identity. Label order is one fixed processing order, not a better one: another order can change the result even with a consistent judge (guide, "Limits"). |
 | 3 | Historical pool representations must be reconstructable | `cluster_revisions(cluster_id, revision, members, representation)` is append-only. Each decision row stores the `(cluster_id, revision)` pairs **retrieved** and **shown**, the exact system and user prompt, and the raw response. `tests/test_cluster_engine.py` re-renders every stored prompt from the stored revisions and compares byte for byte. |
 | 4 | Exports must use the best stable revision when refinement oscillates | Every iteration end is stored as a state revision (full member -> cluster/outcome map plus cluster revision pointers). `converged`: the final revision is a fixpoint and is exported. `oscillation` / `max_iterations`: the revision with the fewest unresolved sources, ties earliest (CONTRACTS 10.7), is exported; the manifest names both the selected and the last revision. |
 | 5 | An injected incumbent must survive truncation | In reassignment the incumbent is placed in the shown list; when the list is full it replaces the lowest-ranked challenger. Its representation excludes the member being reconsidered. A test truncates to one challenger slot and checks the incumbent is shown. |
 | 6 | Record retrieved separately from shown | Every select/novelty/merge/comparative decision row has `retrieved` (all retrieved candidates with rank and fused score) and `shown` (the keyed, rendered subset). Export `decisions.jsonl` keeps both. |
-| 7 | Verifiers need actual bounded member evidence | Every cluster block shown to the model lists up to `pool.member_evidence` (default 5) member renders (`candidate` template, each capped at `pool.evidence_chars`): seed first, then join order. No exemplar counts. A member joins only if the verifier judges it equivalent to the cluster as shown (all listed members), not to one member. |
+| 7 | Verifiers need actual bounded member evidence | Every cluster block shown to the model lists up to `pool.member_evidence` (default 5) member renders (`candidate` template, each capped at `pool.evidence_chars`): seed first, then join order. No exemplar counts. A member joins only if the verifier judges it equivalent to the cluster as shown (all listed members), not to one member. The evidence is bounded: in a cluster with more than `member_evidence` members, later members are verified against the first ones and may never be compared with each other (warning `evidence_bounded`, October 2026). |
 | 8 | Full pool rebuild per mint is not scalable | `PoolIndex` is an in-memory incremental BM25 inverted index (plus an optional dense head through the existing `Encoder` protocol). A mint appends one document; a join re-indexes only that cluster's document; scores are computed from running counters. No Tantivy rebuild. Measured below. |
 
 ## Choices the contract left open
@@ -63,7 +63,10 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
   recorded as `merge_review`; members stay where they are.
 - **Contradictory evidence.** A-B accepted and B-C proposed: C is verified against the
   cluster {A, B}; a "not equivalent" verdict defers it, and a later merge of {A, B} with
-  {C} needs its own verified decision.
+  {C} needs its own verified decision. This holds while the cluster has at most
+  `member_evidence` members: C is checked only against the members listed, so in a
+  larger cluster two later members may contradict each other unseen (review finding
+  F5, October 2026; regression in `tests/test_cluster_warnings.py`).
 - **Refinement.** Each iteration (at most `max_refine_iterations`, default 2): retry
   deferred and failed sources (may mint), consolidate, reassign members of clusters
   with at least two members (never mints; switch only on a comparative verdict at
@@ -81,7 +84,10 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
   0.2.0rc1): `resume/<r>/restore` appends rows that make the exported state current,
   `resume/<r>/<source>` re-decides each failed source, and `resume/<r>/end` stores state
   revision `r` as the selected one. This mirrors CONTRACTS.md section 2 (failed records
-  are retried on resume); earlier rows stay as history.
+  are retried on resume); earlier rows stay as history. Reproduction assumes the model
+  answers identical prompts identically: the interruption tests use a scripted judge,
+  and a sampling model can make a resumed run differ from a clean one (warning
+  `resume_determinism`).
 - **Processing** is sequential (`batch_size=1` reference mode): deterministic, slow.
   Optimistic batching is not in 0.2.
 - **Call bounds.** Every stage receives the same `BudgetedLLM`. Per decision at most
@@ -99,14 +105,15 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 Taxonomy seeding, broader/narrower and multi-level hierarchy, fixed cluster counts,
 LLM naming/glosses and name verification (cluster representation is its members), a
 review overlay with clustering verbs (`unresolved.csv` is the worksheet; applying
-decisions is a later task), `inspect`/`explain` for cluster runs (they refuse a
-cluster run with `cluster_run` and point to the exports and `xwalk cluster eval`,
-added October 2026), concurrency.
+decisions is a later task), concurrency. (Read-only `xwalk cluster inspect` and
+`xwalk cluster explain` were added in October 2026; the matching `inspect`/`explain`
+refuse a cluster run with `cluster_run` and point to them.)
 
 ## Scaling check
 
-Measured 5 October 2026 on the session container (4 vCPU x86-64, Python 3.11), pure
-Python, synthetic documents of 2-6 words from a 5,000-word vocabulary; each step is one
+SYNTHETIC engine-overhead measurement, not a quality or real-model figure. Measured 5
+October 2026 on the session container (4 vCPU x86-64, Python 3.11), pure Python,
+synthetic documents of 2-6 words from a 5,000-word vocabulary; each step is one
 query (the new source's search) followed by one mint. Script: the snippet below.
 
 | Pool built to N clusters | Incremental `PoolIndex` (query + append) | Rebuild per mint, same index in Python | Rebuild per mint, Tantivy on disk (`BM25Retriever.build`) |
@@ -121,8 +128,8 @@ The incremental index is not linear either: on a fixed vocabulary each posting l
 grows with N, so a query costs O(N / vocabulary); 16,000 mints still take under two
 seconds. Two quadratic costs were found by this measurement and removed (copying the
 id set, and intersecting the exclusion set with every key, on each search). End to end
-with the scripted judge, 1,200 sources in 400 three-member concepts gave 400 correct
-clusters in 4.0 s for 4,101 scripted calls (about 1 ms of engine and SQLite overhead per
+with the scripted judge (synthetic labels, no model), 1,200 sources in 400 three-member
+concepts gave 400 correct clusters in 4.0 s for 4,101 scripted calls (about 1 ms of engine and SQLite overhead per
 call); 300 sources: 0.9 s. A real model's latency dominates either way. The optional
 dense head is brute-force cosine in Python and was not measured at scale; a vector
 index is the next step if it is used on large pools.
@@ -147,14 +154,42 @@ print(time.perf_counter() - start)
 |---|---|---|
 | Every source exactly once; accepted membership a partition; singletons not called verified | met | `test_every_source_is_accounted_for_once...`; `write_exports` refuses to write a non-partition |
 | Synonyms co-cluster, related-but-distinct stay apart, novel records defined | met with a scripted judge only | `test_synonyms_cocluster...` |
-| A-B, B-C cannot force A-C | met | `test_a_contradictory_chain...`, `test_a_cluster_takes_at_most_one_merge_per_iteration` |
-| Deterministic ids and results | met | `test_fixed_inputs_...`, `test_label_order_makes_input_permutation_irrelevant` |
-| Order change documented | met | `test_input_order_is_part_of_identity_and_can_change_results`, guide "Limits" |
-| Interruption and resume reproduce a clean run | met | call limit at 5 points across stream and refinement, and KeyboardInterrupt: every deterministic table identical |
+| A-B, B-C cannot force A-C | met within `member_evidence` | `test_a_contradictory_chain...`, `test_a_cluster_takes_at_most_one_merge_per_iteration`; bounded by the members listed (`test_regression_hidden_contradictory_members...`, warning `evidence_bounded`) |
+| Deterministic ids and results | met for identical model answers | `test_fixed_inputs_...`, `test_label_order_makes_input_permutation_irrelevant` (scripted judge) |
+| Order change documented | met | `test_input_order_is_part_of_identity_and_can_change_results`, guide "Limits" (synthetic order measurement) |
+| Interruption and resume reproduce a clean run | met for identical model answers | call limit at 5 points across stream and refinement, and KeyboardInterrupt: every deterministic table identical with a scripted judge; warning `resume_determinism` |
 | History reconstructable; selected-revision export correct | met | every stored prompt rebuilt from stored revisions; `test_exports_use_the_selected_revision...` |
 | Candidate and call bounds under refinement | met | per-step call bound, shown and member-evidence bounds, `--max-calls` exact |
 | No full index rebuild per mint; scaling measured | met | `test_the_pool_index_is_updated_per_change...`; table above |
 | Small labelled real sample evaluated | **not met** | no inference endpoint was configured; nothing was run against a real model. The tool now exists: `xwalk cluster eval` (October 2026) |
+
+## Review corrections (October 2026)
+
+The clustering review and the second advisor's check measured the engine on synthetic
+collections with scripted judges (no model). What those figures do and do not show:
+
+- **Label ordering is invariant to input permutation**, as designed and tested; it does
+  not make results independent of processing order. On a 300-record synthetic
+  collection, five shuffled `order: input` runs with a perfect scripted judge gave 29
+  records different co-members (reproduced on this branch). Label order is one of those
+  orders: its score was neither consistently inside nor outside the shuffle range
+  across judges, so it is not a quality lever. Noisy-judge figures depend on the run
+  fingerprint (noise and tie-breaks hash it) and changed with format 2; they are not
+  quoted.
+- **"Suffix variants 72/87 reachable" was a misreading.** The 72 reachable pairs were
+  hyphen variants, which the `\w+` tokenizer splits into the same tokens as the spaced
+  form (72/72); true plural or suffix variants were 0/15, because without stemming they
+  share no token. They behave like synonyms. (These counts are the second advisor's
+  recount of the review's probe, not re-run here; the tokenizer behaviour is checked
+  directly: `tokenize("dark-chocolate") == ["dark", "chocolate"]`, while `cores` and
+  `core` are different tokens.)
+- **Gold-pair co-exposure is not a recall ceiling.** Joins see a cluster's first
+  members and merges link records no prompt showed together, so recall can exceed the
+  co-exposed share (`test_co_exposure_is_not_an_upper_bound_on_recall`: pairwise recall
+  1.0 with 2 of 3 gold pairs ever co-exposed).
+- **Bounded evidence and revision selection are visible now**, not changed: the
+  `evidence_bounded` and `selected_not_last` warnings and `xwalk cluster explain`
+  report them. Clustering decisions, ordering and retrieval defaults are unchanged.
 
 Because the last gate is not met, and the thresholds are uncalibrated, clustering ships
 marked **experimental** (CLI warning `experimental`, manifest `experimental: true`,

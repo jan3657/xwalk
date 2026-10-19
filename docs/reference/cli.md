@@ -81,7 +81,10 @@ Error codes include `job_not_found`, `job_yaml_invalid`, `unknown_field`, `missi
 `fit` given the wrong kind of job) and, from `fit`, `no_recommendation`. Clustering adds `wrong_job_kind` (a `kind: cluster` job given
 to `match`), `source_failed`, `out_not_a_directory`, `store_mismatch`,
 `run_format_outdated`, `cluster_run` (a matching-run command such as `inspect`
-given a clustering run), from `cluster eval` `not_a_cluster_run`,
+given a clustering run), from `cluster eval`, `cluster inspect` and `cluster explain`
+`not_a_cluster_run`, `manifest_unreadable`, `store_mismatch`, the `selected_not_last`,
+`invocation_unfinished`, `superseded_by_selection`, `retrieval_bounded`,
+`evidence_bounded` and `resume_determinism` warnings,
 `gold_unreadable`, `store_unreadable` and the `partial_run` and `gold_not_in_run`
 warnings, and the `experimental` warning. `search` adds the `retriever_failure` warning; the MCP server's
 `--offline-model` adds the `offline_model` warning.
@@ -283,14 +286,113 @@ existing `--out` is refused. Resuming a finished run retries its `failed` record
 stderr. Exit codes: `0` complete, `1` complete with `needs_review` records, `2` usage or
 job error, `3` aborted run, failed records or a foreign run directory, `130` interrupted.
 `--json` data: `stop_reason`, `selected_revision`, `last_revision`, `exported_revision`,
-`experimental`.
+`experimental`. Warnings, each at most once: `experimental`, `needs_review`, and the
+factual `retrieval_bounded`, `evidence_bounded`, `resume_determinism` and
+`selected_not_last` (thresholds in the guide's
+[warnings table](../guide/clustering.md#warnings-about-a-runs-limits)).
 
 `validate` (and `doctor`) accept clustering jobs too: strict schema, source file,
 extras, credential presence and duplicate source ids, with no model call.
 
 `inspect`, `explain`, `results`, `export`, `review`, `eval`, `fit` and `compare` read
 matching runs. Given a clustering run directory they exit `2` with `cluster_run`,
-naming the exports and `xwalk cluster eval`, and create nothing in it.
+naming `xwalk cluster inspect`, `xwalk cluster explain`, `xwalk cluster eval` and the
+exports, and create nothing in it.
+
+## `cluster inspect`
+
+Summarises a clustering run. Reads `manifest.json` and `cluster.sqlite` (read-only, as
+`cluster eval` does); calls no model and no retriever and writes nothing. The outcome
+counts are computed by the code that writes `members.csv`, so they match the exports.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `--run` | yes | — | clustering run directory |
+
+```console
+$ xwalk cluster inspect --run runs/food
+clustering run c441597953d31d48 in runs/food
+  job           : food-labels (gpt-4o-mini)
+  written by    : xwalk 0.2.0rc1
+  run state     : complete
+  stop reason   : converged (exported revision 2, last revision 2)
+  assigned      : 3
+  ...
+  cluster sizes : 3 x1 (size x count)
+  merges        : 1 applied, 0 for review, 0 rejected
+  decisions     : 6 (merge 1, merge_select 1, mint 1, novelty 1, select 1, verify 1)
+  usage         : 5 calls over 1 invocation(s); this inspection made none
+```
+
+(A three-record run with a scripted judge.) `counts`: the exported outcomes, `total` and
+`clusters`. `usage`: calls and tokens summed over every invocation of the run,
+`invocations`, `invocations_without_usage` (an invocation that never finished recorded
+none, so the totals are then a lower bound: `usage_incomplete` warning) and
+`calls_made_by_inspect` (always `0`). `errors`: the last invocation's errors. `--json`
+data: `stop_reason`, `selected_revision`, `last_revision`, `exported_revision`,
+`selected_is_last`, `revisions` (each state revision with its unresolved count and
+whether it is the selected one), `changed_after_export` (sources whose last stored
+state differs from the exported one, with up to 20 ids), `clusters` (`accepted`,
+`by_size`, the five `largest`), `merges` by outcome, `decisions` by kind (and how many
+carry an error), `invocations` (state and calls of each), `fingerprint_components`.
+
+Warnings, each at most once: `experimental`, `needs_review`, `partial_run` (sources
+never reached), `invocation_unfinished` (the last invocation is still running or was
+killed), `usage_incomplete`, the factual `retrieval_bounded`, `evidence_bounded` and
+`resume_determinism` (as `xwalk cluster` reports them), and `selected_not_last`: refinement stopped at `max_iterations`
+or `oscillation` and the exports hold an earlier state revision than the last, so
+changes made after it (a member removed by a failed reverification, for instance) are
+in the store and `decisions.jsonl` but not in the exports. `cluster explain` shows them.
+
+Exit codes: the code the run itself produced (`0` complete, `1` records to review or
+an unfinished last invocation, `3` aborted or failed records, `130` interrupted); `2`
+for a directory that is not a run (`run_not_found`) or not a clustering run
+(`not_a_cluster_run`); `3` for an unreadable `manifest.json` (`manifest_unreadable`), a
+missing or corrupt store (`store_unreadable`) or a store of another run
+(`store_mismatch`). Python: `ops.cluster_inspect(run_dir)`.
+
+## `cluster explain`
+
+Why one record of a clustering run has its exported outcome. Read-only and call-free,
+like `cluster inspect`.
+
+| Flag | Required | Default | Meaning |
+|---|---|---|---|
+| `SOURCE_ID` | yes | — | the record's id |
+| `--run` | yes | — | clustering run directory |
+| `--full` | no | off | also print admission and later decisions' stored system and user prompts, retrieved clusters and usage, in human and JSON output |
+
+```console
+$ xwalk cluster explain s --run runs/rollback
+source s in clustering run e82ba4b503b806d8
+  outcome       : assigned in K7e6271b3e0d1b5c6 (2 members: s, t), reason minted:empty_pool
+  decided by    : #1 mint provenance empty_pool
+  after export  : deferred (reverify_failed) by #9 reverify decision not_equivalent (confidence 0.9) [adverse]
+  after export  : cluster revision 3, removed s, added - by #9 reverify decision not_equivalent (confidence 0.9) [adverse]
+  last state    : deferred - (reverify_failed)
+  note          : a member of a cluster with other members
+```
+
+(A scripted run that stopped at `max_iterations` and exported revision 0: refinement
+removed `s` from its cluster in iteration 1, and revision selection set that removal
+aside.) `--json` data:
+
+| Key | Meaning |
+|---|---|
+| `status`, `exported` | the record's `members.csv` row: outcome, cluster, size, reason, proposal, confidence, decision id |
+| `cluster` | the exported cluster: revision, size, status, `seed_id`, mint provenance, and each member with its outcome, reason and admitting decision; `null` for a record outside every cluster |
+| `admission` | every decision of the step that produced the exported row: the select pages and the verification, the novelty check before a mint, or the merge selection and merge verdict. Each lists the clusters shown with the member ids the prompt listed (`members_shown`, at most `pool.member_evidence`), the parsed result, confidence, error and raw answer |
+| `merge_ancestry` | every applied merge retained in the exported state's lineage that fed the record's cluster, recursively: winner, absorbed cluster, its members at the merge, iteration, decision; resume restores the selected revision's lineage, discarding merges set aside with later state |
+| `evidence_in` | decisions whose prompt listed this record as a member line of a shown cluster |
+| `later` | changes after the exported state revision to the record's assignment or to its exported cluster, each with its decision; `adverse` when it took the record out of the cluster or removed members from it |
+| `superseded_by_selection` | `true` when such changes exist because the exports hold an earlier revision than the last (warning `superseded_by_selection`) |
+| `current` | the record's last stored state when it differs from the exported one |
+| `history` | every assignment change of the record (`after_export` marks those set aside) |
+| `note` | what the outcome means; a `pending` record was not reached (resuming continues), a `failed` one is retried in every round and on resume |
+
+Exit codes: `0`; `2` for an unknown source (`source_not_found`) or directory; `3` as for
+`cluster inspect`, or for missing historical revisions needed to reconstruct member
+evidence (`store_inconsistent`). Python: `ops.cluster_explain(run_dir, source_id, full=False)`.
 
 ## `cluster eval`
 

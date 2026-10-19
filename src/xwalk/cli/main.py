@@ -162,6 +162,22 @@ def _build_parser() -> argparse.ArgumentParser:
     cluster_eval.add_argument(
         "--out", dest="report_out", default=None, help="also write the report as JSON here"
     )
+    cluster_inspect = cluster_sub.add_parser(
+        "inspect",
+        parents=[common],
+        help="summarise a clustering run (read-only, no model calls)",
+    )
+    cluster_inspect.add_argument("--run", required=True, help="clustering run directory")
+    cluster_explain = cluster_sub.add_parser(
+        "explain",
+        parents=[common],
+        help="explain one record of a clustering run (read-only, no model calls)",
+    )
+    cluster_explain.add_argument("source_id")
+    cluster_explain.add_argument("--run", required=True, help="clustering run directory")
+    cluster_explain.add_argument(
+        "--full", action="store_true", help="include the stored prompts and retrieved clusters"
+    )
 
     search = sub.add_parser(
         "search", parents=[common], help="retrieve fused candidates for a query: no model calls"
@@ -483,9 +499,10 @@ def _cluster_progress(source_id: str, outcome: str) -> None:
 def _cmd_cluster(args: argparse.Namespace) -> OpResult:
     from xwalk import ops
 
-    if getattr(args, "cluster_command", None) == "eval":
-        # Flags typed before `eval` belong to the run parser; ignoring them would let
-        # `xwalk cluster --out report.json eval ...` exit 0 and write no report.
+    command = getattr(args, "cluster_command", None)
+    if command is not None:
+        # Flags typed before the subcommand belong to the run parser; ignoring them
+        # would let `xwalk cluster --out report.json eval ...` exit 0 and write no report.
         stray = [
             flag
             for flag, value in (
@@ -497,19 +514,25 @@ def _cmd_cluster(args: argparse.Namespace) -> OpResult:
         ]
         if stray:
             raise OpError(
-                "cluster eval",
+                f"cluster {command}",
                 "usage",
-                f"{', '.join(stray)} before `eval` belong to running a job; `xwalk cluster "
-                "eval` takes --run, --gold and --out (the report file) after `eval`",
+                f"{', '.join(stray)} before `{command}` belong to running a job; give "
+                f"`xwalk cluster {command}` its own flags after `{command}` (for `eval`: "
+                "--run, --gold and --out, the report file)",
                 exit_code=EXIT_USAGE,
             )
+        if command == "inspect":
+            return ops.cluster_inspect(args.run)
+        if command == "explain":
+            return ops.cluster_explain(args.run, args.source_id, full=args.full)
         return ops.cluster_eval(args.run, args.gold, out=args.report_out)
     missing = [flag for flag, value in (("--job", args.job), ("--out", args.out)) if not value]
     if missing:
         raise OpError(
             "cluster",
             "usage",
-            f"xwalk cluster needs {' and '.join(missing)} (or `xwalk cluster eval`)",
+            f"xwalk cluster needs {' and '.join(missing)} (or `xwalk cluster eval`, "
+            "`inspect` or `explain`)",
             exit_code=EXIT_USAGE,
         )
     return ops.cluster(args.job, args.out, max_calls=args.max_calls, progress=_cluster_progress)

@@ -31,6 +31,38 @@ offline only (FakeDecider, no paid calls).
   metric functions moved from `benchmarks/clustering.py` to
   `xwalk.evaluate.clustering` (re-exported by the benchmark), which also reads
   `pending` outcomes and `source_id` columns.
+- `xwalk cluster inspect --run DIR` and `xwalk cluster explain --run DIR SOURCE_ID
+  [--full]` (`ops.cluster_inspect`, `ops.cluster_explain`): read-only, call-free views
+  of a clustering run. `inspect` reports the exported outcome counts, clusters by size,
+  merges, decisions by kind, usage summed over every invocation (with
+  `invocations_without_usage` and a `usage_incomplete` warning when the totals are a
+  lower bound), the selected versus the last state revision, how many records changed
+  after the exported revision (`selected_not_last` warning), and exits with the code
+  the run produced. `explain` reports a record's exported membership, the decisions
+  that placed it with the members each prompt listed, the merge ancestry of its
+  cluster, later changes that went against it or its cluster (for instance a failed
+  reverification that revision selection set aside: `superseded_by_selection`), its
+  assignment history, and the state of `pending` and `failed` records. New error codes
+  `manifest_unreadable` and `store_mismatch` (exit `3`). The `cluster_run` refusal of
+  the matching-run commands now names these commands. `members.csv` is computed by the
+  same function (`exports.exported_state`), so the views match the exports.
+- `xwalk cluster` and `xwalk cluster inspect` warn, once per code, about the limits a
+  run worked within: `retrieval_bounded` (the pool grew past `pool.scan_below` with
+  lexical retrieval only, so synonyms sharing no word may never have been compared),
+  `evidence_bounded` (an exported cluster has more than `pool.member_evidence`
+  members, so later members were not checked against every member),
+  `resume_determinism` (a resumed run matches an uninterrupted one only if the model
+  answers identical prompts identically) and `selected_not_last` (the exports hold an
+  earlier state revision than the last). `ClusterReport.warnings` carries them.
+  Thresholds are in the clustering guide. Decisions, ordering and retrieval defaults
+  are unchanged.
+- Clustering documentation corrected (guide "Limits", the decision record): a join is
+  verified against a cluster's first `pool.member_evidence` members, not "all of
+  them"; "A-B, B-C cannot force A-C" holds within that bound; resume reproduces an
+  uninterrupted run only for identical model answers; `order: label` makes a run
+  independent of input permutation but processing order still changes results; plural
+  and suffix variants share no token with the lexical head (hyphen variants do); and
+  measurements made with scripted judges on generated data are labelled SYNTHETIC.
 - The benchmark's clustering track runs `xwalk cluster` itself (`xwalk_clustering`,
   default settings) beside the baselines and reports its scores, usage and gold-pair
   co-exposure. In `--smoke` the judge is the offline lexical stand-in and the numbers
@@ -150,6 +182,12 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- `xwalk cluster explain --full` includes stored prompts, retrieval and usage for
+  later decisions as well as admission decisions, in both human and JSON output.
+- `xwalk cluster explain` reports missing historical cluster revisions as
+  `store_inconsistent` (exit `3`), instead of silently showing empty member evidence.
+- `xwalk cluster explain` restores merge ancestry with the selected state during
+  failed-record resume, so discarded merges no longer appear in exported ancestry.
 - A malformed HTTP 200 from an OpenAI-compatible endpoint (an HTML error page, a JSON
   array, no or empty `choices`, list `content`, a string token count) raised
   `JSONDecodeError`, `AttributeError`, `TypeError` or `ValueError` out of

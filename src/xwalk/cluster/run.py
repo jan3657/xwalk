@@ -25,7 +25,9 @@ from pathlib import Path
 from typing import Any
 
 from xwalk import __version__
+from xwalk.cluster.diagnostics import dedupe, run_warnings
 from xwalk.cluster.engine import FAILED, ClusterEngine, Progress
+from xwalk.cluster.exports import exported_state as export_view
 from xwalk.cluster.exports import selected_view, write_exports
 from xwalk.cluster.pool import PoolIndex
 from xwalk.cluster.prompts import ClusterPrompts
@@ -73,6 +75,8 @@ class ClusterReport:
     artifacts: dict[str, str] = field(default_factory=dict)
     components: dict[str, Any] = field(default_factory=dict)
     pool_updates: int = 0
+    # Factual warnings, one per code (`xwalk.cluster.diagnostics`).
+    warnings: list[dict[str, str]] = field(default_factory=list)
 
 
 def _order_key(text: str) -> str:
@@ -335,6 +339,11 @@ async def run_clustering(
             engine,
             stop=(stop_reason, selected, last),
         )
+        warnings = dedupe(
+            run_warnings(
+                store, components, export_view(store), run_state=run_state, run_dir=out_dir
+            )
+        )
     finally:
         store.close()
     artifacts = dict(exported["artifacts"])
@@ -353,6 +362,7 @@ async def run_clustering(
         artifacts=artifacts,
         components=components,
         pool_updates=pool_updates,
+        warnings=warnings,
     )
 
 

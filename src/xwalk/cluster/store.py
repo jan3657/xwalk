@@ -494,6 +494,54 @@ class ClusterStore:
                 data[key] = json.loads(data[key])
             yield data
 
+    def steps(self) -> list[dict[str, Any]]:
+        """Every completed step in commit order (`seq`)."""
+        return [dict(r) for r in self._conn.execute("SELECT * FROM steps ORDER BY seq")]
+
+    def revision_log(self) -> list[dict[str, Any]]:
+        """Every cluster revision with the `seq` of the step that wrote it, in commit
+        order (within a step: cluster id, then revision)."""
+        rows = self._conn.execute(
+            "SELECT r.*, s.seq AS step_seq FROM cluster_revisions r "
+            "JOIN steps s ON s.step_key = r.step_key ORDER BY s.seq, r.cluster_id, r.revision"
+        )
+        return [self._revision(row) for row in rows]
+
+    def assignment_log(self, source_id: str) -> list[dict[str, Any]]:
+        """Every assignment change of one source, with the `seq` of its step, oldest first."""
+        rows = self._conn.execute(
+            "SELECT a.*, s.seq AS step_seq FROM assignments a "
+            "JOIN steps s ON s.step_key = a.step_key WHERE a.source_id = ? ORDER BY a.seq",
+            (source_id,),
+        )
+        return [dict(r) for r in rows]
+
+    def decisions_by_id(self, ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+        """The decisions with these ids (absent ids are left out)."""
+        wanted = sorted({int(i) for i in ids})
+        found: dict[int, dict[str, Any]] = {}
+        for start in range(0, len(wanted), 500):
+            chunk = wanted[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                f"SELECT * FROM decisions WHERE decision_id IN ({marks})", chunk
+            )
+            for row in rows:
+                data = dict(row)
+                for key in ("retrieved", "shown", "result", "usage"):
+                    data[key] = json.loads(data[key])
+                found[int(data["decision_id"])] = data
+        return found
+
+    def decisions_in_step(self, step_key: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT decision_id FROM decisions WHERE step_key = ? ORDER BY decision_id",
+            (step_key,),
+        )
+        ids = [int(r["decision_id"]) for r in rows]
+        found = self.decisions_by_id(ids)
+        return [found[i] for i in ids]
+
     def dump(self, table: str) -> list[tuple[Any, ...]]:
         """Every row of a deterministic table, for comparing runs."""
         if table not in DETERMINISTIC_TABLES:

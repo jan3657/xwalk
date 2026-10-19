@@ -89,7 +89,10 @@ requests of one invocation; when it is reached the run stops at a step boundary 
 Because a step is stored only when it finishes and one record's decision may need
 `2 + pool.max_expansion_pages` calls (4 by default), a smaller positive `--max-calls` is
 refused with exit `2`; `--max-calls 0` makes no calls. A complete run repeated makes no
-calls and rewrites identical exports.
+calls and rewrites identical exports. A run that was interrupted or stopped by
+`--max-calls` and then resumed reproduces an uninterrupted run only if the model answers
+identical prompts identically; with a sampling model, or a model that changed between
+invocations, the resumed run can legitimately differ (`resume_determinism` warning).
 
 A finished run with `failed` records retries them when it is resumed, as `match` does.
 The retry round starts from the exported state, decides each failed record afresh against
@@ -117,7 +120,8 @@ the lower-level route for records you already hold.
 
 1. **Stream.** Records are processed one at a time in the recorded order. Each record
    retrieves candidate clusters from the pool, and the model picks one or none. A pick
-   is verified against the cluster's listed members (all of them, not one exemplar). If
+   is verified against the cluster's listed members: its first `pool.member_evidence`
+   (default 5), never a single exemplar, but not every member of a larger cluster. If
    the model picks none, further pages are shown (expansion). Only after the configured
    expansion may a new cluster be created, and only if a novelty check agrees. The first
    record, with nothing to compare against, starts a cluster without a model call.
@@ -125,7 +129,8 @@ the lower-level route for records you already hold.
 3. **Consolidate.** Each cluster may propose one neighbour; a separate verification of
    the two clusters' members decides a merge. A cluster takes part in at most one merge
    per round, so merges never chain on an earlier verdict: A~B and B~C never make A~C
-   without a decision of its own.
+   without a decision of its own. That decision, like every verification, sees each
+   cluster's first `pool.member_evidence` members.
 4. **Reassign.** Members of clusters with two or more members are reconsidered. Their
    current cluster is always among the candidates shown; a member moves only when a
    comparative verdict prefers the other cluster at `comparative_accept_at`. If the model
@@ -176,6 +181,27 @@ that share is low too, the search never put the records in front of the judge (t
 saw. It is a diagnostic, not a ceiling: merges and joins on a cluster's first members
 link records no prompt showed together. Details: [`cluster eval`](../reference/cli.md#cluster-eval).
 
+## Inspecting a run and explaining one record
+
+Both commands read the run read-only and make no model call:
+
+```console
+$ xwalk cluster inspect --run runs/food
+$ xwalk cluster explain --run runs/food c3          # add --full for the stored prompts
+```
+
+`inspect` shows the exported outcome counts, cluster sizes, merges, decisions by kind,
+usage over every invocation (a lower bound when an invocation never finished), and the
+selected versus the last state revision. When refinement stopped at `max_iterations`
+or `oscillation`, the exports hold the state with the fewest unresolved records, which
+can be earlier than the last: decisions made after it (a failed reverification, a
+member moved) are kept in the store but are not in the exports, and `inspect` says so
+(`selected_not_last`). `explain` shows one record's exported membership, the decisions
+of the step that placed it (with the members each prompt actually listed), the merge
+ancestry of its cluster, and any later change that went against it or its cluster.
+Details: [`cluster inspect`](../reference/cli.md#cluster-inspect) and
+[`cluster explain`](../reference/cli.md#cluster-explain).
+
 Cluster ids are `K` + a hash of the run fingerprint and the record that started the
 cluster. They are stable for a run and change when anything in its identity changes.
 
@@ -184,16 +210,51 @@ Exit codes: `0` complete with nothing to review; `1` complete with `needs_review
 error or `--max-calls`), records that failed, or a run directory that belongs to another
 run; `130` interrupted (resume continues).
 
+## Warnings about a run's limits
+
+`xwalk cluster` (at the end of every invocation) and `xwalk cluster inspect` report what
+bounded this run, each at most once. They describe the run; none of them changes a
+decision.
+
+| Warning | Reported when | What it means |
+|---|---|---|
+| `retrieval_bounded` | the largest number of live clusters at any step is greater than `pool.scan_below`, and there is no `dense:` head | above `scan_below`, expansion pages show only retrieved clusters, so a record meets only clusters that share a word with it: synonyms with no word in common may never have been compared. `dense:` or a larger `scan_below` widens the search; neither makes it exhaustive. Not reported for a format-1 run (its manifest does not record the retrieval heads) |
+| `evidence_bounded` | an exported cluster has more than `pool.member_evidence` members | a record is verified against the first `member_evidence` members listed, not every member, so members that joined later may never have been compared with each other |
+| `resume_determinism` | the run took more than one invocation, or the last one was aborted, interrupted or never finished | a resumed run reproduces an uninterrupted one only if the model answers identical prompts identically; with a sampling model it can differ |
+| `selected_not_last` | refinement stopped at `max_iterations` or `oscillation` and the exports hold an earlier state revision than the last | changes after that revision (for instance a member removed by a failed reverification) are in the store and `decisions.jsonl`, not in the exports; `xwalk cluster explain` lists them per record |
+
 ## Limits of this first version
 
 - Equivalence only, one level, clusters created in the run. No taxonomy seeding,
   broader/narrower roll-up, target cluster counts or cluster names.
 - Sequential processing: one model call at a time.
 - With lexical retrieval only, synonyms that share no word meet only through the
-  expansion scan (`scan_below`) or a dense encoder (`dense:`). Above `scan_below`
-  clusters, such synonyms can end up as separate clusters.
-- A different processing order can change the result when the evidence is
-  contradictory (A~B, B~C, but not A~C): whichever end arrives first keeps the middle and
-  the other goes to review. `order: label` makes the order independent of the input file.
-- `inspect`, `explain` and `review apply` do not read clustering runs yet; they say so
-  and point to the exports and `xwalk cluster eval`.
+  expansion scan (while the pool has at most `scan_below` clusters) or a dense encoder
+  (`dense:`). Above `scan_below`, records that share no word with a cluster's members
+  are not compared with it, and synonyms usually end up as separate clusters
+  (`retrieval_bounded` warning). The lexical head splits text on word characters with
+  no stemming: hyphenated and punctuated forms (`dark-chocolate`) give the same tokens
+  as their spaced form, but plural and suffix variants (`cores` and `core`) and
+  underscore-joined forms share no token and behave like synonyms. Neither `dense:` nor
+  `scan_below` makes the search exhaustive.
+- Membership is verified against bounded evidence. A cluster larger than
+  `pool.member_evidence` can hold later members that were never compared with each
+  other, and that the same judge would reject pairwise (`evidence_bounded` warning;
+  `tests/test_cluster_warnings.py` keeps an 11-member example).
+- The processing order changes results, not only when the evidence is contradictory.
+  The cluster a record meets, the members shown as evidence, the BM25 statistics and
+  ties all depend on the pool at that moment. `order: label` makes a run independent of
+  how the input file is permuted (a shuffled file is the same run), but it is one fixed
+  order, not a better one. SYNTHETIC measurement (scripted judges, generated labels, no
+  model): on a 300-record collection, five shuffled `order: input` runs with a perfect
+  scripted judge gave 29 of 300 records different co-members across the runs, and
+  noisier scripted judges moved more. Real-model order sensitivity has not been
+  measured.
+- When refinement stops at `max_iterations` or `oscillation`, the exports hold the
+  stored state with the fewest unresolved records, which can be earlier than the last.
+  A later decision against a member (a failed reverification) is then kept in the
+  store but not applied to the exports (`selected_not_last`; `xwalk cluster explain`
+  shows it).
+- `review apply` does not read clustering runs yet. The matching-run commands
+  (`inspect`, `explain`, ...) refuse a clustering run and point to `xwalk cluster
+  inspect`, `xwalk cluster explain` and `xwalk cluster eval`.

@@ -17,7 +17,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from xwalk.cluster.diagnostics import dedupe
 from xwalk.cluster.evaluate import ClusterEvalError, evaluate_cluster_run
+from xwalk.cluster.inspection import (
+    ClusterInspectError,
+    explain_cluster_source,
+    inspect_cluster_run,
+)
 from xwalk.cluster.job import ClusterJobSpec, load_cluster_job
 from xwalk.cluster.run import ClusterRunError, order_sources, run_clustering
 from xwalk.cluster.store import ClusterStoreError
@@ -33,6 +39,7 @@ from xwalk.ops import (
     OpResult,
     _check_out_dir,
     _credential_check,
+    _run_exit_code,
 )
 from xwalk.retrieval.dense import Encoder
 
@@ -240,6 +247,8 @@ async def cluster_operation(
                 f"{needs_review} source(s) need review: see {report.artifacts.get('unresolved')}",
             )
         )
+    result.warnings += [OpMessage(w["code"], w["message"]) for w in report.warnings]
+    result.warnings = dedupe(result.warnings)
     c = report.counts
     result.lines += [
         f"clustered {c.get('total', 0)} records into {c.get('clusters', 0)} clusters "
@@ -359,10 +368,281 @@ def cluster_eval_operation(
     return result
 
 
+INSPECT_OPERATION = "cluster inspect"
+EXPLAIN_OPERATION = "cluster explain"
+CLUSTER_FILES = (
+    "manifest.json",
+    "cluster.sqlite",
+    "members.csv",
+    "clusters.csv",
+    "unresolved.csv",
+    "decisions.jsonl",
+)
+
+
+def _inspect_error(operation: str, exc: ClusterInspectError) -> OpError:
+    return OpError(operation, exc.code, str(exc), exit_code=exc.exit_code)
+
+
+def _run_envelope(info: dict[str, Any], run_dir: str | Path) -> dict[str, Any]:
+    return {
+        "dir": str(run_dir),
+        "run_fingerprint": info["manifest"].get("run_fingerprint"),
+        "run_state": info["run_state"],
+    }
+
+
+def _dash(value: Any) -> str:
+    return "-" if value is None else str(value)
+
+
+def cluster_inspect_operation(run_dir: str | Path) -> OpResult:
+    """Summarise a clustering run: exported outcome counts, cluster sizes, usage over
+    every invocation, selected versus last state revision, warnings. Read-only: no model
+    or retriever call, nothing written. Exits with the code the run itself produced
+    (0 complete, 1 needs review or an unfinished last invocation, 3 aborted or failed,
+    130 interrupted); 2 for an unknown or non-clustering directory; 3 for an unreadable
+    manifest or store."""
+    from xwalk import __version__
+
+    try:
+        info = inspect_cluster_run(run_dir)
+    except ClusterInspectError as exc:
+        raise _inspect_error(INSPECT_OPERATION, exc) from None
+    manifest = info["manifest"]
+    counts = dict(info["state"].counts)
+    run_state = info["run_state"]
+    usage = info["usage"]
+    last_invocation = info["invocations"][-1] if info["invocations"] else {}
+    errors = [
+        OpMessage(str(e.get("code")), str(e.get("message")), e.get("source_id"))
+        for e in last_invocation.get("errors") or []
+    ]
+    if run_state == "running":
+        exit_code = EXIT_ATTENTION
+    else:
+        exit_code = _run_exit_code(run_state, counts.get("needs_review", 0), counts["failed"])
+    result = OpResult(
+        operation=INSPECT_OPERATION,
+        exit_code=exit_code,
+        run=_run_envelope(info, run_dir),
+        counts=counts,
+        usage={**usage, "calls_made_by_inspect": 0},
+        artifacts={
+            name: str(Path(run_dir) / name)
+            for name in CLUSTER_FILES
+            if (Path(run_dir) / name).exists()
+        },
+        errors=errors,
+        warnings=inspect_warnings(info, run_dir),
+        data={
+            "job": manifest.get("job"),
+            "model": manifest.get("model"),
+            "library_version": manifest.get("library_version"),
+            "inspected_with": __version__,
+            "experimental": True,
+            "fingerprint_components": manifest.get("fingerprint_components"),
+            **{
+                key: info[key]
+                for key in (
+                    "stop_reason",
+                    "selected_revision",
+                    "last_revision",
+                    "exported_revision",
+                    "selected_is_last",
+                    "revisions",
+                    "changed_after_export",
+                    "clusters",
+                    "merges",
+                    "decisions",
+                    "invocations",
+                )
+            },
+        },
+    )
+    data = result.data
+    sizes = ", ".join(f"{size} x{n}" for size, n in data["clusters"]["by_size"].items())
+    at_least = "at least " if usage["invocations_without_usage"] else ""
+    merges = data["merges"]
+    result.lines += [
+        f"clustering run {manifest.get('run_fingerprint')} in {run_dir}",
+        f"  job           : {data['job']} ({data['model']})",
+        f"  written by    : xwalk {data['library_version']}",
+        f"  run state     : {run_state}",
+        f"  stop reason   : {data['stop_reason'] or '-'} (exported revision "
+        f"{_dash(data['exported_revision'])}, last revision {_dash(data['last_revision'])})",
+    ]
+    for outcome in ("assigned", "singleton", "needs_review", "failed", "pending"):
+        result.lines.append(f"  {outcome:<14}: {counts.get(outcome, 0)}")
+    result.lines += [
+        f"  clusters      : {counts.get('clusters', 0)}",
+        f"  cluster sizes : {sizes or '-'} (size x count)",
+        f"  merges        : {merges['applied']} applied, {merges['review']} for review, "
+        f"{merges['rejected']} rejected",
+        f"  decisions     : {data['decisions']['total']} ("
+        + ", ".join(f"{k} {n}" for k, n in data["decisions"]["by_kind"].items())
+        + ")",
+        f"  usage         : {at_least}{usage['calls']} calls over {usage['invocations']} "
+        "invocation(s); this inspection made none",
+    ]
+    return result
+
+
+def inspect_warnings(info: dict[str, Any], run_dir: str | Path) -> list[OpMessage]:
+    """The warnings `cluster inspect` reports, at most one per code."""
+    counts = info["state"].counts
+    usage = info["usage"]
+    warnings = [OpMessage("experimental", EXPERIMENTAL_NOTE)]
+    if counts.get("needs_review"):
+        warnings.append(
+            OpMessage(
+                "needs_review",
+                f"{counts['needs_review']} source(s) need review: see "
+                f"{Path(run_dir) / 'unresolved.csv'}",
+            )
+        )
+    if counts.get("pending"):
+        warnings.append(
+            OpMessage(
+                "partial_run",
+                f"the run is {info['run_state']}; {counts['pending']} source(s) were not "
+                "reached and are pending (running `xwalk cluster` again resumes it)",
+            )
+        )
+    if info["run_state"] == "running":
+        warnings.append(
+            OpMessage(
+                "invocation_unfinished",
+                "the last invocation never finished: it is still running or was killed",
+            )
+        )
+    if usage["invocations_without_usage"]:
+        warnings.append(
+            OpMessage(
+                "usage_incomplete",
+                f"{usage['invocations_without_usage']} invocation(s) never finished and "
+                "recorded no usage: the call and token totals are a lower bound",
+            )
+        )
+    warnings += [OpMessage(w["code"], w["message"]) for w in info["warnings"]]
+    return dedupe(warnings)
+
+
+def cluster_explain_operation(
+    run_dir: str | Path, source_id: str, *, full: bool = False
+) -> OpResult:
+    """Why one source has its exported outcome: its exported membership, the decisions
+    that admitted it, the merge ancestry of its cluster, later decisions against it or
+    its cluster that revision selection set aside, and its full assignment history.
+    Read-only. Exit 0; 2 for an unknown source or directory; 3 for an unreadable run."""
+    try:
+        info = explain_cluster_source(run_dir, source_id, full=full)
+    except ClusterInspectError as exc:
+        raise _inspect_error(EXPLAIN_OPERATION, exc) from None
+    data = {k: v for k, v in info.items() if k not in ("manifest", "run_state")}
+    result = OpResult(
+        operation=EXPLAIN_OPERATION,
+        exit_code=EXIT_OK,
+        run=_run_envelope(info, run_dir),
+        data=data,
+    )
+    adverse = [e for e in data["later"] if e["adverse"]]
+    if adverse and data["superseded_by_selection"]:
+        exported = data["exported_revision"]
+        result.warnings.append(
+            OpMessage(
+                "superseded_by_selection",
+                f"{len(adverse)} change(s) after the exported revision {exported} went "
+                f"against {source_id!r} or its cluster; the run exported revision {exported} "
+                f"(last {data['last_revision']}), so they are not in the exports",
+                source_id,
+            )
+        )
+    result.lines += _explain_lines(data, info["manifest"].get("run_fingerprint"))
+    return result
+
+
+def _decision_line(d: dict[str, Any]) -> str:
+    result = d["result"] or {}
+    verdict = next(
+        (
+            f"{key} {result[key]}"
+            for key in ("decision", "chosen", "novel", "preferred", "provenance")
+            if key in result
+        ),
+        "",
+    )
+    extra = f", error {d['error']}" if d["error"] else ""
+    conf = "" if d["confidence"] is None else f" (confidence {d['confidence']})"
+    return f"#{d['decision_id']} {d['kind']} {verdict}{conf}{extra}"
+
+
+def _explain_lines(data: dict[str, Any], fp: Any) -> list[str]:
+    exported = data["exported"]
+    lines = [f"source {data['source_id']} in clustering run {fp}"]
+    cluster = data["cluster"]
+    if cluster is None:
+        proposal = exported["proposal_cluster_id"]
+        lines.append(
+            f"  outcome       : {data['status']}, reason {exported['reason']}"
+            + (f", proposal {proposal}" if proposal else "")
+        )
+    else:
+        members = ", ".join(m["source_id"] for m in cluster["members"])
+        lines.append(
+            f"  outcome       : {data['status']} in {cluster['cluster_id']} "
+            f"({cluster['size']} members: {members}), reason {exported['reason']}"
+        )
+    if data["admission"]:
+        lines.append("  decided by    : " + "; ".join(_decision_line(d) for d in data["admission"]))
+    for merge in data["merge_ancestry"]:
+        lines.append(
+            f"  merge         : #{merge['decision_id']} {merge['winner_id']} absorbed "
+            f"{merge['absorbed_id']} ({', '.join(merge['absorbed_members'])}) in iteration "
+            f"{merge['iteration']}"
+        )
+    for entry in data["later"]:
+        if entry["type"] == "assignment":
+            what = f"{entry['outcome']} ({entry['reason']})"
+        else:
+            what = (
+                f"cluster revision {entry['revision']}, removed "
+                f"{', '.join(entry['removed']) or '-'}, added {', '.join(entry['added']) or '-'}"
+            )
+        decision = entry["decision"]
+        by = f" by {_decision_line(decision)}" if decision else ""
+        flag = " [adverse]" if entry["adverse"] else ""
+        lines.append(f"  after export  : {what}{by}{flag}")
+    current = data["current"]
+    if current is not None:
+        lines.append(
+            f"  last state    : {current['outcome']} {current['cluster_id'] or '-'} "
+            f"({current['reason']})"
+        )
+    lines.append(f"  note          : {data['note']}")
+    decisions = [*data["admission"], *(e["decision"] for e in data["later"] if e["decision"])]
+    shown: set[int] = set()
+    for decision in decisions:
+        if "prompt" not in decision or decision["decision_id"] in shown:
+            continue
+        shown.add(decision["decision_id"])
+        lines.append(f"  decision {_decision_line(decision)}:")
+        for field in ("system", "prompt"):
+            lines.append(f"    {field}:")
+            lines.extend(f"      {line}" for line in (decision[field] or "-").splitlines())
+        for field in ("retrieved", "usage"):
+            lines.append(f"    {field}: {json.dumps(decision[field], ensure_ascii=False)}")
+    return lines
+
+
 __all__ = [
     "EVAL_OPERATION",
+    "EXPLAIN_OPERATION",
+    "INSPECT_OPERATION",
     "EXPERIMENTAL_NOTE",
     "cluster_eval_operation",
+    "cluster_explain_operation",
+    "cluster_inspect_operation",
     "cluster_operation",
     "load_job",
     "validate_cluster",

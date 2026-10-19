@@ -947,9 +947,11 @@ def refuse_cluster_run(run_dir: str | Path, operation: str) -> None:
         raise OpError(
             operation,
             "cluster_run",
-            f"{path} is a clustering run; `xwalk {operation}` reads matching runs. Read its "
-            "exports (members.csv, clusters.csv, unresolved.csv, decisions.jsonl) or score "
-            f"it with `xwalk cluster eval --run {path} --gold <csv>`",
+            f"{path} is a clustering run; `xwalk {operation}` reads matching runs. Use "
+            f"`xwalk cluster inspect --run {path}` for its state, `xwalk cluster explain "
+            f"--run {path} <source_id>` for one record, or `xwalk cluster eval --run {path} "
+            "--gold <csv>` to score it; its exports are members.csv, clusters.csv, "
+            "unresolved.csv and decisions.jsonl",
             exit_code=EXIT_USAGE,
         )
 
@@ -1371,6 +1373,25 @@ def cluster_eval(
     from xwalk.cluster.operation import cluster_eval_operation
 
     return cluster_eval_operation(run_dir, gold, out=out)
+
+
+def cluster_inspect(run_dir: str | Path) -> OpResult:
+    """Summarise a clustering run: exported outcome counts, cluster sizes, usage summed
+    over every invocation, selected versus last state revision, and warnings. Reads the
+    manifest and the store read-only; no model or retriever call, nothing written. The
+    exit code is the one the run itself produced."""
+    from xwalk.cluster.operation import cluster_inspect_operation
+
+    return cluster_inspect_operation(run_dir)
+
+
+def cluster_explain(run_dir: str | Path, source_id: str, *, full: bool = False) -> OpResult:
+    """Why one record of a clustering run has its exported outcome: membership, the
+    decisions that admitted it, merge ancestry, and later decisions against it that
+    revision selection set aside. Read-only. `full=True` adds the stored prompts."""
+    from xwalk.cluster.operation import cluster_explain_operation
+
+    return cluster_explain_operation(run_dir, source_id, full=full)
 
 
 # --- inspect / explain --------------------------------------------------------------
@@ -1939,6 +1960,8 @@ __all__ = [
     "cluster",
     "cluster_async",
     "cluster_eval",
+    "cluster_explain",
+    "cluster_inspect",
     "explain",
     "export",
     "index",
