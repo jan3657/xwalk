@@ -106,6 +106,34 @@ def test_a_missing_extra_is_named_in_the_headline(tmp_path, monkeypatch):
     assert "xwalk[litellm]" in result.lines[0]
 
 
+def test_a_template_naming_an_absent_column_is_named_with_the_file(tmp_path):
+    """A typo in a template used to validate with only "N records render an empty
+    query text" (review dx F7a)."""
+    path = _job_file(tmp_path, lambda d: d["templates"].__setitem__("query", "{{ mentoin }}"))
+    result = ops.validate(path, check_credentials=False)
+    unknown = [w for w in result.warnings if w.code == "template_unknown_field"]
+    assert len(unknown) == 1, result.warnings
+    message = unknown[0].message
+    assert "templates.query" in message and "'mentoin'" in message
+    assert "sources_tiny.csv" in message and "'mention'" in message
+
+
+def test_a_target_template_is_checked_against_the_target_columns(tmp_path):
+    def edit(data):
+        data["templates"]["doc"] = "{{ label }} {{ synonym | default('') }}"
+
+    result = ops.validate(_job_file(tmp_path, edit), check_credentials=False)
+    (unknown,) = [w for w in result.warnings if w.code == "template_unknown_field"]
+    assert "templates.doc" in unknown.message and "'synonym'" in unknown.message
+    assert "targets_tiny.csv" in unknown.message
+
+
+@pytest.mark.parametrize("job", [JOB, ops.bundled_example() / "job.yaml"])
+def test_shipped_templates_reference_only_real_columns(job):
+    result = ops.validate(job, check_credentials=False)
+    assert not [w for w in result.warnings if w.code == "template_unknown_field"]
+
+
 def test_a_job_with_real_errors_is_still_invalid(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     path = _job_file(tmp_path)

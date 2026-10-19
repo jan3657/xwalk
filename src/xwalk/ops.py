@@ -331,15 +331,59 @@ def _credential_check(job: JobSpec) -> tuple[dict[str, str], list[OpMessage]]:
     return states, errors
 
 
+def _template_variables(source: str) -> set[str]:
+    """Top-level names a template reads from the record (Jinja globals excluded)."""
+    import jinja2
+    import jinja2.meta
+
+    env = jinja2.Environment()
+    return set(jinja2.meta.find_undeclared_variables(env.parse(source))) - set(env.globals)
+
+
+def _unknown_template_fields(
+    spec: JobSpec, templates: TemplateSet, role: str, columns: set[str]
+) -> list[OpMessage]:
+    """A template naming a field no record of its collection has renders it empty, which
+    reads as a valid job that then matches nothing. Name the field and the file."""
+    if role == "source":
+        named = [("templates.query", templates.query), ("templates.context", templates.context)]
+        named += [(f"templates.queries[{i}]", q) for i, q in enumerate(templates.queries)]
+        collection = spec.source
+    else:
+        named = [("templates.doc", templates.doc), ("templates.candidate", templates.candidate)]
+        collection = spec.target
+    where = str(collection.path) if collection.path is not None else f"the {role} collection"
+    known = columns | {"id"}
+    warnings = []
+    for name, source in named:
+        for variable in sorted(_template_variables(source) - known):
+            warnings.append(
+                OpMessage(
+                    "template_unknown_field",
+                    f"{name} references {variable!r}, which no {role} record in {where} "
+                    f"has (it renders empty); fields are {sorted(columns)!r}",
+                )
+            )
+    return warnings
+
+
 def _scan(
-    records: Iterable[Record], role: str, templates: TemplateSet, *, as_doc: bool
+    records: Iterable[Record],
+    role: str,
+    templates: TemplateSet,
+    *,
+    as_doc: bool,
+    columns: set[str] | None = None,
 ) -> tuple[int, list[OpMessage], list[OpMessage]]:
+    """Count, check ids and rendered texts; collect every field name into `columns`."""
     seen: set[str] = set()
     errors: list[OpMessage] = []
     empty = 0
     count = 0
     for record in records:
         count += 1
+        if columns is not None:
+            columns.update(record.fields)
         if record.id in seen:
             errors.append(
                 OpMessage("duplicate_id", f"{role} id {record.id!r} appears more than once")
@@ -445,13 +489,18 @@ def validate(
             ("target", spec.build_target_records, True),
             ("source", spec.build_source_records, False),
         ):
+            columns: set[str] = set()
             try:
-                count, scan_errors, scan_warnings = _scan(builder(), role, templates, as_doc=as_doc)
+                count, scan_errors, scan_warnings = _scan(
+                    builder(), role, templates, as_doc=as_doc, columns=columns
+                )
             except Exception as exc:
                 errors.append(OpMessage("records_unreadable", f"{role}: {exc}"))
                 continue
             result.counts[f"{role}s"] = count
             errors += scan_errors
+            if count:
+                result.warnings += _unknown_template_fields(spec, templates, role, columns)
             result.warnings += scan_warnings
 
     result.exit_code = EXIT_USAGE if errors else EXIT_OK

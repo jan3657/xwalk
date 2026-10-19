@@ -123,6 +123,12 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- `xwalk validate` names a template field that no record has: `{{ mentoin }}` used to
+  validate with only "4 source record(s) render an empty query text". The new
+  `template_unknown_field` warning reads `templates.query references 'mentoin', which
+  no source record in sources.csv has (it renders empty); fields are [...]`, checking
+  `query`, `context` and `queries` against the sources and `doc` and `candidate`
+  against the targets.
 - CSV/TSV, JSONL and OBO sources and gold files read UTF-8 with a byte-order mark
   (every Excel "CSV UTF-8" export): the default encoding is `utf-8-sig`, so the first
   column is `mention_id`, not `\ufeffmention_id`. Such a file used to fail with

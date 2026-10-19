@@ -118,7 +118,10 @@ do not apply to the `kind`, duplicate retriever names); that the templates compi
 prompt slots satisfy the contract; that referenced files exist; that optional extras the
 job needs are installed; that the credential variable is *set* — reported as `set` or
 `missing`, its value is never read into the output; and, unless `--no-scan`, that both
-collections load, are non-empty and have unique ids (empty rendered texts are warnings).
+collections load, are non-empty and have unique ids (empty rendered texts are warnings),
+and that every field a template names exists in some record of its collection (a
+`template_unknown_field` warning names the template, the field, the file and the fields
+there are, since a misspelt field renders empty and the job would match nothing).
 
 ```console
 $ xwalk validate --job job.yaml
