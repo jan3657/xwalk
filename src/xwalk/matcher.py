@@ -157,10 +157,12 @@ class Matcher:
 
     # --- retrieval -------------------------------------------------------------
 
-    async def _retrieve(self, query: str, source: Record) -> tuple[list[Candidate], list[str]]:
-        """One query per attempt on this path; the rewriter supplies the next one."""
+    async def _retrieve(
+        self, queries: Sequence[str], source: Record
+    ) -> tuple[list[Candidate], list[str]]:
+        """Fuse initial queries together; new proposals supply one query each."""
         candidates, notes, _ = await retrieve(
-            [query],
+            queries,
             source,
             self._retrievers,
             self._store,
@@ -176,7 +178,7 @@ class Matcher:
         self,
         source: Record,
         context: str,
-        query: str,
+        queries: Sequence[str],
         proposal: RetryProposal | None,
         index: int,
         reuse: tuple[KeyedCandidates, tuple[Candidate, ...]] | None,
@@ -203,7 +205,7 @@ class Matcher:
         if reuse is not None:
             keyed, candidates = reuse
         else:
-            fused, notes = await self._retrieve(query, source)
+            fused, notes = await self._retrieve(queries, source)
             candidates = tuple(fused)
 
         def build(
@@ -223,7 +225,7 @@ class Matcher:
         ) -> Attempt:
             return Attempt(
                 index=index,
-                query=query,
+                query=" | ".join(queries),
                 proposal=proposal,
                 candidates=candidates if self._keep_candidates else (),
                 candidate_count=len(candidates),
@@ -294,6 +296,7 @@ class Matcher:
                         raw=selection_raw,
                         explanation=selection_explanation,
                         error=selection.error,
+                        reason=selection.reason,
                     )
                 )
             # Bound to a narrowed local so `chosen_key` is `str`, not `str | None`, in
@@ -411,17 +414,22 @@ class Matcher:
     async def match(self, source: Record) -> MatchResult:
         match_started = time.perf_counter()
         context = self._templates.render_context(source)
-        first_query = self._templates.render_query(source)
+        # Historically an LLM job could declare query plus ONE alternate entry,
+        # but searched query only. Preserve that configuration (and SDK equivalent).
+        if len(self._templates.queries) <= 1:
+            first_queries = [self._templates.render_query(source)]
+        else:
+            first_queries = self._templates.render_queries(source)
 
-        queue: list[tuple[str, RetryProposal | None]] = [(first_query, None)]
-        seen_queries = {normalise_query(first_query)}
+        queue: list[tuple[list[str], RetryProposal | None]] = [(first_queries, None)]
+        seen_queries = {normalise_query(query) for query in first_queries}
         tried_queries: list[str] = []  # original casing, for the rewriter's prompt
         candidate_queue: list[str] = []
         attempts: list[Attempt] = []
         all_candidates: tuple[Candidate, ...] = ()
         last_keyed: KeyedCandidates | None = None
         last_candidates: tuple[Candidate, ...] = ()
-        last_query = first_query
+        last_queries = first_queries
 
         for index in range(self._policy.max_attempts):
             reuse: tuple[KeyedCandidates, tuple[Candidate, ...]] | None = None
@@ -432,17 +440,18 @@ class Matcher:
                 forced_key = candidate_queue.pop(0)
                 proposal = RetryProposal(kind="candidate", value=forced_key, source="scorer")
                 reuse = (last_keyed, last_candidates)
-                query = last_query
+                queries = last_queries
             elif queue:
-                query, proposal = queue.pop(0)
-                last_query = query
-                if query not in tried_queries:
-                    tried_queries.append(query)
+                queries, proposal = queue.pop(0)
+                last_queries = queries
+                for query in queries:
+                    if query not in tried_queries:
+                        tried_queries.append(query)
             else:
                 break
 
             outcome = await self._attempt(
-                source, context, query, proposal, index, reuse, forced_key, seen_queries
+                source, context, queries, proposal, index, reuse, forced_key, seen_queries
             )
             attempt = outcome.attempt
             attempts.append(attempt)
@@ -454,6 +463,8 @@ class Matcher:
 
             if attempt.reason is DecisionReason.FATAL_PROVIDER_FAILURE:
                 break  # a bad key or unknown model will not fix itself
+            if attempt.reason is DecisionReason.CANDIDATE_BUDGET_EXCEEDED:
+                break  # a different query cannot repair the candidate presentation budget
             if self._is_acceptable(attempt):
                 break
             if index + 1 >= self._policy.max_attempts:
@@ -462,13 +473,13 @@ class Matcher:
             if attempt.reason in _RETRY_SAME_QUERY:
                 # Not evidence about this record. Retry the same query rather than
                 # asking the rewriter to invent a new one for a provider outage.
-                queue.insert(0, (query, proposal))
+                queue.insert(0, (queries, proposal))
                 continue
 
             candidate_queue.extend(outcome.routed.candidate_keys)
             for text in outcome.routed.queries:
                 seen_queries.add(normalise_query(text))
-                queue.append((text, RetryProposal(kind="query", value=text, source="scorer")))
+                queue.append(([text], RetryProposal(kind="query", value=text, source="scorer")))
 
             if not queue and not candidate_queue:
                 rewritten = await _call_stage(
@@ -499,7 +510,7 @@ class Matcher:
                     if normalised in seen_queries:
                         continue
                     seen_queries.add(normalised)
-                    queue.append((out.value, out))
+                    queue.append(([out.value], out))
                 if not queue:
                     break
 

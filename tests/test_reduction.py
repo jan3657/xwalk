@@ -234,7 +234,11 @@ def _random_attempt(rng: random.Random, index: int) -> Attempt:
     reason = DecisionReason.PROVIDER_FAILURE if verdict == "error" else None
     resolution = _EXACT if rng.random() < 0.9 else Resolution.LEGACY_RANK.value
     if kind == "noisy":  # never produced by the loop: a failed attempt with a clean verdict
-        reason = rng.choice(list(DecisionReason))
+        # This comparison covers historical attempts. The new budget reason never
+        # existed in those ledgers; its precedence is covered in test_policy.
+        reason = rng.choice(
+            [r for r in DecisionReason if r is not DecisionReason.CANDIDATE_BUDGET_EXCEEDED]
+        )
         verdict = rng.choice([None, "support"])
     return matched(
         score,

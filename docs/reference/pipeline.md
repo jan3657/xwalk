@@ -15,12 +15,12 @@ Modules covered: `xwalk.matcher`, `xwalk.batch`, `xwalk.stages.keying`,
 
 ### Setup
 
-`match(source)` renders two strings from the `TemplateSet`: the *context* (shown to
-every prompt) and the *first query* (fed to retrieval). It then initialises two queues:
+`match(source)` renders the *context* (shown to every prompt) and the initial query list
+from `TemplateSet.render_queries` (see the [single-entry compatibility rule](job-file.md#templates)). It then initialises two queues:
 
-- **query queue** — `(query, proposal)` pairs waiting for a fresh retrieval. Starts
-  with the first query. FIFO, except that an infrastructure failure re-inserts its own
-  query at the front.
+- **query queue** — `(queries, proposal)` pairs waiting for a fresh retrieval. Starts
+  with the initial list. New proposals contain one query each. FIFO, except that an
+  infrastructure failure re-inserts its actual query list at the front.
 - **candidate queue** — candidate keys (e.g. `C03`) proposed by the scorer, waiting to
   be re-examined. These records are already in hand; consuming one runs **no retrieval
   and no selector call** — the loop goes straight to scoring.
@@ -29,6 +29,9 @@ The candidate queue always drains first. Re-examining a record you already retri
 strictly cheaper than a new search, and the paper repo's mistake — pushing candidate
 labels back into the query queue and re-retrieving records already in hand — is exactly
 what the split exists to prevent.
+
+`Attempt.query` displays multiple queries joined with `" | "`; runtime retrieval and
+retry state retain the original list, including literal separators inside a query.
 
 Alongside the queues: `seen_queries` holds normalised forms of every query ever
 enqueued (deduplication), `tried_queries` keeps original casing for the rewriter's
@@ -41,13 +44,13 @@ Up to `policy.max_attempts` iterations (default 4). Each iteration:
 
 ```
 match(source)
-  render context + first query; queue = [first query]
+  render context + initial queries; queue = [initial queries]
   for index in range(max_attempts):
     pick work: candidate queue first, else query queue, else STOP (no work)
     attempt:
       1. retrieve   all retrievers concurrently, RRF-fused   (no LLM; skipped
                     when re-examining a candidate)
-      2. select     budget -> assign keys -> one key or null  (LLM; skipped when
+      2. select     render keyed blocks -> budget -> key/null  (LLM; skipped when
                     re-examining a candidate — the key is forced)
       3. score      chosen record vs the full source record   (LLM; always runs
                     on a resolved choice)
@@ -55,6 +58,7 @@ match(source)
                     an audit draw above it
       5. route      scorer proposals -> candidate keys + new queries
     fatal LLM error          -> record a failed attempt, STOP
+    candidate budget exceeded -> needs_review, STOP (no model call)
     acceptable match         -> STOP (early accept)
     attempts exhausted       -> STOP
     infrastructure failure   -> re-queue the same query at the front, continue
@@ -65,7 +69,7 @@ match(source)
 
 Within an attempt (`Matcher._attempt`):
 
-1. **Retrieval.** Every retriever is searched concurrently, each guarded by
+1. **Retrieval.** Every retriever is searched with every query concurrently, each guarded by
    `policy.retriever_timeout`. Depth comes from each retriever's own `default_limit`;
    the matcher's `retriever_limit` is only the fallback for a backend that does not
    declare one. Results are merged by reciprocal rank fusion with constant `rrf_k`.
@@ -280,15 +284,25 @@ governs how much of it reaches the model.
 
 ```python
 def apply_budget(
-    candidates: Sequence[Candidate], policy: SelectorPolicy
-) -> tuple[list[Candidate], int]
+    candidates: Sequence[Candidate], policy: SelectorPolicy, templates: TemplateSet
+) -> tuple[KeyedCandidates, int]
 ```
 
 Deterministic trim: sort by `(-fused_score, id)`, keep the first `max_candidates`,
 then walk a character budget of `max_candidate_tokens * 4` (a deliberately crude
-chars-per-token estimate — a guard rail, not a meter) using a cheap size proxy over the
-record's field values. The first candidate is always kept, even over budget. Returns
-`(kept, dropped_count)`.
+chars-per-token estimate — a guard rail, not a meter). Render each count-capped
+candidate once, including its `[C01] ` prefix, and count the `\n\n` separators between
+blocks. Keep a ranked prefix of whole blocks; never slice text or skip a large block
+to admit a later smaller one. Key width is fixed by the count-capped slate, including
+three-digit keys for 100 or more candidates. Returns `(keyed, dropped_count)` so the
+selector reuses those exact renders.
+
+If the first block alone exceeds the budget, the attempt and result become
+`needs_review / candidate_budget_exceeded`. The loop stops without a selector,
+scorer, verifier or rewriter call. Retrieval counts and truncation remain in the trace,
+with no issued keys. This is distinct from an empty retrieval. Budget semantics
+version 2 is included in the selector identity and the run's `selector_policy`
+component; existing LLM runs require a new run directory.
 
 ```python
 class Selector:
@@ -326,9 +340,10 @@ class Selector:
 | `usage` | `Usage` | tokens and calls |
 | `error` | `str \| None` | default `None` |
 | `finish_reason` | `str \| None` | default `None` |
+| `reason` | `DecisionReason \| None` | `CANDIDATE_BUDGET_EXCEEDED` when no retrieved block fits; otherwise `None` |
 
-Fail-safes: an empty budgeted list returns an `ABSTAIN` outcome without calling the
-LLM. A `ParseError` returns `UNRESOLVED` with the raw text as `choice.raw` and the
+Fail-safes: no retrieved candidates returns `ABSTAIN` without calling the LLM.
+An oversized first block returns `UNRESOLVED` with `CANDIDATE_BUDGET_EXCEEDED`. A `ParseError` returns `UNRESOLVED` with the raw text as `choice.raw` and the
 parse error in `error`. A non-string `chosen_key` is coerced with `str()` before
 resolution. An `EXACT_KEY` choice whose `confidence_score` is invalid (see
 "Confidence values" below) is *demoted to* `UNRESOLVED` — a choice we cannot score is a
@@ -745,7 +760,7 @@ Everything whose change should invalidate prior results, hashed into one digest.
 - `llm.fingerprint`;
 - policy classification and loop shape: `max_attempts`, `accept_at`, `review_floor`,
   `verify_band`, `audit_rate`, `legacy_id_resolution`;
-- selector budget: `max_candidates`, `max_candidate_tokens`;
+- selector budget: `max_candidates`, `max_candidate_tokens`, `budget_version`;
 - `encoders` (only when a retriever exposes `encoder_identity`, as `DenseRetriever`
   does): the live encoder's name, dimension and `settings` — for
   `SentenceTransformerEncoder` the revision (`"unknown"` unless pinned), `normalize`,
@@ -812,8 +827,8 @@ produced at another retrieval depth.
 - **A retriever down is recorded structurally.** `Attempt.retrieval_failures` lists each
   failed search, with or without the candidate trace. With no surviving hits the
   attempt is `retriever_failure` and the same query is retried.
-- **`apply_budget` always keeps at least one candidate**, even when that single
-  candidate exceeds the character budget.
+- **An oversized first candidate routes to review**, with reason
+  `candidate_budget_exceeded` and no selector call.
 - **`matched_record` can be `None` while `matched_id` is set.** The store lookup
   tolerates a missing id rather than failing the result.
 - **`BatchReport.total` and `BatchReport.usage` measure different things** — the

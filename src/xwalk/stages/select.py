@@ -9,15 +9,18 @@ from typing import Any
 from xwalk.llm.base import LLMClient, LLMRequest, ParseError, effective_generation
 from xwalk.llm.parsing import parse_confidence, parse_json_object
 from xwalk.prompts.contract import SELECT_SCHEMA, PromptSet
-from xwalk.records import Candidate, Record, Usage
+from xwalk.records import Candidate, DecisionReason, Record, Usage
 from xwalk.stages.keying import (
+    BLOCK_SEPARATOR,
     KeyedCandidates,
     Resolution,
     ResolvedChoice,
-    assign_keys,
     resolve_key,
 )
 from xwalk.templates import TemplateSet
+
+# 2: budget the exact rendered blocks, refusing an oversized first block.
+CANDIDATE_BUDGET_VERSION = 2
 
 _CHARS_PER_TOKEN = 4  # a deliberately crude estimate; the budget is a guard rail, not a meter
 
@@ -45,27 +48,42 @@ class SelectionOutcome:
     usage: Usage
     error: str | None = None
     finish_reason: str | None = None
+    reason: DecisionReason | None = None
 
 
 def apply_budget(
-    candidates: Sequence[Candidate], policy: SelectorPolicy
-) -> tuple[list[Candidate], int]:
-    """Deterministically trim the fused list. Returns (kept, dropped_count)."""
-    ordered = sorted(candidates, key=lambda c: (-c.fused_score, c.id))
-    kept = ordered[: policy.max_candidates]
+    candidates: Sequence[Candidate], policy: SelectorPolicy, templates: TemplateSet
+) -> tuple[KeyedCandidates, int]:
+    """Render once and keep a ranked prefix within the count and character budgets.
 
+    Count the actual key prefixes and inter-block separators at four characters per
+    estimated token. Whole blocks are retained, never sliced. Keys retain the width
+    assigned to the count-capped slate, even if the text budget later trims it.
+    """
+    ordered = sorted(candidates, key=lambda c: (-c.fused_score, c.id))
+    capped = ordered[: policy.max_candidates]
+    width = max(2, len(str(len(capped))))
     budget_chars = policy.max_candidate_tokens * _CHARS_PER_TOKEN
     total = 0
-    trimmed: list[Candidate] = []
-    for candidate in kept:
-        # a cheap proxy for the rendered size; the exact render happens after keying
-        size = sum(len(str(v)) for v in candidate.record.fields.values()) + len(candidate.id) + 16
-        if trimmed and total + size > budget_chars:
+    kept: list[str] = []
+    by_key: dict[str, Candidate] = {}
+    issued: dict[str, str] = {}
+    blocks: dict[str, str] = {}
+    for index, candidate in enumerate(capped, start=1):
+        key = f"C{index:0{width}d}"
+        block = f"[{key}] {templates.render_candidate(candidate.record)}"
+        size = len(block) + (len(BLOCK_SEPARATOR) if kept else 0)
+        if total + size > budget_chars:
             break
-        trimmed.append(candidate)
+        kept.append(key)
+        by_key[key] = candidate
+        issued[key] = candidate.id
+        blocks[key] = block
         total += size
 
-    return trimmed, len(candidates) - len(trimmed)
+    return KeyedCandidates(order=tuple(kept), by_key=by_key, issued=issued, blocks=blocks), len(
+        candidates
+    ) - len(kept)
 
 
 class Selector:
@@ -107,6 +125,7 @@ class Selector:
             "system": self._system,
             "max_candidates": self._policy.max_candidates,
             "max_candidate_tokens": self._policy.max_candidate_tokens,
+            "budget_version": CANDIDATE_BUDGET_VERSION,
             "legacy_id_resolution": self._legacy,
         }
 
@@ -116,18 +135,25 @@ class Selector:
         context: str,
         candidates: Sequence[Candidate],
     ) -> SelectionOutcome:
-        kept, dropped = apply_budget(candidates, self._policy)
-        keyed = assign_keys(kept, self._templates)
+        keyed, dropped = apply_budget(candidates, self._policy, self._templates)
 
         if not keyed.order:
+            over_budget = bool(candidates)
             return SelectionOutcome(
-                choice=ResolvedChoice(None, Resolution.ABSTAIN, None),
+                choice=ResolvedChoice(
+                    None, Resolution.UNRESOLVED if over_budget else Resolution.ABSTAIN, None
+                ),
                 confidence=None,
-                explanation="no candidates were retrieved",
+                explanation=(
+                    "first candidate block exceeds the candidate budget"
+                    if over_budget
+                    else "no candidates were retrieved"
+                ),
                 raw="",
                 keyed=keyed,
                 truncated=dropped,
                 usage=Usage.zero(),
+                reason=DecisionReason.CANDIDATE_BUDGET_EXCEEDED if over_budget else None,
             )
 
         prompt = self._prompts.render_select(

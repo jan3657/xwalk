@@ -16,6 +16,20 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- FoodOn LLM example jobs retain a `[0.6, 0.8]` verify band and audit 10% of
+  above-band scores, so confident pilot errors can receive a second opinion.
+
+- Selector budgets count rendered keyed blocks and separators, retaining a ranked prefix
+  without slicing text. Rendering stops at the first overflow, so discarded later
+  candidates cannot raise template errors. An oversized first block becomes `needs_review` with reason
+  `candidate_budget_exceeded` and zero model calls. Rendered-budget version 2 deliberately
+  invalidates old LLM run identities. `apply_budget` now takes `templates` and returns
+  `(KeyedCandidates, dropped_count)` so rendering is reused.
+
+- LLM jobs accept multi-query retrieval: initial queries receive separate RRF votes;
+  retries keep the real list and new proposals search one query each. Existing single-query
+  requests and the legacy `query` plus one alternate behavior are preserved.
+
 - Zero-call, conditional policy replay for both matcher paths, exposed through
   `ops.evaluate_run` and `xwalk eval --replay-policy JOB.yaml`. Reports recorded/gold
   transitions, historical reducer versions, stage suppression diagnostics and

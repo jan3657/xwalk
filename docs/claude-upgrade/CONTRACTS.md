@@ -229,3 +229,21 @@ starts from `claude/zealous-heisenberg-nri5m0`.
 | 04 | new `src/xwalk/cluster/`, `tests/test_cluster_*.py`, one `cluster` hook in `ops.py`/CLI |
 | 05 | new `benchmarks/` (manifests, runners), `scripts/` additions |
 | 07 | `README.md`, `docs/`, `CHANGELOG.md`, version bump |
+
+## 12. Rendered candidate budget (engine revision B2/L2)
+
+- LLM initial retrieval may fuse multiple configured queries. Runtime state retains the
+  actual query list for retries, deduplication and rewriter history; `Attempt.query` is
+  only a display (joined with `" | "`). Existing single-query jobs, including `query`
+  alongside a one-entry alternate `queries`, keep their request bodies and ordering.
+- Selection renders each count-capped candidate once. The estimate is four characters
+  per token, counting rendered key prefixes, content and inter-block separators. Keep
+  a ranked prefix of whole blocks without slicing text or skipping oversized blocks.
+- If the first block alone exceeds the budget, record
+  `needs_review / candidate_budget_exceeded` and stop without a selector call or any
+  further model calls. Keep retrieval/truncation counts, issue no candidate keys.
+  A fatal failure or an acceptable attempt keeps its existing reducer precedence;
+  otherwise a budget-exceeded attempt forces review, including after a prior negative.
+- Rendered-budget version 2 enters both selector identity and LLM run components. It
+  changes candidate acquisition, not the interpretation of historical attempts without
+  the new reason. The existing status-semantics version remains unchanged.

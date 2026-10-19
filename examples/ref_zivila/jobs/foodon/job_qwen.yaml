@@ -52,8 +52,9 @@ policy:
   max_attempts: 1
   accept_at: 0.85
   review_floor: 0.50
-  verify_band: null
-  audit_rate: 0.0
+  # Verify uncertain scores and sample above-band scores: confident errors need checks too.
+  verify_band: [0.6, 0.8]
+  audit_rate: 0.1
   concurrency: 8
 
 selector:

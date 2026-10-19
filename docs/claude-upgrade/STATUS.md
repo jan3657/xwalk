@@ -4,6 +4,9 @@ Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS
 
 | Task | State | Starting balance | Ending balance | Branch or commit | Evidence |
 |---|---|---|---|---|---|
+| Engine batch 5: FoodOn policy (item 7) | Done (awaiting review; mbox fallback) | unreported | unreported | `engine/batch5-retrieval` | Test-first: 4 policy regressions failed; all 5 FoodOn jobs now pass strict schema/template/prompt loading without private data. Four LLM jobs use audit_rate 0.1 and verify_band [0.6, 0.8]; Jev retains its separate gate policy. Focused example tests: 10 passed. Final offline gate: 2172 passed, 40 skipped, 4 deselected; 8 failures and 40 errors, all 48 socket-bind PermissionErrors from the sandbox. Ruff check/format clean (226 files); mypy clean (128 files). Three commits in `/private/tmp/xwalk-b5.mbox`, with identical changes in this worktree (git metadata writes denied). No paid calls or downloads. |
+| Engine batch 5: L2 rendered budget | Done (awaiting review; mbox fallback) | unreported | unreported | `engine/batch5-retrieval` | Test-first: 7 regressions failed. Render-once prefix budgeting includes key widths/separators; oversized-first review makes zero model calls; reason round-trips and replays; budget version 2 changes run identity. Focused select/matcher/policy/identity/replay: 187 passed; reduction/policy/select/matcher: 164 passed. Offline gate: 2167 passed, 40 skipped, 4 deselected; 8 failures and 40 errors, all sandbox socket-bind denials. Ruff check/format clean (226 files); mypy clean (128 files). No paid calls or downloads. Git metadata denied; commits prepared in scratch clone. |
+| Engine batch 5: B2 retrieval | Done (awaiting review) | unreported | unreported | `engine/batch5-retrieval` | Test-first: 5 regressions failed; multi-query RRF, original-list retries/dedup, trace invariance and single-query compatibility (including captured HTTP bytes). Focused Matcher/config: 84 passed. Offline gate: 2156 passed, 40 skipped, 4 deselected; 8 failures and 40 errors, all sandbox socket-bind denials. Ruff check/format clean (226 files); mypy clean (128 files). HF/Transformers offline; FakeLLM/MockTransport only, no paid calls. |
 | Engine batch 4: E1/E2 evaluation semantics | Done (reviewed by orchestrator gates; not pushed) | unreported | unreported | `engine/batch4-eval` | Test-first: 5 metrics/ceiling regressions, 28 replay regressions and 6 ops regressions failed before implementation; later shortlist attribution and artifact-rendering regressions also failed before fixes. Shared status-based no-match, unavailable/unreachable ceiling buckets, both production reducers in conditional replay, recorded/gold transitions, stage diagnostics and descriptive retry metrics; ops/CLI JSON envelope; docs and changelog updated. Python 3.12 venv with `PYTHONPATH=src` verified to import this worktree. Focused evaluation/benchmark tests: 125 passed, 1 skipped. Final offline gate: 2103 passed, 40 skipped, 4 deselected, 8 failed and 40 errors in 47.37 s; all 48 failures/errors are localhost socket binds denied by sandbox. Outside the Codex sandbox (orchestrator, Python 3.12 `.venv`, `PYTHONPATH=src`): `python -m pytest -q -m "not integration"`: 2151 passed, 40 skipped, 4 deselected; ruff check/format clean (222 files); mypy clean (126 files). Implemented by GPT-6 Astra via Codex; committed by the orchestrator because the Codex sandbox cannot write git metadata. No paid calls or downloads. |
 | 00 Baseline and contracts | Done | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | BASELINE.md: 872 passed / 7 skipped (base), ontology 6, sql 10, ruff+mypy clean, build+wheel OK; dense/integration not run |
 | 01 Matching correctness | Done (awaiting review) | unreported | unreported | `claude/zealous-heisenberg-nri5m0` | Python 3.11, fresh venv `pip install -e ".[dev]"`. New `tests/test_matching_regressions.py` (audit cases 1-6 + generation precedence): 28 of 34 failed before the fix, 34 passed after. `python -m pytest -q -m "not integration"`: 946 passed, 14 skipped, 1 deselected; `python -m pytest -q`: 946 passed, 15 skipped; `ruff check src tests examples scripts`: all passed; `ruff format --check ...`: 110 files formatted; `mypy`: no issues in 64 files. FakeLLM/MockTransport only, no paid calls; dense/ontology/sql/integration not run. `audit/diagnose_audited_source.py` no longer runs (imports removed private `_clamp`); superseded by the package tests |
@@ -335,3 +338,26 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - No paid calls or push. Balances unreported. This worktree refuses Git's index lock;
   separate commits and mail patches are prepared in `/private/tmp/xwalk-b4-review-commits`
   without changing this branch's ref. Source fixes remain in this worktree.
+
+## Engine batch 5 review follow-up (19 October 2026)
+
+- Finding 1: selector budgeting renders sequentially and stops on the first overflow,
+  retaining the count-capped key width. Three regressions failed before the fix;
+  selector, keying and matcher tests now pass (110 tests).
+- First-fix gates: 2,174 passed, 40 skipped, 4 deselected; 8 failures and 40 setup
+  errors are sandbox socket-bind denials. Ruff check/format and mypy pass.
+- No paid calls. Balances unreported.
+- Finding 2: replaced the same-implementation HTTP comparison with nine cases using
+  exact request bodies captured from an archive of `587176e` (confident, verified and
+  rewritten paths, each with three single-query configurations). Complete run and
+  stage identities allow only the two documented budget-version additions. Capture
+  provenance and reproduction commands accompany the fixtures.
+- Tests failed before fixtures were supplied. An injected selector-prompt suffix made
+  all nine oracle cases fail while the old comparison still passed; an unexpected
+  fingerprint component also failed all nine. Mutations were process-local only.
+- Final focused tests: 118 passed. Full non-integration gate: 2,182 passed, 40 skipped,
+  4 deselected; all 8 failures and 40 setup errors are sandbox socket-bind denials.
+  Ruff check/format pass (227 files); mypy passes (128 source files).
+- Worktree Git index writes were denied. Two commits with matching source changes are
+  prepared in `/private/tmp/xwalk-b5fix-commits` and exported as
+  `/private/tmp/xwalk-b5fix.mbox`; the worktree branch ref is unchanged.

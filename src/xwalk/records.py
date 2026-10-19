@@ -144,6 +144,7 @@ class DecisionReason(Enum):
     BELOW_REVIEW_FLOOR = "below_review_floor"
     SELECTOR_ABSTAINED = "selector_abstained"
     NO_CANDIDATES = "no_candidates"
+    CANDIDATE_BUDGET_EXCEEDED = "candidate_budget_exceeded"
     UNRESOLVED_OUTPUT = "unresolved_output"
     RETRIEVER_FAILURE = "retriever_failure"
     PROVIDER_FAILURE = "provider_failure"

@@ -162,8 +162,19 @@ templates:
 `render_queries` drops every query that renders empty and de-duplicates the rest, so listing
 a field that is blank on most records costs nothing on those records. Both keys may be given;
 `queries` is then what is searched, while `query` remains `TemplateSet.query` for anything
-that wants a single string. A job giving only `query` gets `queries = ()` and retrieval falls
+that wants a single string. Compatibility exception on the LLM path: a distinct `query`
+plus a one-entry `queries` list still searches only `query`, as existing jobs did. Omit
+`query` to use that entry. Multi-entry lists work on both paths; the LLM matcher fuses
+them on the first attempt, then searches each new proposed query separately. An
+infrastructure retry repeats the actual query list, never its joined trace display. A job giving only `query` gets `queries = ()` and retrieval falls
 back to that one query — the single-query path, byte-identical to what it always was.
+
+The LLM selector budgets the rendered candidate blocks at four characters per estimated
+token (`selector.max_candidate_tokens`), including opaque key prefixes and blank-line
+separators. Unused target fields cost nothing; template expansion counts in full. It
+keeps a ranked prefix without slicing text. If the first block cannot fit, the record
+is `needs_review / candidate_budget_exceeded`, with no selector call. Rendered-budget
+version 2 changes LLM run identity; use a new run directory for old configurations.
 
 ## `target` and `source`
 
@@ -492,7 +503,6 @@ file, no index, no environment variable and no network.
 | an unknown `decider.kind` | `Input should be 'jev'` |
 | a decider `policy` threshold outside `[0, 1]`, `shortlist_floor > accept_at`, `chunk_size: 0` | the field and the bound; an unknown decider `policy` key gets a did-you-mean |
 | `selector:` on a decider job | `selector does not apply to a decider job` |
-| `templates.queries` with more than one entry on an `llm:` job | `templates.queries with more than one entry applies to decider jobs; …` |
 | `kind: openai_compat` with no `base_url` | `openai_compat needs a base_url` |
 | a wrongly typed scalar (`accept_at: high`) | pydantic type error |
 

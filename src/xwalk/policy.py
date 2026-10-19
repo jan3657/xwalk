@@ -145,8 +145,9 @@ def derive_status(
     """Reduce a list of attempts to one status, one reason, and the winning attempt.
 
     Precedence, highest first (docs/reference/core-types.md, "Status precedence"):
-    a fatal failure; an acceptable attempt; every attempt failed; a review from the
-    fallback ranking; a negative outcome with any failure or degraded search (failed,
+    a fatal failure; an acceptable attempt; every attempt failed; candidate budget
+    exceeded; a review from the fallback ranking; a negative outcome with any failure
+    or degraded search (failed,
     so a resumed run retries it); then the clean negatives.
     """
     if not attempts:
@@ -167,6 +168,10 @@ def derive_status(
     if all(_is_failure(a) for a in attempts):
         reason = attempts[-1].reason or DecisionReason.PROVIDER_FAILURE
         return MatchStatus.FAILED, reason, None
+
+    for attempt in reversed(attempts):
+        if attempt.reason is DecisionReason.CANDIDATE_BUDGET_EXCEEDED:
+            return MatchStatus.NEEDS_REVIEW, DecisionReason.CANDIDATE_BUDGET_EXCEEDED, attempt
 
     status, reason, best = _fallback(attempts, policy)
     if status is MatchStatus.UNMATCHED:
