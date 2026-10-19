@@ -114,6 +114,14 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- `xwalk cluster` exports describe a cluster the same way in both files after its seed
+  leaves it (a failed reverification or a switch during reassignment). The member left
+  alone was exported `assigned` with `cluster_size` 1 while `clusters.csv` called the
+  cluster `singleton` and named the departed seed as `seed_id`. Both files now decide
+  singleton-ness by the exported cluster size: the lone member is `singleton` with reason
+  `sole_remaining_member` (its `decision_id` still names the decision that admitted it),
+  and `seed_id` is the cluster's first current member. Stored runs are unchanged; only
+  the exports are regenerated differently.
 - BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
   forms were `strip().lower()`, but the query's exact term was built from the
   *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat

@@ -139,14 +139,16 @@ the lower-level route for records you already hold.
 | File | Contents |
 |---|---|
 | `members.csv` | every source record exactly once: `order_index, source_id, outcome, cluster_id, cluster_size, reason, proposal_cluster_id, confidence, decision_id` |
-| `clusters.csv` | accepted clusters: `cluster_id, revision, size, status (verified or singleton), seed_id, mint_provenance, member_ids, representation` |
+| `clusters.csv` | accepted clusters: `cluster_id, revision, size, status (verified or singleton), seed_id, mint_provenance, member_ids, representation`. `seed_id` is the first member: the record that started the cluster, or the earliest remaining member once that record has moved out |
 | `unresolved.csv` | records outside every cluster (`needs_review`, `failed`, `pending`) with the best proposal |
 | `decisions.jsonl` | every decision: the clusters retrieved and the clusters shown (with their revisions), the exact prompt, the raw answer, the parsed result and usage |
 | `manifest.json` | run fingerprint and components, run state, stop reason, selected and exported revision, counts, usage |
 | `cluster.sqlite` | the store everything above is regenerated from |
 
 Outcomes: `assigned` (a verified member of a cluster with other members), `singleton`
-(a record that started a cluster no other record joined: *not* a verified equivalence),
+(a record alone in its cluster: it started a cluster no other record joined, or every
+other member moved out during refinement, reason `sole_remaining_member`; *not* a
+verified equivalence),
 `needs_review` (no confident decision: a rejected or low-confidence verification, a
 failed reverification, or a search that did not reach `mint_requires`), `failed` (a
 provider error or unparseable answer, retried in every round and on resume), `pending` (not reached

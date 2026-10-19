@@ -841,3 +841,75 @@ async def test_a_stricter_mint_requirement_defers_instead(tmp_path):
     rows = member_rows(tmp_path / "run")
     assert rows["s9_0"]["outcome"] == "needs_review"
     assert rows["s9_0"]["reason"] == "expansion_incomplete:bounded"
+
+
+# --- a seed that leaves its cluster (review F6) ----------------------------------------
+
+SEED_LEAVES = {"s": ("aaa core", "X"), "t": ("aaa core variant", "X"), "u": ("core zzz other", "Z")}
+
+
+def _seed_reverification_fails(name, request):
+    # During reassignment the seed "aaa core" picks nothing and fails reverification, so
+    # it is removed from its own cluster and "aaa core variant" is left alone in it.
+    if sections(request.user).get("Record", "").strip() != "aaa core":
+        return None
+    if name == "select-cluster":
+        return json.dumps({"chosen_key": None, "confidence_score": 0.9, "explanation": "x"})
+    if name == "verify-assignment":
+        return json.dumps({"decision": "not_equivalent", "confidence_score": 0.9})
+    return None
+
+
+def _seed_switches(name, request):
+    # During reassignment the seed prefers the "core zzz other" cluster and moves there.
+    parts = sections(request.user)
+    if parts.get("Record", "").strip() != "aaa core":
+        return None
+    if name == "select-cluster":
+        for key, members in blocks(parts["Candidate clusters"]):
+            if "core zzz other" in members:
+                return json.dumps({"chosen_key": key, "confidence_score": 0.9})
+        return None
+    if name == "compare-clusters":
+        return json.dumps({"preferred": "alternative", "confidence_score": 0.95})
+    return None
+
+
+def _exports_agree(run: Path) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
+    """The exports describe one partition the same way in both files."""
+    rows = member_rows(run)
+    with (run / "clusters.csv").open(encoding="utf-8") as handle:
+        clusters = {r["cluster_id"]: r for r in csv.DictReader(handle)}
+    for cid, row in clusters.items():
+        ids = row["member_ids"].split("|")
+        assert row["seed_id"] in ids, f"{cid}: seed_id {row['seed_id']} is not a member"
+        assert ids[0] == row["seed_id"]
+        assert row["status"] == ("singleton" if len(ids) == 1 else "verified")
+        for sid in ids:
+            member = rows[sid]
+            assert member["cluster_id"] == cid and member["cluster_size"] == str(len(ids))
+            assert member["outcome"] == ("singleton" if len(ids) == 1 else "assigned")
+    return rows, clusters
+
+
+# For the switch, "aaa core" is also equivalent to "core zzz other" (not transitively), so
+# its new cluster keeps it and the run converges on the switched state.
+SWITCH_PAIRS = [("aaa core", "aaa core variant"), ("aaa core", "core zzz other")]
+
+
+@pytest.mark.parametrize(
+    ("override", "pairs"), [(_seed_reverification_fails, []), (_seed_switches, SWITCH_PAIRS)]
+)
+async def test_a_cluster_whose_seed_left_is_exported_consistently(tmp_path, override, pairs):
+    oracle = Oracle(concepts(SEED_LEAVES), override=override, pairs=pairs)
+    report = await cluster(records(SEED_LEAVES), tmp_path / "run", oracle)
+
+    rows, clusters = _exports_agree(tmp_path / "run")
+    lone = rows["t"]
+    assert lone["outcome"] == "singleton" and lone["cluster_size"] == "1"
+    # not described as a verified equivalence: nobody else is left in its cluster
+    assert lone["reason"] == "sole_remaining_member"
+    assert lone["decision_id"] != ""  # the decision that admitted it stays traceable
+    assert clusters[lone["cluster_id"]]["seed_id"] == "t"
+    singletons = sum(1 for r in rows.values() if r["outcome"] == "singleton")
+    assert report.counts["singleton"] == singletons

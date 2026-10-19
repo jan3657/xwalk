@@ -26,7 +26,11 @@ choices the contract left open. Code: `src/xwalk/cluster/`. Status: **experiment
 - **Outcomes.** Stored per source: `assigned`, `seed` (minted the cluster), `deferred`,
   `failed`. Exported: `assigned`; `singleton` for a seed whose cluster still has one
   member; a seed whose cluster gained verified members is exported `assigned` (its
-  equivalence was verified by the joining or merge decision). A source that seeds a
+  equivalence was verified by the joining or merge decision). Both export files decide
+  by the exported cluster size (review fix, October 2026): a member left alone after
+  every other member, the seed included, moved out is `singleton` with reason
+  `sole_remaining_member`, and `clusters.csv` `seed_id` is the cluster's first current
+  member, so it always names a member. A source that seeds a
   second cluster (moved out of its first, later minted again) gets
   `hash(run_fp, seed, n)`. `deferred` becomes
   `needs_review`. Sources not reached by an aborted run are `pending`. Each source
