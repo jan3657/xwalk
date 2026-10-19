@@ -913,3 +913,44 @@ async def test_a_cluster_whose_seed_left_is_exported_consistently(tmp_path, over
     assert clusters[lone["cluster_id"]]["seed_id"] == "t"
     singletons = sum(1 for r in rows.values() if r["outcome"] == "singleton")
     assert report.counts["singleton"] == singletons
+
+
+# --- mint provenance claims only what the search showed (review F7) --------------------
+
+
+async def test_retrieval_exhausted_is_claimed_only_when_retrieval_returned_less(tmp_path):
+    # Three clusters no query retrieves (private tokens), then 30 distinct concepts that
+    # share the token "kind". With no expansion page and shown_limit == retrieve_limit,
+    # fewer hits than the depth searched means retrieval is exhausted; a full page of 20
+    # proves nothing about the clusters beyond it.
+    table = {f"u{i}": (label, f"U{i}") for i, label in enumerate(("ab", "ac", "ad"))}
+    table |= {f"a{i:02d}": (f"item{i:02d} kind", f"C{i}") for i in range(30)}
+    config = settings(
+        retrieve_limit=20,
+        shown_limit=20,
+        expand_limit=40,
+        max_expansion_pages=0,
+        scan_below=0,
+        mint_requires="retrieval_exhausted",
+        max_refine_iterations=0,
+    )
+    await cluster(records(table), tmp_path / "run", Oracle(concepts(table)), settings=config)
+
+    rows = member_rows(tmp_path / "run")
+    # 19 "kind" clusters retrieved for a depth of 20: exhausted, although the three
+    # private clusters were never shown
+    assert rows["a00"]["reason"] == rows["a19"]["reason"] == "minted:retrieval_exhausted"
+    late = [rows[f"a{i:02d}"] for i in range(20, 30)]
+    assert {(r["outcome"], r["reason"]) for r in late} == {
+        ("needs_review", "expansion_incomplete:bounded")
+    }
+    store = _store(tmp_path / "run")
+    try:
+        searched = {
+            d["subject_id"]: (len(d["retrieved"]), d["result"]["depth"])
+            for d in store.decisions()
+            if d["kind"] == "select"
+        }
+    finally:
+        store.close()
+    assert searched["a20"] == (20, 20)

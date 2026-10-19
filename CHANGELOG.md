@@ -122,6 +122,13 @@ offline only (FakeDecider, no paid calls).
   `sole_remaining_member` (its `decision_id` still names the decision that admitted it),
   and `seed_id` is the cluster's first current member. Stored runs are unchanged; only
   the exports are regenerated differently.
+- `xwalk cluster` no longer claims mint provenance `retrieval_exhausted` after a full
+  page of hits. The test "fewer hits than asked for" compared the hits of the last
+  search with the depth of the next page, which was already doubled, so with
+  `shown_limit >= retrieve_limit` and the expansion pages exhausted a record could mint
+  under `mint_requires: retrieval_exhausted` while retrievable clusters were never shown.
+  It now compares with the depth actually searched. The defaults are not affected (the
+  last page reaches `expand_limit`, where doubling is capped).
 - BM25 `exact_fields` now match labels that contain punctuation. The indexed exact
   forms were `strip().lower()`, but the query's exact term was built from the
   *sanitised* query, which strips `- ( ) : / " +` and the like, so `IL-2`, `low-fat
