@@ -138,6 +138,16 @@ _V2_ADDITIONS = (
 )
 
 
+# One source's snapshot entry, for the per-source reads (explain, one review decision).
+# Not part of the versioned layout: a ledger without it reads the same, only slower. It is
+# created with a new or upgraded ledger and by `put_snapshot`, the write every run makes,
+# never by opening a ledger to read it.
+_SNAPSHOT_SOURCE_INDEX = (
+    "CREATE INDEX IF NOT EXISTS snapshot_entries_by_source "
+    "ON snapshot_entries(snapshot_id, source_id)"
+)
+
+
 class UnsupportedLedgerError(Exception):
     """The file is not a ledger this version of xwalk can open. It was not modified."""
 
@@ -294,6 +304,7 @@ class Ledger:
     def _apply_v2(conn: sqlite3.Connection, *, migrated_from: int | None) -> None:
         for statement in _V2_ADDITIONS:
             conn.execute(statement)
+        conn.execute(_SNAPSHOT_SOURCE_INDEX)
         meta = {"schema_version": str(LEDGER_SCHEMA_VERSION), "created_at": _now()}
         if migrated_from is not None:
             meta = {**meta, "migrated_from": str(migrated_from), "migrated_at": meta["created_at"]}
@@ -451,6 +462,7 @@ class Ledger:
         An identical consecutive snapshot is reused, so an unchanged rerun adds nothing.
         """
         self._check_open()
+        self._conn.execute(_SNAPSHOT_SOURCE_INDEX)  # ledgers written before it gain it here
         digest = hash_value([list(entry) for entry in entries])
         latest = self._conn.execute(
             "SELECT snapshot_id, digest FROM snapshots WHERE run_fingerprint = ? "
