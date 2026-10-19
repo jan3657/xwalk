@@ -142,7 +142,9 @@ offline only (FakeDecider, no paid calls).
 - A `null` field in a source or target (for example `"aliases": null` in JSONL) raised
   `TemplateError` in `{{ aliases | join(' ') }}` or rendered as the text `None`, which
   the decider then searched for. Null fields now render exactly like missing ones in
-  both matchers and in indexed text; real template bugs still raise.
+  both matchers, in indexed text, in the source block of the four base prompts (no more
+  `- aliases: None`) and in the state the Jev decider is sent; real template bugs still
+  raise. A null inside a list (`["a", null]`) is not removed.
 - The decider screen kept only the first failed chunk: a retryable failure in an
   earlier chunk could hide a fatal one, and further failed or cancelled-after-dispatch
   requests went unbilled. Every failure is collected, a fatal one wins regardless of

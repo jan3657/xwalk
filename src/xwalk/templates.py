@@ -21,7 +21,8 @@ from xwalk.fingerprint import hash_value
 from xwalk.records import Record
 
 # Bumped whenever the same template source can render differently for the same record.
-# 2: null fields render as missing ones (they used to render as "None" or raise).
+# 2: null fields render as missing ones (they used to render as "None" or raise), in
+#    these templates, in the base prompts' source block and in the decider's source state.
 TEMPLATE_RENDER_VERSION = 2
 
 

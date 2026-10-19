@@ -117,6 +117,16 @@ async def test_a_missing_chosen_key_is_unresolved_not_an_abstention(body):
     assert outcome.error is not None and "chosen_key" in outcome.error
 
 
+async def test_a_null_source_field_is_not_shown_to_the_model_as_none():
+    # Render version 2: a null field is a missing field in the prompt too.
+    llm = FakeLLM([reply(chosen_key="C01", confidence_score=0.9)])
+    source = Record(id="s1", fields={"mention": "glucose", "aliases": None})
+    await Selector(llm, PROMPTS, TEMPLATES).select(source, "", CANDIDATES)
+    prompt = llm.requests[0].user
+    assert "- mention: glucose" in prompt
+    assert "aliases" not in prompt and "None" not in prompt
+
+
 async def test_a_hallucinated_id_does_not_resolve_to_a_record():
     llm = FakeLLM([reply(chosen_key="T1", confidence_score=0.99, explanation="sure")])
     outcome = await Selector(llm, PROMPTS, TEMPLATES).select(SOURCE, "", CANDIDATES)

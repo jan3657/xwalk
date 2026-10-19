@@ -55,6 +55,12 @@ def test_source_state_omits_an_empty_context():
     assert build_source_state(SOURCE, "ctx") == {"fields": dict(SOURCE.fields), "context": "ctx"}
 
 
+def test_source_state_omits_null_fields():
+    # Render version 2: the decider sees a null field exactly as a missing one.
+    source = Record(id="s1", fields={"mention": "glucose", "aliases": None, "note": ""})
+    assert build_source_state(source, "") == {"fields": {"mention": "glucose", "note": ""}}
+
+
 async def test_one_noul_per_candidate_with_keys_numbered_across_chunks():
     fake = FakeDecider()
     screener = Screener(fake, QUESTIONS, TEMPLATES, chunk_size=2)

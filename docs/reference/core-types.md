@@ -347,8 +347,12 @@ Rendering rules:
 - A field whose value is `null`/`None` is treated exactly like a missing one: it is
   not passed to the template, so `default(...)` applies, `is defined` is false and
   `join` yields nothing (before render version 2 it rendered as the text `None`, or
-  raised in `join`). `TEMPLATE_RENDER_VERSION` is part of `TemplateSet.fingerprint`,
-  and of an index's identity when some target has a null field.
+  raised in `join`). The same holds where the model reads the source record: the
+  `source_fields` block of the base prompts (`PromptSet`) and the decider's source
+  state omit null fields. `TEMPLATE_RENDER_VERSION` is part of
+  `TemplateSet.fingerprint` (and so of both run identities), and of an index's identity
+  when some target has a null field. Only top-level nulls are dropped: a list such as
+  `["a", null]` still renders its `None` item.
 - Whitespace is tidied after rendering: runs of spaces and tabs collapse to one
   space, lines are stripped, blank lines are dropped, and the result is stripped.
   Conditionals therefore never leave ragged gaps in what the model sees.

@@ -163,6 +163,12 @@ class PromptSet:
         return cls(slots=slots, skeletons=skeletons)
 
     def _render(self, name: str, **variables: Any) -> str:
+        fields = variables.get("source_fields")
+        if isinstance(fields, Mapping):
+            # Template render version 2: a null field is a missing field, here too, so the
+            # model never reads `- aliases: None`. Covered by TEMPLATE_RENDER_VERSION in
+            # TemplateSet.fingerprint, which both run identities include.
+            variables["source_fields"] = {k: v for k, v in fields.items() if v is not None}
         return _compile(self.skeletons[name]).render(slots=self.slots, **variables).strip()
 
     def render_select(

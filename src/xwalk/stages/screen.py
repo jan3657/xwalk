@@ -44,7 +44,9 @@ class ScreenFailed(DecisionError):
 
 
 def build_source_state(source: Record, context: str) -> dict[str, Any]:
-    state: dict[str, Any] = {"fields": dict(source.fields)}
+    # Template render version 2: a null field is a missing field for the decider too.
+    fields = {k: v for k, v in source.fields.items() if v is not None}
+    state: dict[str, Any] = {"fields": fields}
     if context:
         state["context"] = context
     return state
