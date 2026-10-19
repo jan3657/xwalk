@@ -114,6 +114,7 @@ class UIServer(ThreadingHTTPServer):
         quiet: bool = True,
         sessions: Sessions | None = None,
         frame_ancestors: str | None = None,
+        trust_proxy: bool = False,
     ) -> None:
         super().__init__(address, _Handler)
         # Local mode serves `workspace`; public mode serves one workspace per visitor
@@ -121,6 +122,9 @@ class UIServer(ThreadingHTTPServer):
         self.workspace = workspace
         self.sessions = sessions
         self.frame_ancestors = frame_ancestors
+        # Only an operator who put a proxy in front may let its X-Forwarded-* headers
+        # count: http.server cannot tell them from headers the client sent itself.
+        self.trust_proxy = trust_proxy
         self.token = token or secrets.token_urlsafe(24)
         self.quiet = quiet
 
@@ -248,7 +252,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _session_cookie(self, session: str) -> str:
         cookie = f"{SESSION_COOKIE}={session}; Path=/; HttpOnly"
-        secure = (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
+        secure = (
+            self.server.trust_proxy
+            and (self.headers.get("X-Forwarded-Proto") or "").strip().lower() == "https"
+        )
         if self.server.frame_ancestors:
             # Inside another site's frame a cookie travels only as SameSite=None; Secure.
             return cookie + "; SameSite=None; Secure"
@@ -376,9 +383,12 @@ def make_server(
     chatgpt_login: bool = False,
     dense: bool = False,
     dense_device: str | None = None,
+    trust_proxy: bool = False,
 ) -> UIServer:
     from xwalk.ui.retrieval import heads
 
+    if trust_proxy and not public:
+        raise ValueError("--trust-proxy only applies with --public")
     retrieval_heads = heads(dense=dense, device=dense_device)
     if dense:
         from xwalk._extras import require
@@ -454,6 +464,7 @@ def make_server(
         quiet=quiet,
         sessions=sessions,
         frame_ancestors=frame_ancestors,
+        trust_proxy=trust_proxy,
     )
     if chatgpt_login:
         _enable_chatgpt(server, workspace, persistent=False)
@@ -494,6 +505,7 @@ def serve(
     chatgpt_login: bool = False,
     dense: bool = False,
     dense_device: str | None = None,
+    trust_proxy: bool = False,
 ) -> None:
     """Serve until interrupted (`xwalk ui`). Status lines go to stderr."""
     server = make_server(
@@ -513,6 +525,7 @@ def serve(
         chatgpt_login=chatgpt_login,
         dense=dense,
         dense_device=dense_device,
+        trust_proxy=trust_proxy,
     )
     print(f"xwalk ui: serving {server.workspace.root}", file=sys.stderr)
     print(f"xwalk ui: open {server.url}  (Ctrl-C to stop)", file=sys.stderr)

@@ -112,6 +112,13 @@ offline only (FakeDecider, no paid calls).
 - `TemplateSet.fingerprint` and `PromptSet.fingerprint` are unchanged for jobs that do
   not use `queries` or slot `properties`, so 0.2.0rc1 runs keep resuming.
 
+### Security
+
+- `xwalk ui --public` no longer lets a request's own `X-Forwarded-Proto` header decide
+  whether the session cookie is `Secure`. The header counts only with the new
+  `--trust-proxy` flag, for deployments where every request comes through an HTTPS
+  proxy (the `Dockerfile` sets it). `--trust-proxy` without `--public` is refused.
+
 ## [0.2.0rc1] — 2026-10-05
 
 Release candidate for 0.2.0. Not published: tagging and uploading are the maintainer's

@@ -279,6 +279,12 @@ def _build_parser() -> argparse.ArgumentParser:
     ui.add_argument(
         "--frame-ancestors", default=None, help="origins allowed to embed the page in a frame"
     )
+    ui.add_argument(
+        "--trust-proxy",
+        action="store_true",
+        help="public mode: trust X-Forwarded-Proto from the HTTPS proxy in front "
+        "(only when every request reaches the server through it)",
+    )
     ui.add_argument("--verbose", action="store_true", help="log every request to stderr")
     ui.add_argument(
         "--chatgpt-login",
@@ -822,6 +828,7 @@ def _serve_ui(args: argparse.Namespace) -> int:
             chatgpt_login=args.chatgpt_login,
             dense=args.dense,
             dense_device=args.dense_device,
+            trust_proxy=args.trust_proxy,
         )
     except KeyboardInterrupt:
         return EXIT_OK

@@ -28,4 +28,4 @@ RUN pip install --no-cache-dir . \
 USER xwalk
 EXPOSE 8080
 HEALTHCHECK CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ[\"PORT\"]}/healthz')"
-CMD ["sh", "-c", "exec xwalk ui --public --host 0.0.0.0 --port \"$PORT\" --root /data --library /opt/xwalk/library --lookup-cache /opt/xwalk/cache --max-upload-mb 100 --max-calls-cap 200 --no-browser"]
+CMD ["sh", "-c", "exec xwalk ui --public --host 0.0.0.0 --port \"$PORT\" --root /data --library /opt/xwalk/library --lookup-cache /opt/xwalk/cache --max-upload-mb 100 --max-calls-cap 200 --trust-proxy --no-browser"]

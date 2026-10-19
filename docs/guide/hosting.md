@@ -93,8 +93,9 @@ docker run -d --restart unless-stopped -p 127.0.0.1:8080:8080 xwalk-explorer
 ```
 
 Put an HTTPS reverse proxy in front: Caddy with `reverse_proxy 127.0.0.1:8080` gets a
-certificate automatically. It forwards `X-Forwarded-Proto`, which makes the session
-cookie `Secure`.
+certificate automatically. It sets `X-Forwarded-Proto`, and because the image runs with
+`--trust-proxy`, that makes the session cookie `Secure`. Keep the container published on
+`127.0.0.1` only, as above, so every request goes through the proxy.
 
 ### Hugging Face Spaces (paid plan)
 
@@ -189,6 +190,21 @@ xwalk ui --public --host 0.0.0.0 --port 8080 --root site \
 | `--session-hours` | `24` | delete a visitor's workspace after this long idle |
 | `--max-tasks` | `4` | runs at once across all visitors |
 | `--frame-ancestors` | — | origins allowed to show the page in a frame |
+| `--trust-proxy` | off | believe `X-Forwarded-Proto` from the proxy in front |
+
+### Behind an HTTPS proxy: `--trust-proxy`
+
+Python's `http.server` cannot tell a header set by your proxy from one the visitor sent.
+So by default the server ignores `X-Forwarded-Proto`: the session cookie is not marked
+`Secure` (unless `--frame-ancestors` is set, which always needs `Secure`).
+
+Add `--trust-proxy` when, and only when, every request reaches the server through a
+proxy that terminates HTTPS and sets the header itself: Cloud Run, Hugging Face
+Spaces, or Caddy/nginx in front of a container published on `127.0.0.1`. The cookie is
+then `Secure` whenever the proxy says the visitor used `https`. The `Dockerfile` sets it,
+because each deployment described here has such a proxy. If you run the image with its
+port open to the internet directly, drop `--trust-proxy` from the command: otherwise
+visitors could choose what the server believes.
 
 `GET /healthz` answers `ok` for platform health checks.
 

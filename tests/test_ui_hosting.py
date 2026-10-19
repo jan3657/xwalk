@@ -411,3 +411,34 @@ def test_local_mode_is_unchanged(tmp_path: Path) -> None:
     assert isinstance(result, dict) and result["root"] == str(tmp_path.resolve())
     with pytest.raises(ApiError):
         ws.path("../elsewhere")
+
+
+# --- transport security from a proxy ----------------------------------------------------
+
+
+def _page_cookie(server: UIServer, headers: dict[str, str]) -> str:
+    request = urllib.request.Request(server.url, headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return dict(response.headers)["Set-Cookie"]
+
+
+@pytest.mark.parametrize("trust_proxy", [False, True])
+def test_secure_cookies_follow_the_operator_not_the_client(
+    tmp_path: Path, trust_proxy: bool
+) -> None:
+    server = make_server(str(tmp_path), port=0, public=True, trust_proxy=trust_proxy)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        forwarded = _page_cookie(server, {"X-Forwarded-Proto": "https"})
+        plain = _page_cookie(server, {})
+    finally:
+        server.shutdown()
+        server.server_close()
+    # Without --trust-proxy a client's own X-Forwarded-Proto decides nothing.
+    assert ("; Secure" in forwarded) is trust_proxy
+    assert "; Secure" not in plain
+
+
+def test_trust_proxy_is_for_public_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="--public"):
+        make_server(str(tmp_path), port=0, trust_proxy=True)
