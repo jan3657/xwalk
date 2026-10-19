@@ -50,7 +50,9 @@ Each one has tests; a change that needs to weaken one needs a reviewed contract 
    per-attempt keys; resolution is exact lookup only (`stages/keying.py`).
 2. **Failure fails toward review.** Unparseable output, an unknown verdict, a
    non-finite or out-of-range confidence, or an unverified in-band score cannot become
-   `matched` (`policy.derive_status`, `llm/parsing.py`).
+   `matched` (`policy.derive_status`, `llm/parsing.py`). Only an acceptable attempt
+   (the one that stops the loop) is `matched`, and a negative outcome resting on a
+   provider or retriever failure is `failed`, never a settled `unmatched`.
 3. **Provider errors never escape `Matcher.match`.** Recoverable errors stay in the
    record; a fatal one yields `failed`/`fatal_provider_failure`, which `run_batch` does
    not commit and treats as a run abort (CONTRACTS §3-4).

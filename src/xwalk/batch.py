@@ -35,12 +35,13 @@ from typing import Any, Protocol
 
 from xwalk import __version__
 from xwalk.decide.base import DecisionClient
+from xwalk.decide.policy import STATUS_SEMANTICS_VERSION as DECISION_STATUS_SEMANTICS_VERSION
 from xwalk.decide.policy import DecisionPolicy
 from xwalk.decide.questions import QuestionSet
 from xwalk.fingerprint import hash_record, hash_value, result_key
 from xwalk.ledger import Ledger
 from xwalk.llm.base import LLMClient
-from xwalk.policy import MatchPolicy
+from xwalk.policy import STATUS_SEMANTICS_VERSION, MatchPolicy
 from xwalk.prompts.contract import PromptSet
 from xwalk.records import DecisionReason, MatchResult, MatchStatus, Record, Usage
 from xwalk.retrieval.base import Retriever
@@ -158,6 +159,7 @@ def run_fingerprint_components(
             "verify_band": list(policy.verify_band) if policy.verify_band else None,
             "audit_rate": policy.audit_rate,
             "legacy_id_resolution": policy.legacy_id_resolution,
+            "status_semantics": STATUS_SEMANTICS_VERSION,
         },
         "selector_policy": {
             "max_candidates": selector_policy.max_candidates,
@@ -261,6 +263,7 @@ def decision_run_fingerprint_components(
             "rubric_floor": policy.rubric_floor,
             "property_floor": policy.property_floor,
             "chunk_size": policy.chunk_size,
+            "status_semantics": DECISION_STATUS_SEMANTICS_VERSION,
         },
     }
 
