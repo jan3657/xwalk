@@ -301,6 +301,45 @@ async def test_unusable_token_counts_are_unknown_not_an_error(usage):
     assert response.usage == Usage.unreported(1)
 
 
+@pytest.mark.parametrize("usage", [{"prompt_tokens": 11}, {"completion_tokens": 3}])
+async def test_a_half_reported_usage_block_is_unknown_not_a_known_zero(usage):
+    # CONTRACTS section 5: a token count the provider did not report is unknown.
+    body = {**ok_body(), "usage": usage}
+    response = await client(lambda r: httpx.Response(200, json=body)).complete(
+        LLMRequest(system="", user="u")
+    )
+    assert response.text == '{"a": "x"}'
+    assert response.usage == Usage.unreported(1)
+
+
+async def test_a_failed_post_before_a_malformed_200_counts_both_calls():
+    responses = iter(
+        [httpx.Response(503, json={"error": "down"}), httpx.Response(200, text="<html>")]
+    )
+    llm = client(lambda r: next(responses), backoff_base=0.0)
+    with pytest.raises(LLMRetryableError) as caught:
+        await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(2)
+
+
+async def test_an_error_inside_the_choice_is_retryable_with_its_message():
+    # OpenRouter's documented partial-failure shape: the upstream error sits in the
+    # choice, with finish_reason "error" and empty content. Keep the message.
+    body = {
+        "choices": [
+            {
+                "message": {"content": ""},
+                "finish_reason": "error",
+                "error": {"code": 502, "message": "upstream provider failed"},
+            }
+        ]
+    }
+    llm = client(lambda r: httpx.Response(200, json=body), max_retries=0)
+    with pytest.raises(LLMRetryableError, match="upstream provider failed") as caught:
+        await llm.complete(LLMRequest(system="", user="u"))
+    assert caught.value.usage == Usage.unreported(1)
+
+
 async def test_null_content_is_an_empty_answer_not_an_error():
     body = {"choices": [{"message": {"content": None}, "finish_reason": "content_filter"}]}
     response = await client(lambda r: httpx.Response(200, json=body)).complete(

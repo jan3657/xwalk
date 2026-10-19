@@ -66,13 +66,10 @@ def failure_usage(exc: BaseException) -> Usage:
 def token_count(value: object) -> int | None:
     """A provider-reported token count, or None when it is not a usable count.
 
-    Usable means a non-negative integer (an integral float is accepted). Booleans,
-    strings, NaN, infinities and negatives are not counts. A missing value (`None`) is 0:
-    callers decide separately whether the provider reported usage at all.
+    Usable means a non-negative integer (an integral float is accepted). A missing value
+    (`None`), booleans, strings, NaN, infinities and negatives are not counts.
     """
-    if value is None:
-        return 0
-    if isinstance(value, bool):
+    if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int):
         return value if value >= 0 else None
@@ -84,11 +81,10 @@ def token_count(value: object) -> int | None:
 def reported_usage(prompt: object, completion: object) -> Usage:
     """Usage of one call that returned. Its tokens count only if reported and valid.
 
-    Nothing reported, or a count that is not a count, makes the call's usage unknown;
-    it never raises, so bad accounting cannot discard an otherwise valid answer.
+    Both counts must be reported and valid. A missing count (even one of the two), or a
+    count that is not a count, makes the call's usage unknown, never a known zero; it
+    never raises, so bad accounting cannot discard an otherwise valid answer.
     """
-    if prompt is None and completion is None:
-        return Usage.unreported()
     prompt_tokens = token_count(prompt)
     completion_tokens = token_count(completion)
     if prompt_tokens is None or completion_tokens is None:

@@ -353,6 +353,17 @@ class OpenAICompatClient:
         choice = choices[0]
         if not isinstance(choice, Mapping):
             raise malformed("choice is not an object")
+        choice_error = choice.get("error")
+        if choice_error:
+            # OpenRouter's partial-failure shape: the upstream error sits in the choice
+            # (finish_reason "error", empty content). Keep its message; it is transient
+            # as far as we can tell, and content beside it is not trustworthy.
+            detail = (
+                choice_error.get("message", choice_error)
+                if isinstance(choice_error, Mapping)
+                else choice_error
+            )
+            raise malformed(f"the choice carries an error: {str(detail)[:500]}")
         message = choice.get("message")
         if message is None:
             message = {}

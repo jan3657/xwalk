@@ -126,8 +126,9 @@ offline only (FakeDecider, no paid calls).
   anything in a response: malformed envelopes and empty choices are retryable (they
   were fatal), counted as calls with unknown usage. A 200 carrying an `error` object
   is fatal for auth, billing, model and request codes (400, 401, 402, 403, 404, 413,
-  422) and retried otherwise. Invalid token counts make usage unknown and keep the
-  answer. Programming errors still raise. LiteLLM exceptions are classified by
+  422) and retried otherwise; an `error` inside the choice is retryable with its
+  message. Invalid or half-reported token counts (only `prompt_tokens`, say) make
+  usage unknown, never a known zero, and keep the answer. Programming errors still raise. LiteLLM exceptions are classified by
   LiteLLM's public class names first: `APIResponseValidationError` (a malformed
   response) and `APIError` (its catch-all for unmapped statuses) are now retryable
   instead of aborting the run as unrecognised; `UnprocessableEntityError`,

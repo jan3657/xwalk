@@ -222,9 +222,12 @@ unknown usage: malformed output is a recoverable per-record outcome, never a run
 (CONTRACTS §3). A `null` content is an empty answer. A 200 carrying an `error` object
 (some gateways report upstream failures this way) is treated like that status: a code in
 `FATAL_BODY_CODES = {400, 401, 402, 403, 404, 413, 422}` raises `LLMFatalError`; any
-other code, or none, is retried like a retryable status. A response without a usage
-block, or with token counts that are not non-negative integers, counts as a call with
-unknown usage, not zero tokens, and keeps its answer. The returned (or raised) `usage` counts every POST this `complete` made:
+other code, or none, is retried like a retryable status. An `error` object inside
+the first choice (OpenRouter's partial-failure shape) raises `LLMRetryableError`
+carrying its message. A response without a usage block, with only one of the two token
+counts, or with counts that are not non-negative integers, counts as a call with unknown
+usage, not zero tokens, and keeps its answer. A 200 that is not JSON fails at once; a
+JSON error body is retried in the client. Both are counted call by call. The returned (or raised) `usage` counts every POST this `complete` made:
 each failed attempt before the final one is a call with unknown usage.
 
 ### Fingerprint

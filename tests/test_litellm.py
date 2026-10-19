@@ -207,6 +207,16 @@ async def test_unusable_token_counts_are_unknown_and_keep_the_answer(monkeypatch
     assert response.usage == Usage.unreported(1)
 
 
+@pytest.mark.parametrize("prompt, completion", [(10, None), (None, 3)])
+async def test_a_half_reported_usage_is_unknown_not_a_known_zero(monkeypatch, prompt, completion):
+    client = LiteLLMClient("fake/model")
+    completion_obj = FakeCompletion("x", prompt=prompt, completion=completion)
+    monkeypatch.setattr(client, "_acompletion", lambda **kw: _async(completion_obj))
+    response = await client.complete(LLMRequest(system="", user="u"))
+    assert response.text == "x"
+    assert response.usage == Usage.unreported(1)
+
+
 async def test_a_dict_shaped_response_is_read(monkeypatch):
     client = LiteLLMClient("fake/model")
     completion = {
