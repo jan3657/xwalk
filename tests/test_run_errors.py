@@ -120,16 +120,63 @@ def test_the_cli_warns_once_while_an_uncapped_run_keeps_failing(tmp_path, dead_c
     assert err.count("no --max-calls") == 1
 
 
-def test_a_fatal_limit_result_carries_the_earlier_attempt_error():
-    """The decider path has no observing wrapper: run_batch names the cause instead."""
-    from dataclasses import replace
+def _refused(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("All connection attempts failed")
 
-    from tests.test_decide_fit import _result
-    from xwalk.batch import _fatal_error
 
-    base = _result("s1", None, 0.5)
-    first = replace(base.attempts[0], error="decider: " + DEAD)
-    limit = "decider: call limit of 3 reached; nothing more is dispatched"
-    second = replace(base.attempts[0], index=1, error=limit)
-    error = _fatal_error(replace(base, attempts=(first, second)))
-    assert error.message == f"{limit}; last provider error: decider: {DEAD}"
+def _limit_message(errors) -> str:
+    (message,) = [e.message for e in errors if e.code == "call_limit_reached"]
+    return message
+
+
+def test_a_dead_decider_endpoint_names_the_cause(tmp_path):
+    """JevClient retries inside one `decide`; the budget runs out mid-loop."""
+    from tests.test_decide_ops import JEV_JOB
+    from xwalk.decide.jev import JevClient
+
+    client = JevClient(
+        "https://example.test/decisions",
+        "m",
+        transport=httpx.MockTransport(_refused),
+        backoff_base=0.0,
+    )
+    result = ops.run(JEV_JOB, tmp_path / "run", decider=client, max_calls=3)
+    message = _limit_message(result.errors)
+    assert "ConnectError: All connection attempts failed" in message
+    assert "raise --max-calls" not in message
+
+
+def test_match_inspect_and_the_manifest_report_the_same_stop(tmp_path):
+    client = OpenAICompatClient(
+        base_url="http://127.0.0.1:9/v1",
+        model="m",
+        backoff_base=0.0,
+        transport=httpx.MockTransport(_refused),
+    )
+    out = tmp_path / "run"
+    matched = _limit_message(ops.run(_job_file(tmp_path), out, llm=client, max_calls=5).errors)
+    inspected = _limit_message(ops.inspect(out).errors)
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    stored = [e["message"] for e in manifest["errors"]]
+    assert stored == [matched] and inspected == matched
+    assert "ConnectError" in matched and "raise --max-calls" not in matched
+
+
+def test_a_transient_failure_that_recovered_is_not_blamed_for_the_limit(tmp_path):
+    """One failed call, then healthy ones: the limit was spent on real work."""
+    from tests.test_ops import _llm
+
+    healthy = _llm()
+    calls = 0
+
+    def handler(request):
+        nonlocal calls
+        calls += 1
+        return LLMRetryableError(DEAD) if calls == 1 else healthy._handler(request)
+
+    result = ops.run(
+        _job_file(tmp_path), tmp_path / "run", llm=FakeLLM(handler=handler), max_calls=5
+    )
+    message = _limit_message(result.errors)
+    assert "raise --max-calls" in message
+    assert "provider was failing" not in message

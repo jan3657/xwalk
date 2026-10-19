@@ -109,6 +109,8 @@ class JevClient:
                     reserve(self._budget)
                 except DecisionFatalError as exc:
                     exc.usage = Usage.unreported(posts)
+                    if posts:  # the failed requests are what spent the limit: say so
+                        exc.args = (f"{exc}; last provider error: {last_error}",)
                     raise
             posts += 1
             try:
