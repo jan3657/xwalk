@@ -89,7 +89,7 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="offline preflight of a job: no model calls",
     )
-    validate.add_argument("--job", required=True)
+    validate.add_argument("--job", required=True, help="the job file (YAML)")
     validate.add_argument(
         "--no-credentials",
         dest="check_credentials",
@@ -104,22 +104,33 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     index = sub.add_parser("index", parents=[common], help="build or open retriever indexes")
-    index.add_argument("--job", required=True)
+    index.add_argument("--job", required=True, help="the job file (YAML)")
     index.add_argument("--out", required=True, help="index directory")
     index.add_argument("--rebuild-index", action="store_true", help="replace an incompatible index")
 
     match = sub.add_parser("match", parents=[common], help="run a matching job")
-    match.add_argument("--job", required=True)
+    match.add_argument("--job", required=True, help="the job file (YAML)")
     match.add_argument("--out", required=True, help="run directory")
     match.add_argument("--index", default=None, help="index directory (default: <out>/index)")
-    match.add_argument("--resume", action="store_true", default=True)
-    match.add_argument("--no-resume", dest="resume", action="store_false")
+    match.add_argument(
+        "--resume",
+        action="store_true",
+        default=True,
+        help="continue a run in --out, skipping settled records (the default)",
+    )
+    match.add_argument(
+        "--no-resume",
+        dest="resume",
+        action="store_false",
+        help="recompute every record; earlier results move to history",
+    )
     match.add_argument("--limit", type=int, default=None, help="process only the first N records")
     match.add_argument(
         "--max-calls",
         type=int,
         default=None,
-        help="cap upstream LLM requests in this invocation (retries and rewrites included)",
+        help="cap upstream LLM requests in this invocation (retries and rewrites "
+        "included); default: no limit",
     )
     match.add_argument("--rebuild-index", action="store_true", help="replace an incompatible index")
 
@@ -140,31 +151,37 @@ def _build_parser() -> argparse.ArgumentParser:
     search = sub.add_parser(
         "search", parents=[common], help="retrieve fused candidates for a query: no model calls"
     )
-    search.add_argument("query")
-    search.add_argument("--job", required=True)
+    search.add_argument("query", help="the text to retrieve candidates for")
+    search.add_argument("--job", required=True, help="the job file (YAML)")
     search.add_argument("--index", required=True, help="index directory (built if absent)")
     search.add_argument("--limit", type=int, default=10, help="candidates to return (max 100)")
 
     inspect = sub.add_parser("inspect", parents=[common], help="summarise a run directory")
-    inspect.add_argument("--run", required=True)
+    inspect.add_argument("--run", required=True, help="run directory")
 
     explain = sub.add_parser("explain", parents=[common], help="explain one source's decision")
-    explain.add_argument("source_id")
-    explain.add_argument("--run", required=True)
+    explain.add_argument("source_id", help="the source record id to explain")
+    explain.add_argument("--run", required=True, help="run directory")
     explain.add_argument("--full", action="store_true", help="include the stored result")
 
     results = sub.add_parser(
         "results", parents=[common], help="one page of a run's current results"
     )
-    results.add_argument("--run", required=True)
+    results.add_argument("--run", required=True, help="run directory")
     results.add_argument("--status", default=None, help="only rows with this status")
-    results.add_argument("--offset", type=int, default=0)
+    results.add_argument("--offset", type=int, default=0, help="rows to skip (default 0)")
     results.add_argument("--limit", type=int, default=50, help="page size (max 200)")
 
     export = sub.add_parser("export", parents=[common], help="export a view of a run")
-    export.add_argument("--run", required=True)
-    export.add_argument("--view", choices=EXPORT_VIEWS, default="raw")
-    export.add_argument("--out", required=True)
+    export.add_argument("--run", required=True, help="run directory")
+    export.add_argument(
+        "--view",
+        choices=EXPORT_VIEWS,
+        default="raw",
+        help="raw: model decisions; reviewed: with review decisions applied; history: "
+        "every result ever committed (default raw)",
+    )
+    export.add_argument("--out", required=True, help="file to write")
 
     upgrade = sub.add_parser(
         "upgrade",
@@ -174,8 +191,8 @@ def _build_parser() -> argparse.ArgumentParser:
     upgrade.add_argument("--run", required=True, help="run directory")
 
     ev = sub.add_parser("eval", parents=[common], help="evaluate a run against gold labels")
-    ev.add_argument("--run", required=True)
-    ev.add_argument("--gold", required=True)
+    ev.add_argument("--run", required=True, help="run directory")
+    ev.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
     ev.add_argument("--out", default=None, help="write <out>.json and <out>.txt")
 
     fit = sub.add_parser(
@@ -183,9 +200,14 @@ def _build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="fit decider thresholds on a completed run and gold labels",
     )
-    fit.add_argument("--run", required=True)
-    fit.add_argument("--gold", required=True)
-    fit.add_argument("--precision", type=float, default=0.95)
+    fit.add_argument("--run", required=True, help="a completed decider run directory")
+    fit.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
+    fit.add_argument(
+        "--precision",
+        type=float,
+        default=0.95,
+        help="the precision the recommended thresholds must reach (default 0.95)",
+    )
     fit.add_argument(
         "--job",
         default=None,
@@ -204,27 +226,40 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     comp = sub.add_parser("compare", parents=[common], help="compare completed runs")
-    comp.add_argument("--gold", required=True)
+    comp.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
     comp.add_argument("--run", action="append", required=True, help="LABEL=PATH, repeatable")
 
     abl = sub.add_parser("ablate", parents=[common], help="re-run with each component disabled")
-    abl.add_argument("--job", required=True)
-    abl.add_argument("--gold", required=True)
-    abl.add_argument("--out", required=True)
+    abl.add_argument("--job", required=True, help="the job file (YAML)")
+    abl.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
+    abl.add_argument("--out", required=True, help="output directory (indexes and ablation.json)")
 
     prompts = sub.add_parser("prompts", help="draft or optimise prompt slots")
     prompt_sub = prompts.add_subparsers(dest="prompts_command")
-    draft = prompt_sub.add_parser("draft", parents=[common])
-    draft.add_argument("--job", required=True)
-    draft.add_argument("--describe", required=True)
-    draft.add_argument("--out", required=True)
-    optimise = prompt_sub.add_parser("optimize", parents=[common])
-    optimise.add_argument("--job", required=True)
-    optimise.add_argument("--gold", required=True)
-    optimise.add_argument("--out", required=True)
-    optimise.add_argument("--role", default="selector")
-    optimise.add_argument("--rounds", type=int, default=4)
-    optimise.add_argument("--max-calls", type=int, default=None)
+    draft = prompt_sub.add_parser(
+        "draft", parents=[common], help="draft prompt slots from a task description"
+    )
+    draft.add_argument("--job", required=True, help="the job file (YAML)")
+    draft.add_argument("--describe", required=True, help="the matching task, in words")
+    draft.add_argument("--out", required=True, help="slots YAML file to write")
+    optimise = prompt_sub.add_parser(
+        "optimize", parents=[common], help="improve one prompt role against gold labels"
+    )
+    optimise.add_argument("--job", required=True, help="the job file (YAML)")
+    optimise.add_argument("--gold", required=True, help="gold CSV: source_id,gold_ids")
+    optimise.add_argument("--out", required=True, help="work directory")
+    optimise.add_argument(
+        "--role",
+        default="selector",
+        help="selector, scorer, rewriter or doc_template (default selector)",
+    )
+    optimise.add_argument("--rounds", type=int, default=4, help="maximum rounds (default 4)")
+    optimise.add_argument(
+        "--max-calls",
+        type=int,
+        default=None,
+        help="hard budget of LLM calls; refuses to start if the estimate exceeds it",
+    )
 
     mcp = sub.add_parser(
         "mcp", help="serve bounded operations to an agent over MCP stdio (needs xwalk[mcp])"
@@ -305,13 +340,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     review = sub.add_parser("review", help="export or apply human review")
     review_sub = review.add_subparsers(dest="review_command")
-    rexport = review_sub.add_parser("export", parents=[common])
-    rexport.add_argument("--run", required=True)
-    rexport.add_argument("--out", required=True)
-    apply_ = review_sub.add_parser("apply", parents=[common])
-    apply_.add_argument("--run", required=True)
-    apply_.add_argument("--reviewed", required=True)
-    apply_.add_argument("--job", required=True)
+    rexport = review_sub.add_parser(
+        "export", parents=[common], help="write the rows that need review to a CSV"
+    )
+    rexport.add_argument("--run", required=True, help="run directory")
+    rexport.add_argument("--out", required=True, help="review CSV to write")
+    apply_ = review_sub.add_parser(
+        "apply", parents=[common], help="record the decisions of a filled-in review CSV"
+    )
+    apply_.add_argument("--run", required=True, help="run directory")
+    apply_.add_argument("--reviewed", required=True, help="the filled-in review CSV")
+    apply_.add_argument("--job", required=True, help="the job the run used (for targets)")
 
     return parser
 

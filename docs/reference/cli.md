@@ -410,6 +410,9 @@ library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
 | `--max-tasks` | no | `4` | public mode: runs at once across visitors |
 | `--frame-ancestors` | no | — | origins allowed to embed the page in a frame |
 | `--verbose` | no | — | log every request to stderr |
+| `--chatgpt-login` | no | — | enable local Sign in with ChatGPT (needs `xwalk[chatgpt]` and `--host 127.0.0.1`) |
+| `--dense` | no | — | enable general and biomedical dense retrieval alongside BM25 (needs `xwalk[dense]`) |
+| `--dense-device` | no | automatic | dense encoder device, e.g. `cpu` or `mps` |
 
 A root that is not a directory or a cap below 1 exits `2`.
 

@@ -123,6 +123,11 @@ offline only (FakeDecider, no paid calls).
 
 ### Fixed
 
+- Every CLI flag and positional has help text in `--help` (40 had none, among them
+  `--job`, `--run`, `--out`, `--gold`, `--view` and every flag of `prompts` and
+  `review`), and `xwalk review --help` / `xwalk prompts --help` describe their
+  subcommands. `docs/reference/cli.md` documents `ui --chatgpt-login`, `--dense` and
+  `--dense-device`.
 - Read-only commands no longer migrate a run's ledger. `inspect`, `explain`, `results`,
   `export`, `eval`, `fit`, `compare`, `review export` and the UI's reads opened the
   ledger for writing, so pointing one at a 0.1.1 run upgraded `ledger.sqlite` in place
