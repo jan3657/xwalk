@@ -125,6 +125,14 @@ offline only (FakeDecider, no paid calls).
   client address (`--sessions-per-ip`, 20 per 10 minutes, then `429
   too_many_sessions`), unused sessions are deleted after 10 minutes idle, and a full
   pool drops the longest-idle unused session before refusing anyone.
+- `xwalk ui --public`: model-endpoint requests now connect to the addresses that passed
+  the public-address check (new `xwalk.ui.egress`), instead of resolving the host again
+  when connecting. A host with a short-TTL record (DNS rebinding) could pass the check
+  with a public address and then be reached at a private or cloud-metadata one. TLS
+  still verifies the certificate for the host name (SNI and `Host` are unchanged), the
+  client follows no redirects, and proxy variables in the server's environment are
+  ignored for these requests. `OpenAICompatClient` gains a `trust_env` argument
+  (default `True`, unchanged).
 
 ## [0.2.0rc1] — 2026-10-05
 

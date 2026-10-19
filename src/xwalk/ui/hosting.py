@@ -19,7 +19,9 @@ not, so public mode changes four things:
 - **No requests to places the visitor picks inside the host's network.** The server
   never downloads a URL a visitor gives, and a model endpoint must be an `https` URL
   whose host resolves only to public addresses (no localhost, private ranges or the
-  cloud metadata address).
+  cloud metadata address). The name is resolved once and the client connects to the
+  addresses that were checked (`xwalk.ui.egress`), so DNS rebinding cannot swap in a
+  private address between the check and the connection.
 
 Plus bounds: one running task per visitor, `max_tasks` across all of them.
 """
@@ -29,11 +31,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import ipaddress
 import re
 import secrets
 import shutil
-import socket
 import threading
 import time
 from collections import deque
@@ -69,32 +69,38 @@ class SessionRateLimited(PublicRefusal):
     """One client address asked for too many new sessions in a short time."""
 
 
-def check_public_url(url: str) -> None:
+def check_public_url(url: str) -> tuple[str, list[str]]:
     """Refuse a URL a public server must not call: not https, or a host that resolves
-    to a loopback, private, link-local or otherwise non-public address."""
+    to a loopback, private, link-local or otherwise non-public address.
+
+    Returns the host as it goes on the wire and the addresses it resolved to, every one
+    of them public: the caller connects to these, not to the name."""
+    from xwalk.ui import egress
+
     parts = urlsplit(url)
-    if parts.scheme != "https" or not parts.hostname:
+    host = egress.wire_host(url) if parts.scheme == "https" else ""
+    if not host:
         raise PublicRefusal("on the hosted version a model endpoint must be an https:// URL")
     try:
-        infos = socket.getaddrinfo(parts.hostname, parts.port or 443, proto=socket.IPPROTO_TCP)
-    except OSError:
+        addresses = egress.resolve(host, parts.port or 443)
+    except (OSError, ValueError):
         raise PublicRefusal(f"cannot resolve {parts.hostname}") from None
-    for info in infos:
-        address = ipaddress.ip_address(info[4][0])
-        if not address.is_global:
-            raise PublicRefusal(
-                f"{parts.hostname} resolves to a non-public address; the hosted version "
-                "only calls public endpoints"
-            )
+    if not addresses or not all(egress.is_public(address) for address in addresses):
+        raise PublicRefusal(
+            f"{parts.hostname} resolves to a non-public address; the hosted version "
+            "only calls public endpoints"
+        )
+    return host, addresses
 
 
 def endpoint_client(spec: LLMSpec, keys: Mapping[str, str]) -> LLMClient:
     """The job's model client with the visitor's key, after the public-URL check."""
     from xwalk.llm.openai_compat import OpenAICompatClient
+    from xwalk.ui.egress import PinnedAsyncTransport
 
     if spec.kind != "openai_compat":
         raise PublicRefusal("the hosted version only calls OpenAI-compatible endpoints")
-    check_public_url(spec.base_url or "")
+    host, addresses = check_public_url(spec.base_url or "")
     key = None
     if spec.api_key_env:
         key = keys.get(spec.api_key_env)
@@ -111,6 +117,10 @@ def endpoint_client(spec: LLMSpec, keys: Mapping[str, str]) -> LLMClient:
         temperature=spec.temperature,
         max_tokens=spec.max_tokens,
         seed=spec.seed,
+        # Connect only to the addresses just checked; no proxy from the environment
+        # (it would resolve the name again), and redirects stay off (httpx default).
+        transport=PinnedAsyncTransport(host, addresses),
+        trust_env=False,
     )
 
 

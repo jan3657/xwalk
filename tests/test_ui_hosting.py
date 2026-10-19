@@ -165,6 +165,53 @@ def test_the_endpoint_client_takes_the_visitor_key(monkeypatch: pytest.MonkeyPat
     assert "visitor-key" in repr(vars(client)) and "server-key" not in repr(vars(client))
 
 
+def test_the_endpoint_is_called_at_the_address_that_was_checked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DNS rebinding: the name answers a public address for the check, then a private
+    one. The connection must go to the checked address, never by name again."""
+    import asyncio
+
+    import httpcore
+    import httpx
+
+    answers = iter(["93.184.215.14", "10.1.2.3", "10.1.2.3", "10.1.2.3"])
+    lookups: list[str] = []
+
+    def rebinding(host: str, *args: Any, **kwargs: Any) -> list[Any]:
+        lookups.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (next(answers), 443))]
+
+    connects: list[tuple[str, int]] = []
+
+    async def no_network(self: Any, host: str, port: int, *args: Any, **kwargs: Any) -> Any:
+        connects.append((host, port))
+        raise httpcore.ConnectError("no network in tests")
+
+    monkeypatch.setattr(socket, "getaddrinfo", rebinding)
+    monkeypatch.setattr(httpcore.AnyIOBackend, "connect_tcp", no_network)
+    # A proxy from the environment would resolve the name itself; it must not be used.
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid:3128")
+    spec = LLMSpec(model="m", base_url="https://rebind.example.com/v1", api_key_env="K")
+    client = endpoint_client(spec, {"K": "visitor-key"})
+    with pytest.raises(httpx.ConnectError):
+        asyncio.run(client._post({"model": "m"}))  # type: ignore[attr-defined]
+    assert connects == [("93.184.215.14", 443)]
+    assert lookups == ["rebind.example.com"]
+
+
+def test_a_pinned_connection_refuses_any_other_host() -> None:
+    import asyncio
+
+    import httpcore
+
+    from xwalk.ui.egress import PinnedAsyncBackend
+
+    backend = PinnedAsyncBackend("api.example.com", ["93.184.215.14"])
+    with pytest.raises(httpcore.ConnectError, match="other.example.com"):
+        asyncio.run(backend.connect_tcp("other.example.com", 443))
+
+
 # --- sessions -----------------------------------------------------------------------------
 
 

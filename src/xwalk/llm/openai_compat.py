@@ -104,6 +104,7 @@ class OpenAICompatClient:
         backoff_cap: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        trust_env: bool = True,
     ) -> None:
         if profile not in CAPABILITY_PROFILES:
             raise ValueError(
@@ -122,7 +123,7 @@ class OpenAICompatClient:
         self._backoff_cap = backoff_cap
         self._extra_headers = dict(extra_headers or {})
         self._structured_disabled = False
-        self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
+        self._client = httpx.AsyncClient(timeout=timeout, transport=transport, trust_env=trust_env)
         self._call_budget: CallBudget | None = None
 
     def attach_call_budget(self, budget: CallBudget) -> None:

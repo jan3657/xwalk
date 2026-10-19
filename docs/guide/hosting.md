@@ -26,7 +26,7 @@ took 10 s, including the index.
 | Ontologies | built-in samples, your imports, downloads | the same plus `--library` directories, read-only and shared, with shared indexes (`--lookup-cache`) |
 | Downloads from a URL | allowed | refused: the server never fetches a URL a visitor names |
 | Model keys | the process environment (Settings or `export`) | each visitor's own, kept in that session's memory only; the server's environment is never used for a visitor |
-| Model endpoints | any | `https` only, to hosts that resolve to public addresses (no localhost, private ranges or cloud metadata) |
+| Model endpoints | any | `https` only, to hosts that resolve to public addresses (no localhost, private ranges or cloud metadata); the server connects to the addresses it checked, so DNS rebinding cannot redirect it, and it follows no redirects and no proxy settings from its environment |
 | Runs | unbounded | one per visitor, `--max-tasks` (4) across the site |
 | Paths in messages | absolute | hidden |
 
