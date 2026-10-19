@@ -120,8 +120,8 @@ class TemplateSet:
     context: str
     doc: str
     candidate: str
-    # Extra retrieval queries, rendered per source alongside `query`. Empty on the LLM path
-    # unless the job declares them.
+    # Replaces `query` when configured; Matcher preserves the historical single-entry
+    # alternate alongside a distinct `query`.
     queries: tuple[str, ...] = ()
     _compiled: dict[str, Template] = field(default_factory=dict, repr=False, compare=False)
 

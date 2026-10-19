@@ -15,12 +15,12 @@ Modules covered: `xwalk.matcher`, `xwalk.batch`, `xwalk.stages.keying`,
 
 ### Setup
 
-`match(source)` renders two strings from the `TemplateSet`: the *context* (shown to
-every prompt) and the *first query* (fed to retrieval). It then initialises two queues:
+`match(source)` renders the *context* (shown to every prompt) and the initial query list
+from `TemplateSet.render_queries` (see the [single-entry compatibility rule](job-file.md#templates)). It then initialises two queues:
 
-- **query queue** — `(query, proposal)` pairs waiting for a fresh retrieval. Starts
-  with the first query. FIFO, except that an infrastructure failure re-inserts its own
-  query at the front.
+- **query queue** — `(queries, proposal)` pairs waiting for a fresh retrieval. Starts
+  with the initial list. New proposals contain one query each. FIFO, except that an
+  infrastructure failure re-inserts its actual query list at the front.
 - **candidate queue** — candidate keys (e.g. `C03`) proposed by the scorer, waiting to
   be re-examined. These records are already in hand; consuming one runs **no retrieval
   and no selector call** — the loop goes straight to scoring.
@@ -29,6 +29,9 @@ The candidate queue always drains first. Re-examining a record you already retri
 strictly cheaper than a new search, and the paper repo's mistake — pushing candidate
 labels back into the query queue and re-retrieving records already in hand — is exactly
 what the split exists to prevent.
+
+`Attempt.query` displays multiple queries joined with `" | "`; runtime retrieval and
+retry state retain the original list, including literal separators inside a query.
 
 Alongside the queues: `seen_queries` holds normalised forms of every query ever
 enqueued (deduplication), `tried_queries` keeps original casing for the rewriter's
@@ -41,7 +44,7 @@ Up to `policy.max_attempts` iterations (default 4). Each iteration:
 
 ```
 match(source)
-  render context + first query; queue = [first query]
+  render context + initial queries; queue = [initial queries]
   for index in range(max_attempts):
     pick work: candidate queue first, else query queue, else STOP (no work)
     attempt:
@@ -65,7 +68,7 @@ match(source)
 
 Within an attempt (`Matcher._attempt`):
 
-1. **Retrieval.** Every retriever is searched concurrently, each guarded by
+1. **Retrieval.** Every retriever is searched with every query concurrently, each guarded by
    `policy.retriever_timeout`. Depth comes from each retriever's own `default_limit`;
    the matcher's `retriever_limit` is only the fallback for a backend that does not
    declare one. Results are merged by reciprocal rank fusion with constant `rrf_k`.

@@ -407,13 +407,6 @@ class JobSpec(_Spec):
             raise ValueError("a job needs exactly one of `llm:` or `decider:`")
         if self.decider is not None and "selector" in self.model_fields_set:
             raise ValueError("selector does not apply to a decider job")
-        if self.llm is not None and len(self.templates.queries) > 1:
-            # The LLM matcher searches one query per attempt (the rewriter supplies the
-            # next); extra queries would be fingerprinted and silently never searched.
-            raise ValueError(
-                "templates.queries with more than one entry applies to decider jobs; "
-                "an llm job searches templates.query (or a single queries entry)"
-            )
         seen: set[str] = set()
         for spec in self.retrievers:
             if spec.index_name in seen:

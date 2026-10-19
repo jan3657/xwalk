@@ -305,15 +305,14 @@ def test_templates_accept_a_queries_list(tmp_path):
     assert templates.render_queries(record) == ["glucose", "blood"]
 
 
-def test_several_queries_are_refused_on_an_llm_job(tmp_path):
-    """0.2 strict validation: the LLM matcher would never search the extra queries."""
+def test_several_queries_are_accepted_on_an_llm_job(tmp_path):
 
     def mutate(data):
         del data["templates"]["query"]
         data["templates"]["queries"] = ["{{ mention }}", "{{ context_left }}"]
 
-    with pytest.raises(ValueError, match="decider jobs"):
-        load_job(_job_copy(tmp_path, mutate))
+    job = load_job(_job_copy(tmp_path, mutate))
+    assert job.build_templates().queries == ("{{ mention }}", "{{ context_left }}")
 
 
 def test_templates_need_a_query_or_queries(tmp_path):

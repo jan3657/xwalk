@@ -1,5 +1,8 @@
 import asyncio
+import dataclasses
 import json
+
+import pytest
 
 from xwalk.llm.base import LLMFatalError, LLMRetryableError
 from xwalk.llm.fake import FakeLLM
@@ -97,20 +100,21 @@ def rewrite_reply(*queries):
     return json.dumps({"queries": list(queries), "explanation": ""})
 
 
-def build(llm, retriever, *, policy=None):
+def build(llm, retriever, *, policy=None, templates=TEMPLATES, trace=True):
     policy = policy or MatchPolicy()
     return Matcher(
-        templates=TEMPLATES,
+        templates=templates,
         retrievers=[retriever],
         store=STORE,
         selector=Selector(
-            llm, PROMPTS, TEMPLATES, legacy_id_resolution=policy.legacy_id_resolution
+            llm, PROMPTS, templates, legacy_id_resolution=policy.legacy_id_resolution
         ),
-        scorer=Scorer(llm, PROMPTS, TEMPLATES, review_floor=policy.review_floor),
-        verifier=Verifier(llm, PROMPTS, TEMPLATES),
-        rewriter=QueryRewriter(llm, PROMPTS, TEMPLATES),
+        scorer=Scorer(llm, PROMPTS, templates, review_floor=policy.review_floor),
+        verifier=Verifier(llm, PROMPTS, templates),
+        rewriter=QueryRewriter(llm, PROMPTS, templates),
         policy=policy,
         run_fingerprint="fp1",
+        keep_candidates_in_trace=trace,
     )
 
 
@@ -492,3 +496,105 @@ async def test_finish_reason_is_carried_from_the_provider():
     llm = FakeLLM([select_reply("C01"), score_reply(0.95)], finish_reason="length")
     result = await build(llm, ScriptedRetriever({"glucose": ["T1"]})).match(SOURCE)
     assert result.attempts[0].finish_reason == "length"
+
+
+async def test_initial_multi_query_has_two_rrf_votes_and_trace_invariance():
+    templates = dataclasses.replace(TEMPLATES, queries=("{{ mention }}", "{{ context_left }}"))
+    runs = []
+    for trace in (True, False):
+        retriever = ScriptedRetriever({"glucose": ["T2", "T1"], "blood": ["T1", "T3"]})
+        llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
+        result = await build(llm, retriever, templates=templates, trace=trace).match(SOURCE)
+        assert retriever.queries == ["glucose", "blood"]
+        assert result.matched_id == "T1"
+        assert result.attempts[0].query == "glucose | blood"
+        if trace:
+            assert [c.id for c in result.candidates] == ["T1", "T2", "T3"]
+            assert result.candidates[0].fused_score == pytest.approx(1 / 62 + 1 / 61)
+        runs.append((result, llm.requests))
+    assert runs[0][1] == runs[1][1]
+    assert (runs[0][0].status, runs[0][0].reason) == (runs[1][0].status, runs[1][0].reason)
+    assert dataclasses.replace(runs[0][0].attempts[0], candidates=(), elapsed_seconds=0) == (
+        dataclasses.replace(runs[1][0].attempts[0], elapsed_seconds=0)
+    )
+
+
+@pytest.mark.parametrize("failure", ["provider", "retriever"])
+async def test_multi_query_failure_retries_real_queries_not_the_display_string(failure):
+    templates = dataclasses.replace(TEMPLATES, queries=("glucose | alias", "blood"))
+    retriever = ScriptedRetriever(
+        {"glucose | alias": ["T1"], "blood": ["T1"]}, fail=failure == "retriever"
+    )
+    llm = FakeLLM([LLMRetryableError("outage"), select_reply("C01"), score_reply(0.95)])
+    result = await build(
+        llm, retriever, templates=templates, policy=MatchPolicy(max_attempts=2)
+    ).match(SOURCE)
+    assert retriever.queries == ["glucose | alias", "blood"] * 2
+    assert len(result.attempts) == 2
+
+
+async def test_multi_query_dedup_and_rewriter_use_each_original_query():
+    templates = dataclasses.replace(TEMPLATES, queries=("{{ mention }}", "{{ context_left }}"))
+    retriever = ScriptedRetriever({"glucose": ["T1"], "blood": ["T1"], "fresh": ["T2"]})
+    llm = FakeLLM(
+        [
+            select_reply("C01"),
+            score_reply(0.1, better_queries=[" BLOOD ", "glucose"]),
+            rewrite_reply("blood", "fresh"),
+            select_reply("C01"),
+            score_reply(0.95),
+        ]
+    )
+    result = await build(llm, retriever, templates=templates).match(SOURCE)
+    assert retriever.queries == ["glucose", "blood", "fresh"]
+    assert result.matched_id == "T2"
+    assert "glucose | blood" not in llm.requests[2].user
+    assert "blood" in llm.requests[2].user
+    assert result.attempts[1].query == "fresh"
+
+
+async def test_single_query_requests_and_fused_order_stay_identical():
+    runs = []
+    for queries in ((), ("{{ mention }}",), ("alternate",)):
+        templates = dataclasses.replace(TEMPLATES, queries=queries)
+        retriever = ScriptedRetriever({"glucose": ["T2", "T1"]})
+        llm = FakeLLM([select_reply("C01"), score_reply(0.95)])
+        result = await build(llm, retriever, templates=templates).match(SOURCE)
+        assert retriever.queries == ["glucose"]
+        runs.append((llm.requests, result.candidates))
+    assert runs[0] == runs[1] == runs[2]
+    assert [c.id for c in runs[0][1]] == ["T2", "T1"]
+    assert [c.fused_score for c in runs[0][1]] == [1 / 61, 1 / 62]
+
+
+async def test_single_query_http_bodies_are_byte_identical():
+    import httpx
+
+    from xwalk.llm.openai_compat import OpenAICompatClient
+
+    runs = []
+    for queries in ((), ("{{ mention }}",), ("alternate",)):
+        bodies = []
+        replies = iter([select_reply("C01"), score_reply(0.95)])
+
+        def handler(request, bodies=bodies, replies=replies):
+            bodies.append(request.content)
+            return httpx.Response(200, json={"choices": [{"message": {"content": next(replies)}}]})
+
+        llm = OpenAICompatClient(
+            base_url="https://llm.test/v1",
+            model="m",
+            api_key="test",
+            profile="unknown",
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            retriever = ScriptedRetriever({"glucose": ["T2", "T1"]})
+            result = await build(
+                llm, retriever, templates=dataclasses.replace(TEMPLATES, queries=queries)
+            ).match(SOURCE)
+            runs.append((bodies, result.candidates))
+        finally:
+            await llm.aclose()
+    assert len(runs[0][0]) == 2
+    assert runs[0] == runs[1] == runs[2]
