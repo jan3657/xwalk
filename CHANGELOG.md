@@ -131,6 +131,15 @@ offline only (FakeDecider, no paid calls).
   reused: `xwalk match` and `xwalk index` exit 3 naming `normalization_version`
   (rerun with `--rebuild-index`), and `BM25Retriever.open` raises `IndexMismatchError`
   even without `expected`, since searching it would silently miss exact hits.
+- The workbench can be rebuilt from the repository again. The unanchored `data/` rule
+  in `.gitignore` (meant for the private inputs in the root `data/`) also ignored
+  `web/src/components/data/`, so `DataTable`, `Identifier`, `ScoreMeter`, `KeyValue`,
+  `FilterChip` and `CommandLine` were never committed and `npm run typecheck`, `npm
+  test` and `npm run build` failed on a clean checkout. The rule is now `/data/`, and
+  the six components were rewritten from the committed bundle: the rebuilt JavaScript
+  and CSS match the previous build except for CSS-module hashes. `FilterChip`, unused
+  by the screens and absent from the bundle, follows the design system's version.
+  `web/tsconfig.tsbuildinfo`, a compiler cache, is no longer tracked.
 
 ## [0.2.0rc1] — 2026-10-05
 

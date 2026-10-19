@@ -22,7 +22,9 @@ runs/
 *.sqlite-shm
 index/
 *.index/
-data/
+# The private inputs (data/Ref_zivila.csv, data/ref_zivila/...) live in the root data/.
+# Anchored: an unanchored `data/` also ignored web/src/components/data/.
+/data/
 
 # Example extraction scratch; the committed sample/ slices are the artefact.
 runs/
@@ -38,3 +40,6 @@ web/node_modules/
 
 # The preserved 0.1.1 ledger is test evidence, not a run artefact.
 !tests/fixtures/ledger_v0_1_1/rundir/ledger.sqlite
+
+# tsc -b writes its incremental cache next to the tsconfig.
+web/*.tsbuildinfo

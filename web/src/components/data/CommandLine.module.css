@@ -1,0 +1,40 @@
+/* A one-line terminal: signal prompt, the command in mono, a flush copy button. */
+.line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 0 0 12px;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+.compact { height: 30px; padding-left: 10px; }
+.label { flex-shrink: 0; font: var(--type-caps); letter-spacing: var(--tracking-caps); color: var(--text-faint); }
+.code {
+  flex: 1;
+  min-width: 0;
+  font: 400 12px var(--font-mono);
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prompt { margin-right: 8px; color: var(--accent); font-weight: 600; }
+.copy {
+  flex-shrink: 0;
+  align-self: stretch;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font: 600 10.5px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) linear, color var(--duration-fast) linear;
+}
+.copy:hover { background: var(--gray-900); color: var(--text-inverse); }
+.copied, .copied:hover { background: var(--success-bg); color: var(--success); }

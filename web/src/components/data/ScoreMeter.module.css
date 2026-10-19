@@ -1,0 +1,8 @@
+/* The self-reported score: a figure and a hairline bar with the policy's ticks.
+   Grey fill only; the ticks carry the signal. */
+.wrap { display: inline-flex; align-items: center; gap: 8px; }
+.value, .unknown { font: 600 11.5px/1 var(--font-mono); font-variant-numeric: tabular-nums; min-width: 28px; color: var(--text-strong); }
+.unknown { color: var(--text-faint); font-weight: 400; }
+.track { position: relative; height: 6px; background: var(--surface-subtle); box-shadow: inset 0 0 0 1px var(--border-subtle); }
+.fill { position: absolute; left: 0; top: 0; bottom: 0; transition: width var(--duration-slow) var(--ease-out); }
+.tick { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--accent); }
