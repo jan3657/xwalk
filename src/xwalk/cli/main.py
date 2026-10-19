@@ -249,6 +249,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="answer every model call with a fixed scripted reply instead of the job's "
         "endpoint (demos and tests; results are meaningless)",
     )
+    mcp.add_argument(
+        "--root",
+        action="append",
+        default=None,
+        metavar="DIR",
+        help="a directory tool paths (and the files a job refers to) must resolve into; "
+        "repeatable (default: the working directory)",
+    )
 
     ui = sub.add_parser("ui", help="serve a local web app to explore jobs and runs")
     ui.add_argument(
@@ -856,7 +864,11 @@ def _serve_mcp(args: argparse.Namespace) -> int:
     try:
         from xwalk.mcp_server import serve
 
-        serve(max_calls_cap=args.max_calls_cap, offline_model=args.offline_model)
+        serve(
+            max_calls_cap=args.max_calls_cap,
+            offline_model=args.offline_model,
+            roots=args.root,
+        )
     except KeyboardInterrupt:
         return EXIT_INTERRUPTED
     except Exception as exc:

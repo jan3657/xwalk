@@ -431,12 +431,14 @@ is not a run directory or an out-of-range flag is `2`.
 Serves `validate_job`, `search_candidates`, `match_records`, `get_run`, `list_results` and
 `explain_result` to an agent over MCP on stdin/stdout until the client disconnects. Needs
 `pip install 'xwalk[mcp]'`; without it, `xwalk mcp` prints the install command on stderr
-and exits `2`. See the [MCP guide](../guide/mcp.md).
+and exits `2`, as it does for a `--root` that is not a directory. See the
+[MCP guide](../guide/mcp.md).
 
 | Flag | Required | Default | Meaning |
 |---|---|---|---|
 | `--max-calls-cap` | no | `500` | the largest `max_calls` a `match_records` call may request |
 | `--offline-model` | no | — | answer every model call with a fixed scripted reply (demos and tests; the results are meaningless) |
+| `--root DIR` | no | the working directory | a directory tool paths, and the files a job refers to, must resolve into (symlinks followed); repeatable. Anything else is refused with `path_outside_roots`. See [path confinement](../guide/mcp.md#path-confinement) |
 
 ## `ui`
 

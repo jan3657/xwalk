@@ -232,6 +232,18 @@ offline only (FakeDecider, no paid calls).
 
 ### Security
 
+- `xwalk mcp` confines paths. Every tool path (`job`, `out`, `index_dir`, `run`) must
+  resolve, with `..` collapsed and symlinks followed, inside the server's roots: the
+  working directory, or the directories given with the new repeatable `--root DIR`.
+  The files a job refers to (`source.path`, `target.path`, `prompts.slots`, a dense
+  `model` given as a local path, a sqlite database) are checked the same way before the
+  job is compiled or read; network database URLs are refused in MCP mode. A refusal is a
+  tool error with code `path_outside_roots` (exit `2`). Before, an agent could name any
+  job file the user could read, and so compile its templates, and write run and index
+  directories anywhere writable. New module `xwalk.confine` (`Roots`, `PathRefused`);
+  `build_server` and `serve` take `roots=`. Relative paths still resolve against the
+  working directory, so a server launched in its project directory works as before; a
+  host that starts it elsewhere (Claude Desktop) now needs `--root`.
 - `xwalk ui --public` no longer lets a request's own `X-Forwarded-Proto` header decide
   whether the session cookie is `Secure`. The header counts only with the new
   `--trust-proxy` flag, for deployments where every request comes through an HTTPS

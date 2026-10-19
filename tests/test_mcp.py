@@ -42,11 +42,11 @@ def job(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def server() -> Any:
+def server(tmp_path: Path) -> Any:
     _mcp()
     from xwalk.mcp_server import build_server
 
-    return build_server(offline=True, max_calls_cap=100)
+    return build_server(offline=True, max_calls_cap=100, roots=[tmp_path])
 
 
 async def _call(client: Any, tool: str, **arguments: Any) -> Any:
@@ -191,6 +191,136 @@ async def test_cli_and_mcp_return_the_same_envelopes(server, job, tmp_path, caps
         via_cli = json.loads(capsys.readouterr().out)
         assert via_cli == via_mcp[name], name
         assert code == via_mcp[name]["exit_code"]
+
+
+# --- path confinement ------------------------------------------------------------------
+
+
+def _refused(result: Any, path_hint: str = "") -> None:
+    """A tool error naming `path_outside_roots`."""
+    assert result.is_error
+    errors = result.structured_content["errors"]
+    assert errors[0]["code"] == "path_outside_roots", errors
+    assert result.structured_content["exit_code"] == ops.EXIT_USAGE
+    assert path_hint in errors[0]["message"]
+
+
+@pytest.fixture
+def outside(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A directory beside, not inside, the server's root (`tmp_path`)."""
+    elsewhere = tmp_path_factory.mktemp("outside")
+    ops.init(elsewhere / "quickstart")
+    return elsewhere
+
+
+@pytest.mark.mcp
+async def test_paths_outside_the_roots_are_refused(server, job, tmp_path, outside):
+    from mcp import Client
+
+    foreign_job = outside / "quickstart" / "job.yaml"
+    climb = tmp_path / "quickstart" / ".." / ".." / outside.name / "quickstart" / "job.yaml"
+    async with Client(server) as client:
+        results = [
+            await _call(client, "validate_job", job=str(foreign_job), check_credentials=False),
+            await _call(client, "validate_job", job=str(climb), check_credentials=False),
+            await _call(
+                client, "search_candidates", job=str(foreign_job), query="x", index_dir="i"
+            ),
+            await _call(client, "match_records", job=str(foreign_job), out="r", max_calls=5),
+            await _call(client, "get_run", run=str(outside)),
+            await _call(client, "list_results", run=str(outside)),
+            await _call(client, "explain_result", run=str(outside), source_id="s1"),
+        ]
+    for result in results:
+        _refused(result)
+    assert not (outside / "quickstart" / "run").exists()
+
+
+@pytest.mark.mcp
+async def test_writes_outside_the_roots_are_refused(server, job, tmp_path, outside):
+    from mcp import Client
+
+    out = outside / "run"
+    index = outside / "index"
+    async with Client(server) as client:
+        ran = await _call(client, "match_records", job=str(job), out=str(out), max_calls=5)
+        searched = await _call(
+            client, "search_candidates", job=str(job), query="dextrose", index_dir=str(index)
+        )
+    _refused(ran, "out")
+    _refused(searched, "index_dir")
+    assert not out.exists() and not index.exists()
+
+
+@pytest.mark.mcp
+async def test_a_symlink_out_of_the_root_is_refused(server, job, tmp_path, outside):
+    from mcp import Client
+
+    try:
+        (tmp_path / "escape").symlink_to(outside, target_is_directory=True)
+    except OSError:  # pragma: no cover - Windows without symlink rights
+        pytest.skip("cannot create symlinks here")
+    async with Client(server) as client:
+        read = await _call(
+            client,
+            "validate_job",
+            job=str(tmp_path / "escape" / "quickstart" / "job.yaml"),
+            check_credentials=False,
+        )
+        wrote = await _call(
+            client, "match_records", job=str(job), out=str(tmp_path / "escape" / "run"), max_calls=5
+        )
+    _refused(read, "job")
+    _refused(wrote, "out")
+    assert not (outside / "run").exists()
+
+
+@pytest.mark.mcp
+async def test_a_job_referring_to_data_outside_the_roots_is_refused(server, job, outside):
+    from mcp import Client
+
+    foreign = outside / "quickstart" / "targets.csv"
+    text = job.read_text(encoding="utf-8").replace("path: targets.csv", f"path: {foreign}")
+    job.write_text(text, encoding="utf-8")
+    async with Client(server) as client:
+        checked = await _call(client, "validate_job", job=str(job), check_credentials=False)
+        searched = await _call(
+            client, "search_candidates", job=str(job), query="x", index_dir=str(job.parent / "i")
+        )
+        ran = await _call(
+            client, "match_records", job=str(job), out=str(job.parent / "run"), max_calls=5
+        )
+    for result in (checked, searched, ran):
+        _refused(result, "target.path")
+    assert not (job.parent / "run").exists() and not (job.parent / "i").exists()
+
+
+@pytest.mark.mcp
+def test_xwalk_mcp_refuses_a_root_that_is_not_a_directory(tmp_path, capsys):
+    _mcp()
+    assert main(["mcp", "--root", str(tmp_path / "missing")]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "not a directory" in captured.err
+
+
+@pytest.mark.mcp
+async def test_a_stdio_server_confines_paths_to_its_root_flags(job, tmp_path, outside):
+    _mcp()
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    root = job.parent
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=_server_command("--root", str(root))[1:],
+        cwd=str(outside),  # not the root: the default is replaced, not extended
+    )
+    async with Client(params) as client:
+        inside = await _call(client, "validate_job", job=str(job), check_credentials=False)
+        local = await _call(client, "validate_job", job="quickstart/job.yaml")
+    assert inside.structured_content["status"] == "ok"
+    _refused(local, "job")
 
 
 # --- over stdio, in a subprocess --------------------------------------------------------

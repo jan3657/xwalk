@@ -21,6 +21,7 @@ xwalk mcp                      # serves on stdin/stdout until the client disconn
 |---|---|---|
 | `--max-calls-cap` | `500` | the largest `max_calls` a `match_records` call may ask for |
 | `--offline-model` | off | answer every model call with a fixed scripted reply instead of the job's endpoint; for demos and tests, the results are meaningless |
+| `--root DIR` | the working directory | a directory the tools may read and write; repeat it to allow several. Given at least once, it replaces the working directory |
 
 Without the extra, `xwalk mcp` exits `2` and prints `pip install 'xwalk[mcp]'` on stderr.
 The base install never imports `mcp`.
@@ -28,9 +29,38 @@ The base install never imports `mcp`.
 stdout carries protocol messages only. While serving, the SDK's stdio transport points
 file descriptor 1 at stderr, so a stray print from any library cannot corrupt the
 stream; logs go to stderr. Relative paths in tool arguments resolve against the server's
-working directory, so launch it in your project directory (or pass absolute paths). The
-server acts with your file permissions: it reads the job's files and writes run and index
-directories where the agent asks.
+working directory, so launch it in your project directory (or pass absolute paths).
+
+## Path confinement
+
+The server acts with your file permissions, and the agent calling it is not trusted: it
+may be following instructions planted in a document or record it read. Every path a tool
+receives must therefore lie inside one of the server's roots: the working directory, or
+the directories given with `--root` (repeatable; `--root` replaces the working-directory
+default rather than adding to it).
+
+- A path is resolved before it is checked: relative paths against the working directory,
+  `..` collapsed and symlinks followed. `../elsewhere`, an absolute path outside every
+  root, and a symlink inside a root that points out of it are all refused. A path that
+  does not exist yet (a new run or index directory) is checked through its nearest
+  existing parent, so a run cannot be written through a symlink that leaves the roots.
+- This covers the `job`, `out`, `index_dir` and `run` arguments of every tool.
+- The files a job refers to are checked too, before the job's templates are compiled or
+  any record is read: `source.path`, `target.path`, `prompts.slots`, a dense retriever's
+  `model` when it names a local directory (an existing path, as sentence-transformers
+  would load it; a hub id such as `sentence-transformers/all-MiniLM-L6-v2` is not a
+  path), and a `sql` collection's database. In MCP mode a `sql` collection must be a
+  sqlite file inside the roots; network database URLs and sqlite `uri=true` filenames
+  are refused. Use the CLI for such jobs.
+- A refusal is a tool error (`isError: true`) with error code `path_outside_roots`,
+  exit code `2`, naming the argument (or the job field) and the allowed roots. Nothing is
+  read, compiled or written. A job file that does not parse is not refused here: it is
+  checked inside the roots and `validate_job` reports it as invalid, as before.
+
+The check is made when the tool is called; xwalk then opens the resolved path. The roots
+stop an agent from naming files elsewhere. They do not stop another local process from
+swapping a directory for a symlink between the check and the open, and files the user
+placed inside a root (including symlinks inside a run directory) are trusted.
 
 ## Client configuration
 
@@ -53,14 +83,18 @@ or a project `.mcp.json`:
 }
 ```
 
-Claude Desktop (`claude_desktop_config.json`), which does not set a working directory, so
-use absolute paths in tool arguments and the full path of the `xwalk` executable of the
-environment where you installed `xwalk[mcp]`:
+Claude Desktop (`claude_desktop_config.json`) does not set a working directory, so give
+the project directory with `--root` (otherwise the root is whatever directory the host
+starts the server in, possibly `/`), use absolute paths in tool arguments, and name the
+full path of the `xwalk` executable of the environment where you installed `xwalk[mcp]`:
 
 ```json
 {
   "mcpServers": {
-    "xwalk": {"command": "/path/to/venv/bin/xwalk", "args": ["mcp", "--max-calls-cap", "200"]}
+    "xwalk": {
+      "command": "/path/to/venv/bin/xwalk",
+      "args": ["mcp", "--root", "/path/to/project", "--max-calls-cap", "200"]
+    }
   }
 }
 ```
@@ -137,7 +171,8 @@ yet. Use `xwalk cluster`.
   `status: "attention"`, `run_state: "partial"` and `pending` in `counts`. Call it again
   with the same arguments to continue.
 - `isError: true` means the operation could not be performed: arguments outside the
-  input schema (`limit: 1000`), a `max_calls` above the server cap, a path that is not a
+  input schema (`limit: 1000`), a `max_calls` above the server cap, a path outside the
+  roots or a job referring outside them (`path_outside_roots`), a path that is not a
   run directory (`run_not_found`), a run directory holding a different run
   (`run_fingerprint_mismatch`), a missing credential. The structured content is then the
   error envelope when the operation got far enough to produce one, and the text says

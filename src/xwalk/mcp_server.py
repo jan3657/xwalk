@@ -2,6 +2,7 @@
 
     xwalk mcp                      # serve on stdin/stdout until the client disconnects
     xwalk mcp --offline-model      # scripted model answers: demos and tests, no endpoint
+    xwalk mcp --root data --root runs   # the directories tools may touch (default: cwd)
 
 Every tool calls one operation and returns its `OpResult.envelope()` -- the same schema 1
 object `--json` prints -- as structured content (and as JSON text for clients that only
@@ -17,12 +18,19 @@ candidates; `list_results` pages at most `ops.MAX_PAGE_SIZE` rows. Nothing retur
 whole ledger, and there is no background execution: a call returns when its work is
 done, and a larger run continues with another call (it resumes) or in the CLI.
 
+Paths: every path argument, and every file a job refers to, must resolve (symlinks
+followed) inside one of the server's roots -- the working directory unless `--root` is
+given (`xwalk.confine`). Anything else is a tool error `path_outside_roots`, reported
+before the job is compiled, read or written. The agent is untrusted: it may be following
+instructions planted in the data it reads.
+
 stdout carries protocol messages only: the SDK's stdio transport points file descriptor
 1 at stderr while serving, so a stray print cannot corrupt the stream. Logs go to stderr.
 """
 
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import anyio
@@ -30,6 +38,7 @@ from pydantic import BaseModel, Field
 
 from xwalk import __version__, ops
 from xwalk._extras import require
+from xwalk.confine import PathRefused, Roots
 from xwalk.llm.base import LLMClient, LLMRequest
 from xwalk.llm.fake import FakeLLM
 
@@ -45,8 +54,9 @@ job file (job.yaml). Typical flow: validate_job -> search_candidates (optional, 
 calls) -> match_records (bounded, writes a run directory; call again to continue a
 partial run) -> get_run -> list_results (paged) -> explain_result for one source.
 Every result is the xwalk JSON envelope: read `status` (ok, attention, error,
-interrupted), `exit_code`, `errors` and `data`. Paths are resolved against the server's
-working directory."""
+interrupted), `exit_code`, `errors` and `data`. Relative paths resolve against the
+server's working directory. Every path, and every file a job refers to, must lie inside
+the allowed roots: {roots}. Anything else is refused with error `path_outside_roots`."""
 
 
 # --- output schemas (the `--json` envelope, schema 1) ----------------------------------
@@ -144,9 +154,12 @@ def build_server(
     max_calls_cap: int | None = None,
     offline: bool = False,
     llm_factory: Callable[[], LLMClient] | None = None,
+    roots: Sequence[str | Path] | None = None,
 ) -> "MCPServer[Any]":
     """The xwalk MCP server with its six tools. Raises `MissingExtra` without `mcp`.
 
+    `roots` are the directories tool paths must resolve into (default: the working
+    directory); a root that is not a directory is a usage `OpError`.
     `max_calls_cap` bounds the `max_calls` a `match_records` call may request.
     `offline=True` gives `match_records` the scripted `offline_model` instead of the
     job's endpoint. `llm_factory` (Python only, for tests) supplies the client directly.
@@ -158,6 +171,10 @@ def build_server(
     cap = DEFAULT_MAX_CALLS_CAP if max_calls_cap is None else max_calls_cap
     if cap < 1:
         raise ValueError(f"--max-calls-cap must be >= 1, got {cap}")
+    try:
+        allowed = Roots(roots)
+    except ValueError as exc:
+        raise ops.OpError("mcp", "usage", f"--root: {exc}", exit_code=ops.EXIT_USAGE) from None
     make_llm = llm_factory
     if offline and make_llm is None:
 
@@ -167,7 +184,7 @@ def build_server(
     server: MCPServer[Any] = MCPServer(
         "xwalk",
         version=__version__,
-        instructions=_INSTRUCTIONS,
+        instructions=_INSTRUCTIONS.format(roots=allowed.describe()),
         log_level="WARNING",
     )
 
@@ -186,9 +203,22 @@ def build_server(
     ) -> CallToolResult:
         try:
             result = await work()
+        except PathRefused as exc:
+            refusal = ops.OpError(operation, exc.code, str(exc), exit_code=ops.EXIT_USAGE)
+            return respond(refusal.result, is_error=True)
         except Exception as exc:  # reported to the agent, never a protocol error
             return respond(ops.failure_result(operation, exc), is_error=True)
         return respond(result)
+
+    def confined(value: str, what: str) -> str:
+        """`value` resolved inside the roots (`PathRefused` otherwise)."""
+        return str(allowed.resolve(value, what=what))
+
+    def confined_job(value: str) -> str:
+        """The job path inside the roots, after checking the files it refers to."""
+        path = confined(value, "job")
+        allowed.check_job(path)
+        return path
 
     def in_thread(fn: Callable[[], ops.OpResult]) -> Callable[[], Awaitable[ops.OpResult]]:
         async def work() -> ops.OpResult:
@@ -215,7 +245,9 @@ def build_server(
             "validate",
             in_thread(
                 lambda: ops.validate(
-                    job, check_credentials=check_credentials, scan_records=scan_records
+                    confined_job(job),
+                    check_credentials=check_credentials,
+                    scan_records=scan_records,
                 )
             ),
         )
@@ -232,10 +264,13 @@ def build_server(
 
         No model calls. Builds the job's indexes in `index_dir` if they are absent and
         refuses an incompatible one."""
-        return await perform(
-            "search",
-            lambda: ops.search_async(job, query, index_dir=index_dir, limit=limit),
-        )
+
+        async def work() -> ops.OpResult:
+            index = confined(index_dir, "index_dir")
+            checked = await anyio.to_thread.run_sync(confined_job, job)
+            return await ops.search_async(checked, query, index_dir=index, limit=limit)
+
+        return await perform("search", work)
 
     async def match_records(
         job: Annotated[str, Field(description="path to a job.yaml")],
@@ -277,6 +312,8 @@ def build_server(
             )
 
         async def work() -> ops.OpResult:
+            run_dir = confined(out, "out")
+            checked = await anyio.to_thread.run_sync(confined_job, job)
             llm = make_llm() if make_llm is not None else None
             # A decider job offline gets the deterministic overlap FakeDecider, never Jev.
             decider = None
@@ -285,7 +322,7 @@ def build_server(
 
                 decider = FakeDecider(model="xwalk-offline")
             result = await ops.run_async(
-                job, out, limit=limit, max_calls=max_calls, llm=llm, decider=decider
+                checked, run_dir, limit=limit, max_calls=max_calls, llm=llm, decider=decider
             )
             if offline:
                 result.warnings.append(
@@ -305,7 +342,7 @@ def build_server(
         """A run's identity, state, current counts, last usage and review overlay.
 
         `exit_code`/`status` are what the run itself would report (as `xwalk inspect`)."""
-        return await perform("inspect", in_thread(lambda: ops.inspect(run)))
+        return await perform("inspect", in_thread(lambda: ops.inspect(confined(run, "run"))))
 
     async def list_results(
         run: Annotated[str, Field(description="run directory")],
@@ -321,7 +358,11 @@ def build_server(
         Continue with `offset = data.next_offset` until it is null."""
         return await perform(
             "results",
-            in_thread(lambda: ops.list_results(run, offset=offset, limit=limit, status=status)),
+            in_thread(
+                lambda: ops.list_results(
+                    confined(run, "run"), offset=offset, limit=limit, status=status
+                )
+            ),
         )
 
     async def explain_result(
@@ -330,7 +371,9 @@ def build_server(
     ) -> Annotated[CallToolResult, Envelope]:
         """Why one source got its answer: the decision, every attempt (top candidates,
         scores, verifier), the applied review and the source's history."""
-        return await perform("explain", in_thread(lambda: ops.explain(run, source_id)))
+        return await perform(
+            "explain", in_thread(lambda: ops.explain(confined(run, "run"), source_id))
+        )
 
     server.add_tool(validate_job, annotations=read_only)
     server.add_tool(
@@ -346,6 +389,11 @@ def build_server(
     return server
 
 
-def serve(*, max_calls_cap: int | None = None, offline_model: bool = False) -> None:
+def serve(
+    *,
+    max_calls_cap: int | None = None,
+    offline_model: bool = False,
+    roots: Sequence[str | Path] | None = None,
+) -> None:
     """Serve on stdin/stdout until the client disconnects (`xwalk mcp`)."""
-    build_server(max_calls_cap=max_calls_cap, offline=offline_model).run("stdio")
+    build_server(max_calls_cap=max_calls_cap, offline=offline_model, roots=roots).run("stdio")
