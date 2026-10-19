@@ -16,6 +16,9 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- FoodOn LLM example jobs retain a `[0.6, 0.8]` verify band and audit 10% of
+  above-band scores, so confident pilot errors can receive a second opinion.
+
 - Selector budgets count rendered keyed blocks and separators, retaining a ranked prefix
   without slicing text. An oversized first block becomes `needs_review` with reason
   `candidate_budget_exceeded` and zero model calls. Rendered-budget version 2 deliberately

@@ -177,3 +177,21 @@ def test_merge_populates_accepted_and_preserves_order(tmp_path: Path) -> None:
     assert long_rows[0]["status"] == "accepted"
     assert long_rows[1]["status"] == "needs_review"
     assert long_rows[2]["status"] == "no_match"
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted((Path(__file__).parents[1] / "examples/ref_zivila/jobs/foodon").glob("job*.yaml")),
+    ids=lambda path: path.name,
+)
+def test_foodon_jobs_parse_strictly_and_llm_jobs_keep_verification_and_auditing(path):
+    from xwalk.config import load_job
+
+    # The schema/strict-key loader never opens source or target data. Private paths
+    # are intentionally left intact; prompts/templates can also be checked offline.
+    job = load_job(path)
+    job.build_templates()
+    job.build_prompts()
+    if job.llm is not None:
+        assert job.policy.audit_rate == 0.1
+        assert job.policy.verify_band == (0.6, 0.8)
