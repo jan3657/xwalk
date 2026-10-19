@@ -157,3 +157,43 @@ def test_nondefault_recorded_policy_controls_the_report_curve(tmp_path):
     report = ops.evaluate_run(run, gold).data["report"]
     assert report["thresholds"]
     assert all(p["accepted"] == 0 for p in report["thresholds"])
+
+
+def test_ordinary_eval_warns_about_historical_reduction_in_json_and_text(tmp_path):
+    from dataclasses import replace
+
+    from xwalk.records import MatchStatus
+
+    policy = MatchPolicy()
+    row = result(
+        "s1",
+        "T2",
+        [scored("T2", 0.9, verifier_decision="disagree"), replace(scored("T1", 0.8), index=1)],
+        MatchStatus.NEEDS_REVIEW,
+    )
+    run = _seed_run(tmp_path, [row])
+    (run / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_fingerprint": "fp1",
+                "fingerprint_components": {"policy": {**asdict(policy), "status_semantics": 1}},
+            }
+        )
+    )
+    gold = tmp_path / "gold.csv"
+    gold.write_text("source_id,gold_ids\ns1,T1\n")
+    out = tmp_path / "analysis"
+    envelope = ops.evaluate_run(run, gold, out=out)
+    report = envelope.data["report"]
+    assert report["metrics"]["automatic_coverage"] == 0.0
+    unchanged = next(p for p in report["thresholds"] if p["threshold"] == policy.accept_at)
+    assert unchanged["coverage"] == 1.0
+    context = report["threshold_context"]
+    assert context["recorded_semantics_version"] == 1
+    assert context["status_semantics_version"] == 2
+    warning = "historical or unknown reducer version"
+    assert warning in " ".join(context["warnings"])
+    assert any(warning in w.message for w in envelope.warnings)
+    assert warning in "\n".join(envelope.lines)
+    assert json.loads(out.with_suffix(".json").read_text())["threshold_context"] == context
+    assert warning in out.with_suffix(".txt").read_text()

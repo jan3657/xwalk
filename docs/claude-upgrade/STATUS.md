@@ -319,3 +319,18 @@ Balances come from the actual promotional credit display, not a model estimate. 
 - Open: the accuracy/cost numbers in `docs/reference/decide.md` were measured on the branch
   before the merge and not re-run; the live Jev tests were skipped (no key). The
   job-file reference's stale "Gotchas" about unvalidated fields were corrected in passing.
+
+## Engine batch 4 review follow-up (19 October 2026)
+
+- Fixed all three findings in `review_b4.md`, each with a regression observed failing
+  before its fix: preserve an absent chooser's resolution in ledger replay; require
+  an explicit LLM path before treating a clipped slate as complete; disclose recorded
+  and current reducer versions and historical/unknown warnings in ordinary evaluation,
+  including `ops.evaluate_run` and saved JSON/text reports.
+- Focused evaluation tests: 87 passed. Full non-integration gate with `PYTHONPATH=src`,
+  `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, and `-p no:cacheprovider`: 2,112 passed,
+  40 skipped, 4 deselected; 8 failures and 40 setup errors all from sandbox socket-bind
+  denials. Ruff check and format pass (222 files); mypy passes (126 source files).
+- No paid calls or push. Balances unreported. This worktree refuses Git's index lock;
+  separate commits and mail patches are prepared in `/private/tmp/xwalk-b4-review-commits`
+  without changing this branch's ref. Source fixes remain in this worktree.

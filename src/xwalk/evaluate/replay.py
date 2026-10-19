@@ -22,6 +22,10 @@ Policy = MatchPolicy | DecisionPolicy
 CONDITIONAL = (
     "Conditional on recorded attempts; changed thresholds may change stopping in a new run."
 )
+HISTORICAL_REDUCER = (
+    "historical or unknown reducer version: status changes may reflect current "
+    "reduction semantics as well as changed thresholds"
+)
 RETRY_DEFINITION = (
     "descriptive, not causal: recovered = first attempt's chosen id is not gold and final "
     "status is matched with a gold id; broken_by_retry = first choice is gold, more than "
@@ -34,6 +38,14 @@ _CLASSIFICATION = {
         {"accept_at", "choose_at", "none_at", "rubric_floor", "property_floor"}
     ),
 }
+
+
+def status_semantics_version(policy: Policy) -> int:
+    return (
+        STATUS_SEMANTICS_VERSION
+        if isinstance(policy, MatchPolicy)
+        else DECISION_STATUS_SEMANTICS_VERSION
+    )
 
 
 def policy_from_components(components: Mapping[str, Any]) -> Policy | None:
@@ -257,17 +269,10 @@ def replay_results(
     for before, after in zip(results, replayed, strict=True):
         statuses[before.status.value][after.status.value] += 1
         outcomes[_gold_outcome(before, gold)][_gold_outcome(after, gold)] += 1
-    version = (
-        STATUS_SEMANTICS_VERSION
-        if isinstance(policy, MatchPolicy)
-        else DECISION_STATUS_SEMANTICS_VERSION
-    )
+    version = status_semantics_version(policy)
     warnings = [CONDITIONAL]
     if recorded_semantics_version != version:
-        warnings.append(
-            "historical or unknown reducer version: status changes may reflect current "
-            "reduction semantics as well as changed thresholds"
-        )
+        warnings.append(HISTORICAL_REDUCER)
     if (
         isinstance(policy, MatchPolicy)
         and isinstance(recorded_policy, MatchPolicy)

@@ -22,7 +22,13 @@ from xwalk.evaluate.metrics import (
     threshold_curve,
 )
 from xwalk.evaluate.partition import Partition, Partitioner, partition_of
-from xwalk.evaluate.replay import CONDITIONAL, Policy, policy_from_components
+from xwalk.evaluate.replay import (
+    CONDITIONAL,
+    HISTORICAL_REDUCER,
+    Policy,
+    policy_from_components,
+    status_semantics_version,
+)
 from xwalk.ledger import Ledger
 
 
@@ -64,6 +70,7 @@ def evaluate(
     threshold_steps: int = 21,
     policy: Policy | None = None,
     target_ids: Collection[str] | None = None,
+    recorded_semantics_version: int | None = None,
 ) -> FullReport:
     results = list(ledger.iter_results(run_fingerprint))
 
@@ -77,10 +84,19 @@ def evaluate(
         sizes = counts
 
     policy_source = "supplied"
+    manifest = ledger.get_manifest(run_fingerprint) or {}
+    components = manifest.get("fingerprint_components", {})
     if policy is None:
-        manifest = ledger.get_manifest(run_fingerprint) or {}
-        policy = policy_from_components(manifest.get("fingerprint_components", {}))
+        policy = policy_from_components(components)
         policy_source = "recorded" if policy is not None else "unavailable"
+    if recorded_semantics_version is None:
+        recorded_semantics_version = components.get("policy", {}).get("status_semantics")
+    version = None if policy is None else status_semantics_version(policy)
+    warnings = (
+        [HISTORICAL_REDUCER]
+        if version is not None and recorded_semantics_version != version
+        else []
+    )
 
     return FullReport(
         metrics=evaluate_results(results, gold),
@@ -101,6 +117,9 @@ def evaluate(
             "conditional_on_recorded_attempts": True,
             "definition": CONDITIONAL,
             "policy_source": policy_source,
+            "status_semantics_version": version,
+            "recorded_semantics_version": recorded_semantics_version,
+            "warnings": warnings,
             "unavailable_rows": sum(not r.attempts for r in results if r.source_id in gold),
         },
         partition_sizes=sizes,
@@ -163,6 +182,7 @@ def render_report(report: FullReport) -> str:
         )
 
     lines += ["", "## Threshold replay", CONDITIONAL]
+    lines.extend(report.threshold_context.get("warnings", ()))
     if report.threshold_context.get("policy_source") == "unavailable":
         lines.append("unavailable: no recorded policy; supply the recorded policy explicitly")
     if report.threshold_context.get("unavailable_rows"):

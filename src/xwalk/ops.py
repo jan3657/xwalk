@@ -1951,10 +1951,18 @@ def evaluate_run(
                 raise ValueError("--job target snapshot differs from the recorded catalogue")
             target_ids = {r.id for r in store}
         report = evaluate(
-            ledger, view.run_fingerprint, labels, policy=recorded, target_ids=target_ids
+            ledger,
+            view.run_fingerprint,
+            labels,
+            policy=recorded,
+            target_ids=target_ids,
+            recorded_semantics_version=components.get("policy", {}).get("status_semantics"),
         )
         result.data = {"report": report.as_dict()}
         result.lines.append(render_report(report))
+        result.warnings.extend(
+            OpMessage("conditional_replay", w) for w in report.threshold_context["warnings"]
+        )
         if replay_policy is not None:
             if recorded is None:
                 raise ValueError(
