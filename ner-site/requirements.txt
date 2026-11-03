@@ -1,0 +1,5 @@
+# Vercel installs only what this file declares (docs/ner-site/PLAN.md decision 4).
+# PLACEHOLDER: WS-D replaces <sha> with the full SHA of a pushed commit before deploying.
+xwalk @ git+https://github.com/jan3657/xwalk.git@<sha>
+# DenseRetriever's exact search over the committed vectors; without it, pure Python.
+numpy
