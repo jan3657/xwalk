@@ -113,3 +113,74 @@ colour scheme.
 - Visitors' text is sent to the model provider (OpenRouter and the model's host). The
   function log records sizes, counts, timings and status only, never the text, the
   prompt or the key.
+
+## Verified
+
+### Locally, 3 November 2026 (WS-D; Python 3.13, the repository venv)
+
+What was run, and nothing more:
+
+- `python -m pytest -q tests/test_site_service.py tests/test_site_http.py`: 111 passed.
+  Offline only (FakeLLM, the offline stand-in, `httpx.MockTransport`; BM25 built in
+  `tmp_path`). They cover every error code in plan section 3.1 through `handle`, the
+  passcode, `X-Requested-With`, OPTIONS 405, the health shape (validated with
+  `HealthResponse`), a full offline POST, a full live POST against a mocked chat
+  endpoint, a full POST with dense indexes built in `tmp_path` by the default Qwen3
+  encoder against a mocked 26-letter histogram embeddings endpoint, both `api/*.py`
+  shims on a real `ThreadingHTTPServer` socket (including 413 before reading, 411, HEAD,
+  and a bad setting giving 503), and that a sentinel key, the passcode, the text and the
+  prompt appear in no response and no log line.
+- `python ner-site/tools/serve_local.py --offline`, started with `OPENROUTER_API_KEY`
+  removed from its environment, then `curl /api/health` (200, `mode: offline`,
+  `default_model: offline`, BM25 ok, dense unavailable "OPENROUTER_API_KEY is not set
+  ... (all 4 ontologies)"), one `curl -X POST /api/ner` with the page's example text (200,
+  11 entities whose offsets equal `tools/fixtures/ner.json`, `llm_calls: 0`, null
+  tokens), and `curl -X OPTIONS /api/ner` (405, `Allow: POST`, no CORS headers).
+- `node tools/screenshot.mjs` at 1280 px and at `--width 360` against that server: both
+  exit 0 with "11 entities found, 9 with candidate terms", no horizontal scroll.
+- The four gates from `CONTRIBUTING.md`, all passing.
+
+Not run: anything against OpenRouter (no chat call, no embeddings call, no cost), any
+Vercel build or deployment, Python 3.12, and the committed dense indexes opened with a
+real key.
+
+### Python 3.12 and live, 3 November 2026 (the orchestrating session)
+
+- A fresh Python 3.12.3 venv with only `pip install -r ner-site/requirements.txt` (xwalk
+  from GitHub at the pinned commit, as Vercel installs it): installs cleanly, 125 MB of
+  site-packages, and the wheel ships the four ontology samples. All 201
+  `tests/test_site_*.py` pass in it against that installed xwalk (checked that `xwalk`
+  imported from site-packages, not the repository's `src/`).
+- The committed dense indexes, built with the operator's key by
+  `tools/build_indexes.py`: 3,132 vectors, 13 MB, reported cost $0.00065; all four open
+  as `dense: ok`.
+- `tools/serve_local.py` (live, not `--offline`) in that 3.12 venv with the key, then
+  `tools/screenshot.mjs` at 1280 and 360 px with the page's example text:
+  `/api/health` answered `mode: live`, `llm: ok`, BM25 ok, dense ok; the run found 10
+  entities, all with candidate terms, with one `openai/gpt-4o-mini` call (641 + 186
+  tokens), 10 embedding requests, 3.9 to 5.2 s in total. Sample terms present in the text
+  ranked first in both retrievers (for example haloperidol `CHEBI:5613`, NAT2
+  `NCBIGene:10`, Alkaptonuria `MESH:D000474`, cumin seed `FOODON:00003396`); aspirin,
+  which is not in the 200-term ChEBI sample, got only loose dense neighbours. The
+  request log line held no text, prompt or key.
+
+Still not run: a Vercel build or deployment.
+
+### For the operator after deploying
+
+1. `GET /api/health`: `mode: live`, `llm: {"status": "ok"}`, `dense: ok`. Without
+   `OPENROUTER_API_KEY` health still answers 200 with `llm` unavailable and says why;
+   `POST /api/ner` then answers 503 `not_configured`.
+2. That Vercel passes `self.path` as `/api/ner` and `/api/health` (with any query
+   string): anything else gets a 404 `not_found` from `handle`. Also that a POST from the
+   page carries `Content-Length` (fetch does; a missing one gets 411 `length_required`).
+3. The example run on the deployed page: entities, highlighted spans, matches naming
+   both `bm25` and `dense-qwen3`, and `usage` with real token counts.
+4. The function log: one JSON line per request (`"event": "ner_site.request"`) with
+   sizes, counts, timings, status and model, and no text, prompt or key. Also note the
+   cold-start time (the first request builds four BM25 indexes in `/tmp`).
+5. With `NER_SITE_PASSCODE` set: 401 `passcode_required` without it, 401
+   `passcode_invalid` with a wrong one. Use an ASCII passcode (browsers reject other
+   characters in a header) of 8 characters or more.
+6. Query embeddings always go to OpenRouter's default embeddings URL with
+   `OPENROUTER_API_KEY`; `NER_SITE_BASE_URL` changes only the chat endpoint.

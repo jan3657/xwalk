@@ -148,6 +148,8 @@ files = [
     "scripts",
     "examples",
     "ner-site/ner_site",
+    "ner-site/api",
+    "ner-site/tools",
 ]
 mypy_path = "ner-site"
 

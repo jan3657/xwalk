@@ -131,6 +131,55 @@ Token counts are `null` when the provider did not report them, never 0. Errors:
 Every response carries `Cache-Control: no-store`. No `Access-Control-*` headers are ever
 sent.
 
+**[amended by WS-D]** Gaps settled while implementing `ner_site/http.py`:
+
+- 404 is `not_found`; 405 is `method_not_allowed` and carries `Allow` (`POST` on
+  `/api/ner`, `GET, HEAD` on `/api/health`). `OPTIONS` is 405 on both, never a preflight
+  answer.
+- The shim reads at most `Content-Length` bytes and refuses before reading: no
+  `Content-Length` on a POST is **411 `length_required`**, a non-numeric or negative one
+  is 400 `bad_header`, one over 64 KB is 413 `body_too_large`. `handle` also checks
+  the length of the body it is given (413).
+- Order of checks on `POST /api/ner`: path, method, body size, `X-Requested-With`,
+  passcode, configuration (503), JSON, then field limits. `Content-Type` is not checked:
+  `X-Requested-With` already forces a CORS preflight that always fails.
+- `/api/health` needs neither `X-Requested-With` nor the passcode (it returns nothing
+  secret, and the operator opens it in a browser). It always answers 200, also without a
+  key: `mode` is `"live"` and an extra block `"llm": {"status": "unavailable", "reason":
+  "OPENROUTER_API_KEY is not set; POST /api/ner answers 503 not_configured"}` says what
+  is missing (`{"status": "ok"}` with a key; `ok` with reason "offline stand-in
+  extractor" offline). `llm` is not a `HealthResponse` field; the page ignores it.
+- A bad environment value (section 3.2) makes both endpoints answer 503 `not_configured`
+  with a message naming the variable (never its value), not a traceback.
+- Offline mode: `mode` is `"offline"`, the response `model` and the health
+  `default_model` are `"offline"`, `models` is `["offline"]`, and a request may name only
+  `"offline"` (or null). Offline mode never uses the key, even when one is set: dense is
+  unavailable (reason "OPENROUTER_API_KEY is not set", or "offline mode ... requests no
+  query embeddings" when a key is set) and `usage` is `llm_calls: 0` with null tokens.
+- `start`/`end` are Python `str` indices: Unicode code points, not bytes or UTF-16
+  units. `text_too_long` and `prompt_too_long` count code points too.
+- `usage.llm_calls` counts dispatched HTTP requests, retries included. The token counts
+  are null unless every request reported them. `embedding_requests` is a lower bound
+  (`MapStats`).
+- Embedding failures at request time do not fail the request: the entity gets a note,
+  `warnings` summarises it, and BM25 matches are still returned. `provider_error` (502)
+  is for the extraction call only, and also covers an extraction that takes longer than
+  90 s (retries included). Each retriever call then gets `min(30 s, what is left of
+  115 s)`, at least 5 s.
+- When the retrieval block says dense (or BM25) is unavailable and some entity was routed,
+  `warnings` also carries `"dense retrieval unavailable; matches use BM25 only"`. A reason
+  shared by all four ontologies is reported once, with "(all 4 ontologies)".
+- The key, and a passcode of 8 or more characters, are also string-replaced out of every
+  response body and log line as a last line of defence. Provider messages pass through
+  `redact_url` for every URL and are cut to 300 characters.
+- Vercel (https://vercel.com/docs/functions/runtimes/python/api-directory, read
+  2026-11-03): a file-based function defines a top-level `handler` class that inherits
+  from `BaseHTTPRequestHandler` (or `app`/`application` for ASGI/WSGI); `api/ner.py`
+  serves `/api/ner`. The request is read the standard way (`self.command`, `self.path`,
+  `self.headers`, `self.rfile`). Both shims are identical: `do_*` call
+  `ner_site.http.serve(self)`, which routes by path, so a request reaching the wrong file
+  still gets the right 404/405. `log_message` is silenced so each request logs one line.
+
 ### 3.2 Environment variables (function runtime)
 
 | Name | Default | Meaning |
@@ -139,7 +188,7 @@ sent.
 | `NER_SITE_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
 | `NER_SITE_MODELS` | `openai/gpt-4o-mini,google/gemini-2.5-flash-lite,qwen/qwen3-next-80b-a3b-instruct` | allowlist, first is default. **[amended]** All three ids exist on OpenRouter and list `structured_outputs` (checked 2026-11-03) |
 | `NER_SITE_PASSCODE` | unset | when set, `X-Passcode` must equal it (`hmac.compare_digest`) |
-| `NER_SITE_MAX_CHARS` / `NER_SITE_MAX_ENTITIES` / `NER_SITE_MAX_PROMPT_CHARS` | 5000 / 25 / 4000 | limits |
+| `NER_SITE_MAX_CHARS` / `NER_SITE_MAX_ENTITIES` / `NER_SITE_MAX_PROMPT_CHARS` | 5000 / 25 / 4000 | limits. **[amended by WS-D]** Whole numbers in 1..20000 / 1..100 / 1..16000; anything else is refused (503 `not_configured` naming the variable), not clamped. Empty means unset. `NER_SITE_OFFLINE` accepts 1/0, true/false, yes/no, on/off |
 | `NER_SITE_OFFLINE` | unset | `1` swaps the LLM for `ner_site.fake.offline_llm`; `/api/health` reports `"mode": "offline"` |
 | `NER_SITE_DENSE_DIR` | `<project root>/indexes` | where committed dense indexes live |
 | `NER_SITE_CACHE_DIR` | `/tmp/xwalk-ner-site` | BM25 build target |
@@ -265,6 +314,10 @@ class Settings:  # dataclass; from_env(env) reads section 3.2
 
 
 def make_llm(settings: Settings, model: str) -> object: ...  # BudgetedLLM(OpenAICompatClient(...), CallBudget(limit=llm_call_cap))
+# [amended by WS-D] also: validate_request(request, settings) -> NerRequest (defaults resolved,
+# 400 codes); Settings.index_settings() (no key offline); http.serve(BaseHTTPRequestHandler)
+# for the shims; http.env_settings() memoises Settings.from_env(os.environ).
+# llm_factory is Callable[[Settings, str], LLMClient]; the default is offline_llm() offline.
 async def run(request: object, *, settings: Settings, llm: object, indexes: object) -> object: ...
 def handle(method: str, path: str, headers: dict, body: bytes, *, settings: Settings,
            llm_factory: object | None = None) -> tuple[int, dict, bytes]: ...
@@ -391,7 +444,9 @@ only; no network; no paid call.
 
 Gate changes (WS-0): `pyproject.toml` `[tool.pytest.ini_options] pythonpath =
 ["ner-site"]` (append to any existing value); `[tool.mypy]` `files` gains
-`ner-site/ner_site`, `ner-site/api`, `ner-site/tools` and `mypy_path = "ner-site"` (module
+`ner-site/ner_site`, `ner-site/api`, `ner-site/tools` and `mypy_path = "ner-site"` (**[amended by WS-D]** the
+last two were added by WS-D once they existed; `mypy` with no arguments checks all 13
+ner-site files, as top-level modules `ner`, `health`, `serve_local`, `build_indexes`; module
 names must stay unique: no `__init__.py` under `ner-site/api` or `ner-site/tools`, and
 file names must not repeat ones in `scripts/` or `examples/`); the ruff gate commands
 gain `ner-site`; `.github/workflows/ci.yml` lint job adds `ner-site` to both ruff lines
