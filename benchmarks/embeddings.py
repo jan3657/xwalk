@@ -95,7 +95,7 @@ PRESETS: dict[str, Preset] = {
             "NVIDIA, Oct 2026, free; 4096-d, truncatable",
             query_prefix="query: ",
             doc_prefix="passage: ",
-            batch_size=2,  # larger batches fail with HTTP 500 (2026-11-03)
+            batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3.5-8b-it",
@@ -103,7 +103,7 @@ PRESETS: dict[str, Preset] = {
             "as above, roles sent as input_type",
             query_input_type="search_query",
             doc_input_type="search_document",
-            batch_size=2,  # larger batches fail with HTTP 500 (2026-11-03)
+            batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3.5-1b",
@@ -111,7 +111,7 @@ PRESETS: dict[str, Preset] = {
             "NVIDIA, Oct 2026, free; distilled from the 8B",
             query_prefix="query: ",
             doc_prefix="passage: ",
-            batch_size=1,  # larger batches fail with HTTP 500 (2026-11-03)
+            batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3.5-1b-it",
@@ -119,7 +119,7 @@ PRESETS: dict[str, Preset] = {
             "as above, roles sent as input_type",
             query_input_type="search_query",
             doc_input_type="search_document",
-            batch_size=1,  # larger batches fail with HTTP 500 (2026-11-03)
+            batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3-1b",
