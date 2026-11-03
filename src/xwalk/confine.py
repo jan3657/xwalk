@@ -177,6 +177,8 @@ def _job_references(job: Path) -> list[tuple[str, Path | str]]:
     if getattr(spec, "dense", None) is not None:
         retrievers = [*retrievers, ("dense", spec.dense)]
     for where, retriever in retrievers:
+        if getattr(retriever, "uses_api_encoder", False):
+            continue  # an API model id names a remote model, never a local directory
         model = getattr(retriever, "model", None)
         # sentence-transformers loads a local directory when the name exists as a path
         # (relative to the working directory); anything else is a hub id.

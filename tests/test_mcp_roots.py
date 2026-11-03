@@ -200,6 +200,19 @@ def test_a_dense_model_named_by_hub_id_is_not_a_path(root, job):
     Roots([root]).check_job(job)
 
 
+def test_an_api_embedding_model_id_is_never_a_path(root, outside, job):
+    """An `openai_embeddings` model names a remote model; only sentence-transformers
+    would load a local directory of that name."""
+    _edit(
+        job,
+        "retrievers:\n",
+        "retrievers:\n  - kind: dense\n    name: dense\n    encoder: openai_embeddings\n"
+        f"    model: {outside}\n    base_url: https://gateway.example/v1\n"
+        "    dimensions: 8\n",
+    )
+    Roots([root]).check_job(job)
+
+
 def _sql_job(job: Path, url: str) -> None:
     text = job.read_text(encoding="utf-8")
     text = text.replace(

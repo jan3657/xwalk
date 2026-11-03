@@ -207,18 +207,50 @@ Both take the same shape. Several fields apply only to some `kind` values.
 | `exact_fields` | `list[str] \| None` | no | `None` → `["label", "synonyms"]` | bm25 | fields whose whole-string value gets a large boost |
 | `analyzer` | `default \| en_stem` | no | `default` | bm25 | tokenizer for the text field; `en_stem` adds ASCII folding and English stemming |
 | `fuzzy_distance` | `int` | no | `0` | bm25 | edit distance (0 to 2) for extra fuzzy clauses on query terms of 5+ characters; `0` is off |
-| `model` | `str \| None` | required for dense | `None` | dense | sentence-transformers model name |
-| `device` | `str \| None` | no | `None` | dense | torch device |
+| `encoder` | `sentence_transformers \| openai_embeddings` | no | `sentence_transformers` | dense | a local model (needs `xwalk[dense]`) or an OpenAI-compatible `/embeddings` endpoint (needs nothing extra) |
+| `model` | `str \| None` | required for dense | `None` | dense | sentence-transformers model name, or the endpoint's model id (`qwen/qwen3-embedding-8b`) |
 | `query_prefix` | `str` | no | `""` | dense | prepended when encoding a query |
 | `doc_prefix` | `str` | no | `""` | dense | prepended when encoding a document |
-| `revision` | `str \| None` | no | `None` | dense | pinned model revision; unpinned is recorded as `"unknown"` in the index identity |
 | `normalize` | `bool` | no | `true` | dense | unit-normalise vectors |
+| `device` | `str \| None` | no | `None` | sentence_transformers | torch device |
+| `revision` | `str \| None` | no | `None` | sentence_transformers | pinned model revision; unpinned is recorded as `"unknown"` in the index identity |
+| `base_url` | `str` | required | — | openai_embeddings | endpoint base, `/embeddings` is appended (`https://openrouter.ai/api/v1`) |
+| `api_key_env` | `str \| None` | no | `None` | openai_embeddings | name of the environment variable holding the key; omit for a keyless local server. `api_key` is rejected |
+| `dimensions` | `int` | required | — | openai_embeddings | vector length; every returned vector must have it |
+| `send_dimensions` | `bool` | no | `true` | openai_embeddings | send `dimensions` in the request; turn off for a model that rejects the parameter |
+| `truncate` | `bool` | no | `false` | openai_embeddings | cut a longer vector to `dimensions` and renormalise (Matryoshka models only) |
+| `query_input_type` | `str \| None` | no | `None` | openai_embeddings | sent as `input_type` for queries (`search_query`) |
+| `doc_input_type` | `str \| None` | no | `None` | openai_embeddings | sent as `input_type` for documents (`search_document`) |
+| `provider` | `dict \| None` | no | `None` | openai_embeddings | OpenRouter provider routing, passed through (`{order: [nebius], allow_fallbacks: false}`) |
+| `batch_size` | `int` | no | `64` | openai_embeddings | texts per request; a 413 halves it |
+| `timeout` | `float` | no | `60` | openai_embeddings | seconds per request |
+| `max_retries` | `int` | no | `5` | openai_embeddings | retries of a transient failure |
 
 `limit` must be at least 1, and a field marked for one kind is rejected on the other. The
 index identity stored with each built index covers the doc template, the target records and
 these engine settings (for dense: model name, `revision`, dimension, `normalize`, both
-prefixes and the max sequence length); `xwalk match` opens a matching index and refuses a
-different one unless `--rebuild-index`.
+prefixes and the max sequence length; for `openai_embeddings` also the redacted
+`base_url`, `send_dimensions`, `truncate`, both input types and `provider`, but never the
+key, `batch_size`, `timeout` or `max_retries`); `xwalk match` opens a matching index and
+refuses a different one unless `--rebuild-index`. `xwalk validate` checks that an
+`openai_embeddings` retriever's `api_key_env` is set, as it does for the LLM's.
+
+An API-served dense retriever, for example on OpenRouter:
+
+```yaml
+retrievers:
+  - kind: bm25
+    name: bm25
+  - kind: dense
+    name: qwen3
+    encoder: openai_embeddings
+    model: qwen/qwen3-embedding-8b
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    dimensions: 4096
+    send_dimensions: false
+    query_prefix: "Instruct: Given a term, retrieve the concept it names\nQuery: "
+```
 
 Indexes are written to `<index_dir>/<name or kind>`. An unnamed `bm25` retriever is built
 as `bm25`; an unnamed `dense` retriever names itself `dense:<model>` even though its index

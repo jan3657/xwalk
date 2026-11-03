@@ -230,7 +230,7 @@ class Encoder(Protocol):
 ```
 
 Because the encoder is a protocol, an API embedding service can be plugged in with no
-torch installed at all.
+torch installed at all; `OpenAIEmbeddingsEncoder` below is the one xwalk ships.
 
 ### `SentenceTransformerEncoder`
 
@@ -250,6 +250,64 @@ SentenceTransformerEncoder(
 
 `name` is the model name; `dimension` comes from the model. `query_prefix` /
 `doc_prefix` are prepended per side for models that expect instruction prefixes.
+
+### `OpenAIEmbeddingsEncoder`
+
+`xwalk.retrieval.embeddings_api.OpenAIEmbeddingsEncoder` calls `POST {base_url}/embeddings`
+on any service that speaks the OpenAI embeddings shape: OpenRouter, OpenAI, Voyage,
+DeepInfra, a local vLLM or Ollama. It needs only httpx (a base dependency), so dense
+retrieval runs without torch or a downloaded model.
+
+```python
+OpenAIEmbeddingsEncoder(
+    base_url: str,
+    model: str,
+    *,
+    dimensions: int,
+    api_key: str | None = None,
+    send_dimensions: bool = True,
+    truncate: bool = False,
+    normalize: bool = True,
+    query_prefix: str = "",
+    doc_prefix: str = "",
+    query_input_type: str | None = None,
+    doc_input_type: str | None = None,
+    provider: Mapping[str, Any] | None = None,
+    batch_size: int = 64,
+    timeout: float = 60.0,
+    max_retries: int = 5,
+)
+```
+
+- `dimensions` is declared, never probed, so computing an index's identity spends no
+  call. With `send_dimensions` it is sent as the request's `dimensions` (for models
+  that can shorten their output); every returned vector must have exactly that length,
+  or the batch fails with `EmbeddingAPIError`. A provider that ignores the parameter is
+  caught here instead of silently building an index of another shape. `truncate: true`
+  cuts a longer vector to `dimensions` and renormalises it; use it only for models
+  trained for truncation (Matryoshka: Qwen3-Embedding, Voyage 4, OpenAI
+  `text-embedding-3-*`, Nemotron 3.5 Embed).
+- `query_input_type` / `doc_input_type` are sent as `input_type` on each side (for
+  example `search_query` / `search_document` on OpenRouter); the prefixes are prepended
+  to the text, as for `SentenceTransformerEncoder`.
+- `provider` is passed through verbatim as OpenRouter's provider routing preferences
+  (`order`, `only`, `allow_fallbacks`, ...). Pinning a provider makes vectors
+  reproducible when several serve the same model.
+- A blank text becomes a zero vector and is not sent (gateways reject empty strings).
+- HTTP 408/409/429/5xx/529, transport errors, a non-JSON body and an HTTP 200 carrying
+  a transient `error` object are retried with jittered backoff (`Retry-After` is
+  honoured); 400/401/402/403/404 are not. A 413 halves the batch. Failures raise
+  `EmbeddingAPIError`, a `RetrieverError`: during matching the attempt degrades to the
+  remaining retrievers like any failing retriever.
+- `usage` reports requests, texts, prompt tokens and cost as the endpoint stated them;
+  one response without a count makes that total `None` (unknown), never zero.
+  `xwalk index` prints what each build spent.
+
+Identity (`settings`) covers the redacted base URL, `send_dimensions`, `truncate`,
+`normalize`, both prefixes, both input types and `provider`, plus `adapter:
+"openai_embeddings"` so a local and a remote model of the same name never share an
+index. The key, batch size, timeout and retries are not identity. The remote model
+cannot be pinned, so `revision` is `"unknown"`.
 
 ### Building and reopening
 

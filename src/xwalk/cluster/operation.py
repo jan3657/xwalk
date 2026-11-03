@@ -79,8 +79,8 @@ def _preflight_errors(spec: ClusterJobSpec, *, custom_encoder: bool) -> list[OpM
     needs: list[tuple[str, str, str]] = []
     if spec.source.required_extra:
         needs.append(("source", *spec.source.required_extra))
-    if spec.dense is not None and not custom_encoder:
-        needs.append(("dense", "dense", "sentence_transformers"))
+    if spec.dense is not None and spec.dense.required_extra and not custom_encoder:
+        needs.append(("dense", *spec.dense.required_extra))
     if spec.llm.kind == "litellm":
         needs.append(("llm", "litellm", "litellm"))
     for where, extra, module in needs:

@@ -199,7 +199,31 @@ class RecordSpec(_Spec):
 
 
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
-_DENSE_ONLY = ("model", "device", "query_prefix", "doc_prefix", "revision", "normalize")
+_DENSE_ONLY = (
+    "encoder",
+    "model",
+    "device",
+    "query_prefix",
+    "doc_prefix",
+    "revision",
+    "normalize",
+)
+# A local sentence-transformers model only.
+_LOCAL_ENCODER_ONLY = ("device", "revision")
+# An OpenAI-compatible embeddings endpoint only.
+_API_ENCODER_ONLY = (
+    "base_url",
+    "api_key_env",
+    "dimensions",
+    "send_dimensions",
+    "truncate",
+    "query_input_type",
+    "doc_input_type",
+    "provider",
+    "batch_size",
+    "timeout",
+    "max_retries",
+)
 
 
 class RetrieverSpec(_Spec):
@@ -211,12 +235,27 @@ class RetrieverSpec(_Spec):
     analyzer: Literal["default", "en_stem"] = "default"
     fuzzy_distance: int = Field(default=0, ge=0, le=MAX_FUZZY_DISTANCE)
     # dense only
+    encoder: Literal["sentence_transformers", "openai_embeddings"] = "sentence_transformers"
     model: str | None = None
-    device: str | None = None
     query_prefix: str = ""
     doc_prefix: str = ""
-    revision: str | None = None  # a pinned model revision; unpinned is recorded "unknown"
     normalize: bool = True
+    # dense, sentence_transformers only
+    device: str | None = None
+    revision: str | None = None  # a pinned model revision; unpinned is recorded "unknown"
+    # dense, openai_embeddings only
+    base_url: str | None = None
+    api_key_env: str | None = None
+    api_key: str | None = None  # present only so it can be rejected
+    dimensions: int | None = Field(default=None, ge=1)
+    send_dimensions: bool = True
+    truncate: bool = False
+    query_input_type: str | None = None
+    doc_input_type: str | None = None
+    provider: dict[str, Any] | None = None
+    batch_size: int = Field(default=64, ge=1)
+    timeout: float = Field(default=60.0, gt=0.0)
+    max_retries: int = Field(default=5, ge=0)
 
     @model_validator(mode="after")
     def _check(self) -> RetrieverSpec:
@@ -228,15 +267,36 @@ class RetrieverSpec(_Spec):
                 f"retriever name {self.name!r} must start with a letter or digit and use only "
                 "letters, digits, '.', '_' and '-' (it names the index directory)"
             )
+        if self.api_key is not None:
+            raise ValueError(
+                "api_key must not appear in a job file; use api_key_env with the name of "
+                "an environment variable"
+            )
         if self.kind == "dense":
             if not self.model:
                 raise ValueError("a dense retriever needs a model name")
             self._reject_inapplicable(
                 ("exact_fields", "analyzer", "fuzzy_distance"), kind=self.kind
             )
+            if self.encoder == "openai_embeddings":
+                self._reject_for_encoder(_LOCAL_ENCODER_ONLY)
+                if not self.base_url:
+                    raise ValueError("encoder 'openai_embeddings' needs a base_url")
+                if self.dimensions is None:
+                    raise ValueError(
+                        "encoder 'openai_embeddings' needs dimensions: the vector length "
+                        "the model returns (or is asked for)"
+                    )
+            else:
+                self._reject_for_encoder(_API_ENCODER_ONLY)
         else:
-            self._reject_inapplicable(_DENSE_ONLY, kind=self.kind)
+            self._reject_inapplicable((*_DENSE_ONLY, *_API_ENCODER_ONLY), kind=self.kind)
         return self
+
+    def _reject_for_encoder(self, fields: Sequence[str]) -> None:
+        stray = [name for name in fields if name in self.model_fields_set]
+        if stray:
+            raise ValueError(f"{', '.join(stray)} does not apply to encoder {self.encoder!r}")
 
     @property
     def effective_exact_fields(self) -> tuple[str, ...]:
@@ -251,8 +311,14 @@ class RetrieverSpec(_Spec):
         return self.name or self.kind
 
     @property
+    def uses_api_encoder(self) -> bool:
+        return self.kind == "dense" and self.encoder == "openai_embeddings"
+
+    @property
     def required_extra(self) -> tuple[str, str] | None:
-        return ("dense", "sentence_transformers") if self.kind == "dense" else None
+        if self.kind == "dense" and not self.uses_api_encoder:
+            return ("dense", "sentence_transformers")
+        return None
 
 
 class LLMSpec(_Spec):
@@ -448,7 +514,7 @@ class JobSpec(_Spec):
     ) -> list[Retriever]:
         index_dir = Path(index_dir)
         built: list[Retriever] = []
-        for spec in self.retrievers:
+        for position, spec in enumerate(self.retrievers):
             target = index_dir / spec.index_name
             if spec.kind == "bm25":
                 built.append(
@@ -471,7 +537,7 @@ class JobSpec(_Spec):
                         records,
                         templates,
                         target,
-                        self.build_encoder(spec),
+                        self.build_encoder(spec, where=f"retrievers.{position}"),
                         name=spec.name,
                         default_limit=spec.limit,
                     )
@@ -479,9 +545,38 @@ class JobSpec(_Spec):
         return built
 
     @staticmethod
-    def build_encoder(spec: RetrieverSpec) -> Encoder:
-        """The encoder a dense retriever spec describes. Loads the model (requires
-        xwalk[dense]); never encodes anything."""
+    def build_encoder(spec: RetrieverSpec, *, where: str | None = None) -> Encoder:
+        """The encoder a dense retriever spec describes. A local model is loaded
+        (requires xwalk[dense]); an API encoder reads its key variable. Neither encodes
+        anything. `where` is the spec's path in the job file, for the missing-key error."""
+        if spec.uses_api_encoder:
+            from xwalk.retrieval.embeddings_api import OpenAIEmbeddingsEncoder
+
+            api_key = None
+            if spec.api_key_env:
+                api_key = os.environ.get(spec.api_key_env)
+                if not api_key:
+                    raise CredentialMissingError(
+                        spec.api_key_env, where or f"retrievers[{spec.name or 'dense'}]"
+                    )
+            assert spec.base_url is not None and spec.dimensions is not None  # validated
+            return OpenAIEmbeddingsEncoder(
+                spec.base_url,
+                spec.model or "",
+                dimensions=spec.dimensions,
+                api_key=api_key,
+                send_dimensions=spec.send_dimensions,
+                truncate=spec.truncate,
+                normalize=spec.normalize,
+                query_prefix=spec.query_prefix,
+                doc_prefix=spec.doc_prefix,
+                query_input_type=spec.query_input_type,
+                doc_input_type=spec.doc_input_type,
+                provider=spec.provider,
+                batch_size=spec.batch_size,
+                timeout=spec.timeout,
+                max_retries=spec.max_retries,
+            )
         from xwalk.retrieval.dense import SentenceTransformerEncoder
 
         return SentenceTransformerEncoder(

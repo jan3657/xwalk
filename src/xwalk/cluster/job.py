@@ -144,7 +144,7 @@ class ClusterJobSpec(_Spec):
         return ClusterPrompts(relation=self.relation)
 
     def build_encoder(self) -> Encoder | None:
-        return None if self.dense is None else JobSpec.build_encoder(self.dense)
+        return None if self.dense is None else JobSpec.build_encoder(self.dense, where="dense")
 
     def build_llm(self) -> LLMClient:
         """The job's client. Reuses the matching job's construction (credentials too)."""

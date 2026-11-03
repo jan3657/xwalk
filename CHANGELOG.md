@@ -14,6 +14,18 @@ Merged after 0.2.0rc1 was cut: the decider path, developed on the `jev-decider` 
 before the merge; nothing was re-measured for this entry, and the merged tree was tested
 offline only (FakeDecider, no paid calls).
 
+### Added
+
+- Dense retrieval through any OpenAI-compatible `/embeddings` endpoint (OpenRouter,
+  OpenAI, Voyage, DeepInfra, vLLM, Ollama) with `encoder: openai_embeddings` on a dense
+  retriever, or `xwalk.retrieval.embeddings_api.OpenAIEmbeddingsEncoder` in code. It
+  needs no optional extra. The vector length is declared (`dimensions`) and checked on
+  every response; per-side prefixes and `input_type`, OpenRouter provider routing and
+  Matryoshka truncation are identity; the key is not. `xwalk validate` checks its key
+  variable, and `xwalk index` reports the tokens and cost each build spent, as reported
+  by the endpoint (unknown when not reported). Tested offline against a mocked endpoint
+  only.
+
 ### Fixed
 
 - Jev and ChatGPT settle each budget dispatch once after interpreting its outcome,
