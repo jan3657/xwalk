@@ -2,6 +2,15 @@
 
 Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS.md`.
 
+**Current state (3 November 2026).** Every row below marked "awaiting review" or "not
+pushed" was merged to `main` through PR #5 (`feat/engine-revision`, merged 19 October
+2026, `e49700e`); `main` is at `424e14b` plus this session's commits, and CI on `424e14b`
+is green. Version `0.2.0rc1` is **not tagged or published** (GitHub's only release is
+`v0.1.1`). Remaining for the release: register the PyPI Trusted Publisher and the `pypi`
+environment, then tag `v0.2.0rc1` (see `REVIEW.md`, "Next user actions"). Still open:
+pydantic lax coercion of job fields, README relative links on PyPI, `inspect` naming the
+job's model for an injected offline model, and clustering promotion out of experimental.
+
 | Task | State | Starting balance | Ending balance | Branch or commit | Evidence |
 |---|---|---|---|---|---|
 | Final integration review: seven findings | Done (awaiting review; mbox fallback) | unreported | unreported | `engine/final-fixes` | Test-first: 26 regression cases failed before their fixes. Covered transitive MCP symlinks/cycles, redacted Jev endpoint identity v2, WAL reads through database symlinks, explicit ceiling clipping evidence, rewritten retrieval serialization, exactly-once budget settlement, and current stage/multi-query docs. Offline gate with the requested Python, `PYTHONPATH=src`, `HF_HUB_OFFLINE=1`: 2270 passed, 40 skipped, 4 deselected; 8 failures and 40 errors, all sandbox-denied socket binds. Ruff check/format clean (229 files); mypy clean (128 files). Seven finding-specific commits with co-author trailers in `/private/tmp/xwalk-final.mbox`; git metadata writes denied in this worktree. Docs and CHANGELOG updated; Jev v2 deliberately invalidates prior run/cache identity. No paid calls or downloads. |
