@@ -1,0 +1,195 @@
+{
+  "metrics": {
+    "total": 50,
+    "labelled": 50,
+    "accepted_precision": 0.975,
+    "automatic_coverage": 0.8,
+    "review_rate": 0.14,
+    "unmatched_rate": 0.06,
+    "error_rate": 0.0,
+    "unresolved_rate": 0.02,
+    "recall_at_any_status": 0.9,
+    "no_match_precision": 0.0,
+    "no_match_recall": null,
+    "duplicate_target_conflicts": 3,
+    "mean_llm_calls": 2.8,
+    "mean_tokens": 2980.58,
+    "mean_cost_usd": 0.00012518436,
+    "mean_seconds": 0.6187437160199625,
+    "status_counts": {
+      "matched": 40,
+      "needs_review": 7,
+      "unmatched": 3
+    },
+    "reason_counts": {
+      "accept_threshold": 40,
+      "below_accept_threshold": 6,
+      "below_review_floor": 3,
+      "unresolved_output": 1
+    },
+    "calibration_warning": null
+  },
+  "ceiling": {
+    "evaluable": 50,
+    "buckets": {
+      "found": 45,
+      "never_retrieved": 3,
+      "misjudged": 2
+    },
+    "by_retriever": {
+      "bm25": 47
+    },
+    "by_attempt": {
+      "0": 47
+    },
+    "recommendation": "60% of failures never retrieved the gold record -- spend effort on retrieval: the doc template, the retriever set, or retrieval depth"
+  },
+  "thresholds": [
+    {
+      "threshold": 0.2,
+      "coverage": 0.86,
+      "precision": 0.9767441860465116,
+      "accepted": 43,
+      "correct": 42,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.25,
+      "coverage": 0.86,
+      "precision": 0.9767441860465116,
+      "accepted": 43,
+      "correct": 42,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.3,
+      "coverage": 0.86,
+      "precision": 0.9767441860465116,
+      "accepted": 43,
+      "correct": 42,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.35,
+      "coverage": 0.86,
+      "precision": 0.9767441860465116,
+      "accepted": 43,
+      "correct": 42,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.4,
+      "coverage": 0.86,
+      "precision": 0.9767441860465116,
+      "accepted": 43,
+      "correct": 42,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.45,
+      "coverage": 0.84,
+      "precision": 0.9761904761904762,
+      "accepted": 42,
+      "correct": 41,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.5,
+      "coverage": 0.84,
+      "precision": 0.9761904761904762,
+      "accepted": 42,
+      "correct": 41,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.55,
+      "coverage": 0.84,
+      "precision": 0.9761904761904762,
+      "accepted": 42,
+      "correct": 41,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.6,
+      "coverage": 0.84,
+      "precision": 0.9761904761904762,
+      "accepted": 42,
+      "correct": 41,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.65,
+      "coverage": 0.84,
+      "precision": 0.9761904761904762,
+      "accepted": 42,
+      "correct": 41,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.7,
+      "coverage": 0.8,
+      "precision": 0.975,
+      "accepted": 40,
+      "correct": 39,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.75,
+      "coverage": 0.8,
+      "precision": 0.975,
+      "accepted": 40,
+      "correct": 39,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.8,
+      "coverage": 0.76,
+      "precision": 0.9736842105263158,
+      "accepted": 38,
+      "correct": 37,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.85,
+      "coverage": 0.68,
+      "precision": 0.9705882352941176,
+      "accepted": 34,
+      "correct": 33,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.9,
+      "coverage": 0.58,
+      "precision": 1.0,
+      "accepted": 29,
+      "correct": 29,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 0.95,
+      "coverage": 0.4,
+      "precision": 1.0,
+      "accepted": 20,
+      "correct": 20,
+      "conditional_on_recorded_attempts": true
+    },
+    {
+      "threshold": 1.0,
+      "coverage": 0.0,
+      "precision": null,
+      "accepted": 0,
+      "correct": 0,
+      "conditional_on_recorded_attempts": true
+    }
+  ],
+  "partition_sizes": {},
+  "threshold_context": {
+    "conditional_on_recorded_attempts": true,
+    "definition": "Conditional on recorded attempts; changed thresholds may change stopping in a new run.",
+    "policy_source": "supplied",
+    "status_semantics_version": 2,
+    "recorded_semantics_version": 2,
+    "warnings": [],
+    "unavailable_rows": 0
+  }
+}

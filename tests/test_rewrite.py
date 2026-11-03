@@ -110,3 +110,10 @@ async def test_works_when_there_were_no_candidates():
         SOURCE, "", ["ASA"], ak([], TEMPLATES)
     )
     assert len(outcome.proposals) == 1
+
+
+async def test_a_null_explanation_is_empty_not_the_text_none():
+    """Strict structured output sends optional keys as null."""
+    llm = FakeLLM([json.dumps({"queries": ["acetylsalicylic acid"], "explanation": None})])
+    outcome = await QueryRewriter(llm, PROMPTS, TEMPLATES).rewrite(SOURCE, "", ["ASA"], KEYED)
+    assert outcome.explanation == ""

@@ -2,6 +2,15 @@
 
 Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS.md`.
 
+**Current state (3 November 2026).** Every row below marked "awaiting review" or "not
+pushed" was merged to `main` through PR #5 (`feat/engine-revision`, merged 19 October
+2026, `e49700e`); `main` is at `424e14b` plus this session's commits, and CI on `424e14b`
+is green. Version `0.2.0rc1` is **not tagged or published** (GitHub's only release is
+`v0.1.1`). Remaining for the release: register the PyPI Trusted Publisher and the `pypi`
+environment, then tag `v0.2.0rc1` (see `REVIEW.md`, "Next user actions"). Still open:
+pydantic lax coercion of job fields, README relative links on PyPI, `inspect` naming the
+job's model for an injected offline model, and clustering promotion out of experimental.
+
 | Task | State | Starting balance | Ending balance | Branch or commit | Evidence |
 |---|---|---|---|---|---|
 | Final integration review: seven findings | Done (awaiting review; mbox fallback) | unreported | unreported | `engine/final-fixes` | Test-first: 26 regression cases failed before their fixes. Covered transitive MCP symlinks/cycles, redacted Jev endpoint identity v2, WAL reads through database symlinks, explicit ceiling clipping evidence, rewritten retrieval serialization, exactly-once budget settlement, and current stage/multi-query docs. Offline gate with the requested Python, `PYTHONPATH=src`, `HF_HUB_OFFLINE=1`: 2270 passed, 40 skipped, 4 deselected; 8 failures and 40 errors, all sandbox-denied socket binds. Ruff check/format clean (229 files); mypy clean (128 files). Seven finding-specific commits with co-author trailers in `/private/tmp/xwalk-final.mbox`; git metadata writes denied in this worktree. Docs and CHANGELOG updated; Jev v2 deliberately invalidates prior run/cache identity. No paid calls or downloads. |
@@ -375,3 +384,31 @@ No paid calls. An initial full-suite invocation was interrupted during an option
 Hugging Face lookup; the completed gate uses `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`.
 Worktree Git index writes are denied; commits are assembled in
 `/private/tmp/xwalk-b6-commits` and exported to `/private/tmp/xwalk-b6.mbox`.
+
+## First real-model benchmark (3 November 2026)
+
+Budget: an OpenRouter key with a USD 5 limit supplied by Jan. Spent **USD 0.597**, measured
+from the key's reported usage: 0.018 on a 5-record trial, 0.374 on the gpt-4o-mini run,
+0.198 on a gpt-4.1-mini run stopped at Jan's request (results deleted), and 0.0074 on Jev.
+
+- **Bug found and fixed (`e3d455b`).** With the shipped `profile: openai`, the first scorer
+  call failed with HTTP 400: OpenAI's strict mode refuses a schema whose `required` omits a
+  property (SCORE, VERIFY and REWRITE schemas all did). The client now sends strict schemas
+  with every property required and the optional ones nullable; the verifier and rewriter
+  treat null like an absent key. OpenRouter's wrapped errors (`metadata.raw`) now reach the
+  message and the prompt-only fallback. 11 regression cases, 8 failed first.
+- **gpt-4o-mini, LLM path** (`benchmarks/results/real-2026-11-03-gpt-4o-mini/`): xwalk_full is
+  precise on cafeteria_fcd (1.000, coverage 0.70) but fuzzy_difflib has a higher F1 there.
+  On ncbi_disease it has the best F1 (0.805) but accepts 7 no-match rows, more than exact
+  matching (3); on ncbi_disease_nomatch the retries raise false accepts from 3
+  (single attempt) to 7. The pairwise scorer loses to the string baselines on every variant.
+- **Jev, decider path, BM25 only** (`benchmarks/results/real-2026-11-03-jev-bm25/`, served
+  `jev-1.14`): accepted precision 0.93 to 1.00 with at most 1 false accept on no-match rows,
+  at about 1/50 of the gpt-4o-mini cost; coverage is low on ncbi_disease (0.28). The dense
+  retriever of the shipped Jev jobs was left out (weights download). Jev's reported per-row
+  cost (USD 0.0305) is about 4 times what the key was billed (USD 0.0074); not resolved.
+- Noticed, not fixed: `xwalk match --limit 5` prints "matched 50 records into ..." although
+  45 stay pending; `eval` warns that confidence barely separates correct from incorrect
+  matches for Jev on both ncbi variants.
+- n = 50 per variant, one run each. Not run: dense retrieval, LinkTransformer, clustering
+  with Jev, any repeat for variance.

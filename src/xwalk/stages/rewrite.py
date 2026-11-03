@@ -96,7 +96,7 @@ class QueryRewriter:
                 error=str(exc),
             )
 
-        explanation = str(payload.get("explanation", ""))
+        explanation = str(payload.get("explanation") or "")
         queries = payload.get("queries")
         # `queries` must be a list of strings. Anything else is malformed output: no
         # proposals, error noted. A bare string is never iterated into one-letter queries.

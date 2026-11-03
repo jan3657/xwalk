@@ -152,5 +152,6 @@ module = [
     "sqlalchemy.*",
     "litellm.*",
     "mcp.*",
+    "jwt.*",
 ]
 ignore_missing_imports = true

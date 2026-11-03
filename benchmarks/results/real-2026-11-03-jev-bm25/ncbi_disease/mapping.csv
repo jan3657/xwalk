@@ -1,0 +1,51 @@
+source_id,matched_id,confidence,status,reason,explanation,attempts,prompt_tokens,completion_tokens,llm_calls,elapsed_seconds,unknown_calls,cache_hits,cost_usd
+9563950.1,MESH:D009223,0.98,matched,accept_threshold,same 0.98; p_choice 0.99; p_none 0.01; rubric 2.9/3; condition_not_locus 0.98; organ_or_system 0.89; specificity 0.80,1,8589,0,3,0.816,0,0,0.000360738
+9563950.2,MESH:D009223,0.97,matched,accept_threshold,same 0.97; p_choice 0.99; p_none 0.01; rubric 2.9/3; condition_not_locus 0.97; organ_or_system 0.86; specificity 0.70,1,8616,0,3,0.409,0,0,0.00036187200000000006
+9563950.3,MESH:D009223,0.91,matched,accept_threshold,same 0.91; p_choice 0.98; p_none 0.02; rubric 2.6/3; condition_not_locus 0.75; organ_or_system 0.86; specificity 0.63,1,4545,0,3,0.481,0,0,0.00019089
+9563950.4,MESH:D009223,0.91,matched,accept_threshold,same 0.91; p_choice 0.99; p_none 0.01; rubric 2.8/3; condition_not_locus 0.87; organ_or_system 0.85; specificity 0.71,1,4644,0,3,0.528,0,0,0.00019504799999999997
+9634518.1,MESH:D010661,0.85,needs_review,below_accept_threshold,same 0.85; p_choice 0.87; p_none 0.13; rubric 2.5/3; condition_not_locus 0.59; organ_or_system 0.81; specificity 0.30,1,16087,0,4,0.833,0,0,0.000675654
+9634518.2,MESH:D010661,0.63,needs_review,below_accept_threshold,same 0.63; p_choice 0.87; p_none 0.13; rubric 2.4/3; condition_not_locus 0.93; organ_or_system 0.75; specificity 0.43,1,5566,0,3,0.525,0,0,0.00023377199999999998
+9634518.3,MESH:D010661,0.6,needs_review,below_accept_threshold,same 0.60; p_choice 0.90; p_none 0.10; rubric 2.5/3; condition_not_locus 0.95; organ_or_system 0.78; specificity 0.36,1,5563,0,3,0.469,0,0,0.000233646
+9634518.4,,,needs_review,unresolved_output,same 0.51; NONE 0.51,1,4504,0,2,0.512,0,0,0.000189168
+9634518.5,,,unmatched,no_candidates,no candidates,1,0,0,0,0.004,0,0,0.0
+9634518.6,MESH:D010661,0.73,needs_review,below_accept_threshold,same 0.73; p_choice 0.63; p_none 0.37; rubric 1.7/3; condition_not_locus 0.81; organ_or_system 0.80; specificity 0.35,1,5843,0,3,0.483,0,0,0.000245406
+9634518.7,MESH:D010661,0.81,needs_review,below_accept_threshold,same 0.81; p_choice 0.90; p_none 0.10; rubric 2.5/3; condition_not_locus 0.93; organ_or_system 0.85; specificity 0.49,1,16175,0,4,0.747,0,0,0.00067935
+9634518.8,MESH:D010661,0.91,needs_review,below_accept_threshold,same 0.91; p_choice 0.95; p_none 0.05; rubric 2.6/3; condition_not_locus 0.87; organ_or_system 0.82; specificity 0.49,1,16163,0,4,0.57,0,0,0.000678846
+9634518.9,MESH:D010661,0.53,needs_review,below_accept_threshold,same 0.53; p_choice 0.76; p_none 0.24; rubric 1.6/3; condition_not_locus 0.95; organ_or_system 0.71; specificity 0.28,1,5380,0,3,0.441,0,0,0.00022595999999999998
+9949209.1,MESH:C565846,0.67,needs_review,below_accept_threshold,same 0.67; p_choice 0.62; p_none 0.26; rubric 1.9/3; condition_not_locus 0.66; organ_or_system 0.82; specificity 0.34,1,4170,0,3,0.843,0,0,0.00017513999999999998
+9949209.10,,,unmatched,no_candidates,no candidates,1,0,0,0,0.044,0,0,0.0
+9949209.11,MESH:D008107,0.38,needs_review,below_accept_threshold,same 0.38; p_choice 0.94; p_none 0.06; rubric 1.9/3; condition_not_locus 0.88; organ_or_system 0.97; specificity 0.72,1,8912,0,3,0.869,0,0,0.00037430400000000005
+9949209.12,,,unmatched,below_review_floor,same 0.23,1,1392,0,1,0.566,0,0,5.8464e-05
+9949209.13,,,unmatched,no_candidates,no candidates,1,0,0,0,0.046,0,0,0.0
+9949209.14,,,unmatched,no_candidates,no candidates,1,0,0,0,0.049,0,0,0.0
+9949209.15,MESH:D006527,0.81,matched,accept_threshold,same 0.81; p_choice 0.70; p_none 0.30; rubric 2.4/3; condition_not_locus 0.62; organ_or_system 0.83; specificity 0.73,1,4782,0,3,0.832,0,0,0.000200844
+9949209.16,,,unmatched,no_candidates,no candidates,1,0,0,0,0.05,0,0,0.0
+9949209.17,,,unmatched,no_candidates,no candidates,1,0,0,0,0.015,0,0,0.0
+9949209.2,,,needs_review,unresolved_output,same 0.36; NONE 0.66,1,6090,0,2,0.845,0,0,0.00025578
+9949209.3,,,unmatched,below_review_floor,same 0.21,1,2887,0,1,0.651,0,0,0.000121254
+9949209.4,,,needs_review,unresolved_output,same 0.47; NONE 0.59,1,6050,0,2,0.751,0,0,0.0002541
+9949209.5,MESH:D006527,0.99,matched,accept_threshold,same 0.99; p_choice 0.98; p_none 0.02; rubric 2.8/3; condition_not_locus 0.95; organ_or_system 0.81; specificity 0.93,1,10049,0,3,0.8,0,0,0.00042205799999999995
+9949209.6,MESH:D006527,0.98,matched,accept_threshold,same 0.98; p_choice 0.98; p_none 0.02; rubric 2.7/3; condition_not_locus 0.92; organ_or_system 0.79; specificity 0.93,1,4683,0,3,1.154,0,0,0.000196686
+9949209.7,,,unmatched,below_review_floor,same 0.19,1,1469,0,1,0.566,0,0,6.1698e-05
+9949209.8,,,unmatched,below_review_floor,same 0.04,1,3506,0,1,0.587,0,0,0.000147252
+9949209.9,,,needs_review,unresolved_output,same 0.67; NONE 0.60,1,2257,0,2,0.713,0,0,9.479400000000001e-05
+9950360.1,,,unmatched,below_review_floor,same 0.28,1,1591,0,1,0.436,0,0,6.6822e-05
+9950360.10,MESH:D011125,0.59,needs_review,below_accept_threshold,same 0.59; p_choice 0.58; p_none 0.42; rubric 1.0/3; condition_not_locus 0.30; organ_or_system 0.75; specificity 0.55,1,5873,0,3,0.483,0,0,0.000246666
+9950360.11,,,unmatched,selector_abstained,same 0.30; NONE 0.70,1,4081,0,2,0.509,0,0,0.000171402
+9950360.12,MESH:D015179,0.95,matched,accept_threshold,same 0.95; p_choice 0.98; p_none 0.02; rubric 2.8/3; condition_not_locus 0.96; organ_or_system 0.98; specificity 0.73,1,6512,0,3,0.478,0,0,0.000273504
+9950360.13,,,unmatched,selector_abstained,same 0.33; NONE 0.73,1,4085,0,2,0.3,0,0,0.00017157
+9950360.14,,,unmatched,no_candidates,no candidates,1,0,0,0,0.001,0,0,0.0
+9950360.15,MESH:D015179,0.95,matched,accept_threshold,same 0.95; p_choice 0.98; p_none 0.02; rubric 2.8/3; condition_not_locus 0.97; organ_or_system 0.98; specificity 0.84,1,6518,0,3,0.468,0,0,0.000273756
+9950360.16,,,unmatched,no_candidates,no candidates,1,0,0,0,0.001,0,0,0.0
+9950360.17,MESH:D015179,0.92,matched,accept_threshold,same 0.92; p_choice 0.94; p_none 0.06; rubric 2.6/3; condition_not_locus 0.87; organ_or_system 0.92; specificity 0.57,1,6473,0,3,0.396,0,0,0.000271866
+9950360.18,,,unmatched,no_candidates,no candidates,1,0,0,0,0.001,0,0,0.0
+9950360.19,,,unmatched,no_candidates,no candidates,1,0,0,0,0.001,0,0,0.0
+9950360.2,,,unmatched,no_candidates,no candidates,1,0,0,0,0.009,0,0,0.0
+9950360.20,MESH:D015179,0.93,matched,accept_threshold,same 0.93; p_choice 0.98; p_none 0.02; rubric 2.8/3; condition_not_locus 0.83; organ_or_system 0.91; specificity 0.75,1,6224,0,3,0.622,0,0,0.000261408
+9950360.3,MESH:D011125,0.64,needs_review,below_accept_threshold,same 0.64; p_choice 0.57; p_none 0.43; rubric 0.8/3; condition_not_locus 0.17; organ_or_system 0.80; specificity 0.61,1,5837,0,3,0.821,0,0,0.00024515400000000003
+9950360.4,MESH:D015179,0.91,matched,accept_threshold,same 0.91; p_choice 0.98; p_none 0.02; rubric 2.8/3; condition_not_locus 0.96; organ_or_system 0.98; specificity 0.77,1,6503,0,3,0.816,0,0,0.000273126
+9950360.5,MESH:D015179,0.88,matched,accept_threshold,same 0.88; p_choice 0.98; p_none 0.02; rubric 2.9/3; condition_not_locus 0.81; organ_or_system 0.97; specificity 0.75,1,6578,0,3,0.795,0,0,0.000276276
+9950360.6,MESH:D011125,0.96,matched,accept_threshold,same 0.96; p_choice 0.95; p_none 0.05; rubric 2.0/3; condition_not_locus 0.77; organ_or_system 0.82; specificity 0.83,1,11047,0,3,0.791,0,0,0.000463974
+9950360.7,,,unmatched,no_candidates,no candidates,1,0,0,0,0.001,0,0,0.0
+9950360.8,MESH:D011125,0.65,needs_review,below_accept_threshold,same 0.65; p_choice 0.73; p_none 0.27; rubric 1.0/3; condition_not_locus 0.31; organ_or_system 0.79; specificity 0.59,1,7840,0,3,0.489,0,0,0.00032928
+9950360.9,MESH:D011125,0.72,needs_review,below_accept_threshold,same 0.72; p_choice 0.60; p_none 0.40; rubric 0.9/3; condition_not_locus 0.21; organ_or_system 0.77; specificity 0.56,1,5849,0,3,0.495,0,0,0.000245658
