@@ -40,6 +40,14 @@ offline only (FakeDecider, no paid calls).
   default encoder; the other pilots were unchanged. Opt-in: indexes without it keep
   their identity.
 
+- `xwalk ui --dense api` (and the same flag on `scripts/build_ontology_library.py`) adds
+  the default API encoder with per-name vectors as the explorer's dense head
+  (`dense-qwen3`, shown as "Semantic (Qwen3)"), with no PyTorch or model download.
+  `--dense` alone still means the local models. Locally, `OPENROUTER_API_KEY` can be set
+  on the Settings page; with `--public` it must be the operator's, in the environment,
+  because library indexes are shared. A missing key is reported as `credential_missing`
+  with a pointer to the Settings page. Settings shows the server's retrieval heads.
+
 ### Fixed
 
 - Jev and ChatGPT settle each budget dispatch once after interpreting its outcome,

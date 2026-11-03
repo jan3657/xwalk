@@ -392,13 +392,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ui.add_argument(
         "--dense",
-        action="store_true",
-        help="enable general and biomedical dense retrieval alongside BM25 (requires xwalk[dense])",
+        nargs="?",
+        const="local",
+        default="off",
+        choices=("off", "local", "api"),
+        help="dense retrieval alongside BM25: 'local' (the default when given alone) adds "
+        "general and biomedical sentence-transformers models (requires xwalk[dense]); "
+        "'api' adds Qwen3-Embedding 8B through OpenRouter (needs OPENROUTER_API_KEY)",
     )
     ui.add_argument(
         "--dense-device",
         default=None,
-        help="dense encoder device, e.g. cpu or mps (default: automatic)",
+        help="local dense encoder device, e.g. cpu or mps (default: automatic)",
     )
 
     review = sub.add_parser("review", help="export or apply human review")

@@ -411,26 +411,42 @@ def make_server(
     max_tasks: int = DEFAULT_MAX_TASKS,
     frame_ancestors: str | None = None,
     chatgpt_login: bool = False,
-    dense: bool = False,
+    dense: bool | str = False,
     dense_device: str | None = None,
     trust_proxy: bool = False,
     sessions_per_ip: int = DEFAULT_NEW_PER_CLIENT,
     allow_local_downloads: bool = False,
 ) -> UIServer:
-    from xwalk.ui.retrieval import heads
+    from xwalk.ui.retrieval import credential_names, dense_mode, heads
 
     if trust_proxy and not public:
         raise ValueError("--trust-proxy only applies with --public")
     if allow_local_downloads and public:
         raise ValueError("--allow-local-downloads cannot be combined with --public")
     retrieval_heads = heads(dense=dense, device=dense_device)
-    if dense:
+    mode = dense_mode(dense)
+    if mode == "local":
         from xwalk._extras import require
 
         try:
             require("dense", "sentence_transformers", purpose="Dense ontology search")
         except ImportError as exc:
             raise ValueError(str(exc)) from None
+    elif mode == "api":
+        if offline_only:
+            raise ValueError(
+                "--dense api calls an embeddings endpoint; it cannot be combined with "
+                "--offline-only"
+            )
+        if public:
+            # The library's indexes are shared by every visitor, so they are embedded
+            # with the operator's key, never with one visitor's session key.
+            missing = sorted(n for n in credential_names(retrieval_heads) if not os.environ.get(n))
+            if missing:
+                raise ValueError(
+                    f"--dense api with --public embeds with the operator's key: set "
+                    f"{', '.join(missing)} in the environment before starting"
+                )
     if chatgpt_login:
         if host != "127.0.0.1":
             raise ValueError(
@@ -539,7 +555,7 @@ def serve(
     max_tasks: int = DEFAULT_MAX_TASKS,
     frame_ancestors: str | None = None,
     chatgpt_login: bool = False,
-    dense: bool = False,
+    dense: bool | str = False,
     dense_device: str | None = None,
     trust_proxy: bool = False,
     sessions_per_ip: int = DEFAULT_NEW_PER_CLIENT,

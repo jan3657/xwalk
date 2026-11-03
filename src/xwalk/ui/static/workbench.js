@@ -528,7 +528,7 @@ function candidatesView(r) {
         return h("tr", {},
           h("td", {}, h("b", {}, row.text)),
           h("td", {}, best ? [best.exact ? badge("matched", "exact") : null, " ", h("code", {}, best.id), " ", best.label, best.synonyms.length ? h("div", { class: "muted small" }, best.synonyms.join("; ")) : null,
-            h("div", { class: "muted small" }, Object.entries(best.retrievers || {}).map(([name, rank]) => `${({ bm25: "Keyword", "dense-general": "Semantic", "dense-biomedical": "Biomedical" }[name] || name)} #${rank}`).join(" · "))] : h("span", { class: "muted" }, "nothing retrieved")),
+            h("div", { class: "muted small" }, Object.entries(best.retrievers || {}).map(([name, rank]) => `${headLabel(name)} #${rank}`).join(" · "))] : h("span", { class: "muted" }, "nothing retrieved")),
           h("td", { class: "small" }, best ? best.ontology || "" : ""),
           h("td", { class: "small" }, rest.map((c) => h("div", {}, h("code", {}, c.id), " ", c.label, c.exact ? [" ", badge("matched", "exact")] : null))));
       })))));
@@ -716,6 +716,10 @@ views.files = async (page) => {
   ]);
 };
 
+// Display names of the explorer's retrieval heads (xwalk/ui/retrieval.py).
+const HEAD_LABELS = { bm25: "Keyword", "dense-general": "Semantic", "dense-biomedical": "Biomedical", "dense-qwen3": "Semantic (Qwen3)" };
+const headLabel = (name) => HEAD_LABELS[name] || name;
+
 views.settings = async (page) => {
   const { credentials } = await api("GET", "/api/credentials");
   const chatgpt = await api("GET", "/api/chatgpt");
@@ -788,6 +792,7 @@ views.settings = async (page) => {
         ["workspace", h("code", {}, state.info.root)],
         ["runs with a model", state.info.allow_endpoint ? `allowed, at most ${state.info.max_calls_cap} calls each` : "disabled (--offline-only)"],
         ["largest upload", `${state.info.max_upload_mb} MB`],
+        ["retrieval", (state.info.retrieval_heads || ["bm25"]).map(headLabel).join(" + ")],
         ["xwalk", state.info.version],
       ])),
   ]);
