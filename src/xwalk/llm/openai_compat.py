@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -70,9 +71,61 @@ def _error_message(response: httpx.Response) -> str:
     except ValueError:
         return response.text[:500]
     error = body.get("error", body) if isinstance(body, dict) else body
-    if isinstance(error, dict):
-        return str(error.get("message", error))[:500]
-    return str(error)[:500]
+    if not isinstance(error, dict):
+        return str(error)[:500]
+    message = str(error.get("message", error))
+    # Gateways (OpenRouter) say only "Provider returned error" and put the upstream
+    # provider's own error under metadata.raw. Without it the cause is invisible, and the
+    # structured-output fallback below cannot recognise a rejected response_format.
+    metadata = error.get("metadata")
+    raw = metadata.get("raw") if isinstance(metadata, dict) else None
+    if isinstance(raw, str) and raw:
+        try:
+            upstream = json.loads(raw)
+        except ValueError:
+            upstream = raw
+        if isinstance(upstream, dict):
+            inner = upstream.get("error", upstream)
+            upstream = inner.get("message", inner) if isinstance(inner, dict) else inner
+        message = f"{message}: {upstream}"
+    return message[:500]
+
+
+def strict_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
+    """The form of `schema` that OpenAI's strict structured output accepts.
+
+    Strict mode requires every object to list all of its properties in `required` and to
+    forbid additional properties. An optional property becomes required but nullable, so
+    the model sends null where it would have left the key out; the stage parsers treat
+    null and absent alike. The input is not modified.
+    """
+
+    def walk(node: Any) -> Any:
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        if not isinstance(node, Mapping):
+            return node
+        out = {key: walk(value) for key, value in node.items()}
+        properties = out.get("properties")
+        if isinstance(properties, dict):
+            required = set(node.get("required", ()))
+            for name, prop in properties.items():
+                if name not in required and isinstance(prop, dict):
+                    properties[name] = _nullable(prop)
+            out["required"] = list(properties)
+            out["additionalProperties"] = False
+        return out
+
+    return dict(walk(schema))
+
+
+def _nullable(prop: dict[str, Any]) -> dict[str, Any]:
+    kind = prop.get("type")
+    if isinstance(kind, str):
+        return {**prop, "type": [kind, "null"]} if kind != "null" else prop
+    if isinstance(kind, list):
+        return prop if "null" in kind else {**prop, "type": [*kind, "null"]}
+    return {"anyOf": [prop, {"type": "null"}]}
 
 
 def _reported_usage(raw: object) -> Usage:
@@ -260,7 +313,11 @@ class OpenAICompatClient:
                 "type": "json_schema",
                 "json_schema": {
                     "name": request.schema_name,
-                    "schema": dict(request.schema),
+                    "schema": (
+                        strict_schema(request.schema)
+                        if self._capabilities.strict_schema
+                        else dict(request.schema)
+                    ),
                     "strict": self._capabilities.strict_schema,
                 },
             }

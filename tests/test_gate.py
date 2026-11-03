@@ -185,3 +185,16 @@ async def test_verifier_prompt_is_not_the_scorer_prompt():
     await Scorer(scorer_llm, PROMPTS, TEMPLATES).score(SOURCE, "", KEYED, "C01")
     await Verifier(verifier_llm, PROMPTS, TEMPLATES).verify(SOURCE, "", KEYED, "C01")
     assert scorer_llm.requests[0].user != verifier_llm.requests[0].user
+
+
+async def test_verifier_null_confidence_is_absent_not_an_error():
+    """Strict structured output sends optional keys as null; null means 'not given'."""
+    llm = FakeLLM([verify_reply(decision="support", confidence_score=None)])
+    verdict = await Verifier(llm, PROMPTS, TEMPLATES).verify(SOURCE, "", KEYED, "C01")
+    assert verdict.decision == "support" and verdict.error is None
+
+
+async def test_scorer_null_proposal_lists_are_empty():
+    llm = FakeLLM([score_reply(better_candidate_keys=None, better_queries=None)])
+    outcome = await Scorer(llm, PROMPTS, TEMPLATES).score(SOURCE, "", KEYED, "C01")
+    assert outcome.proposals == () and outcome.error is None

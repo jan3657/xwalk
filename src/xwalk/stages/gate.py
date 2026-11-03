@@ -242,7 +242,7 @@ class Verifier:
             problems.append(f"unrecognised decision {raw_decision!r}")
         # The verdict's own confidence is advisory; an invalid one is dropped, not stored.
         confidence, invalid = parse_confidence(payload.get("confidence_score"))
-        if invalid is not None and "confidence_score" in payload:
+        if invalid is not None and payload.get("confidence_score") is not None:
             problems.append(invalid)
 
         raw_preferred = payload.get("preferred_key")

@@ -487,3 +487,101 @@ def test_the_seed_enters_the_fingerprint_only_when_set():
 
     assert client(h).fingerprint == client(h, seed=None).fingerprint
     assert client(h).fingerprint != client(h, seed=1).fingerprint
+
+
+# --- strict structured output (OpenAI rejects a strict schema with optional keys) -----
+
+
+def _strict_violations(schema: object, path: str = "$") -> list[str]:
+    """What OpenAI's strict mode refuses: an object whose `required` omits a property."""
+    problems: list[str] = []
+    if isinstance(schema, dict):
+        if schema.get("type") == "object" or "properties" in schema:
+            props = schema.get("properties", {})
+            if sorted(schema.get("required", [])) != sorted(props):
+                problems.append(f"{path}: required != properties")
+            if schema.get("additionalProperties") is not False:
+                problems.append(f"{path}: additionalProperties is not false")
+        for key, value in schema.items():
+            problems += _strict_violations(value, f"{path}.{key}")
+    elif isinstance(schema, list):
+        for index, value in enumerate(schema):
+            problems += _strict_violations(value, f"{path}[{index}]")
+    return problems
+
+
+OPTIONAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "a": {"type": "string"},
+        "b": {"type": "array", "items": {"type": "string"}},
+        "c": {"type": ["string", "null"]},
+    },
+    "required": ["a"],
+    "additionalProperties": False,
+}
+
+
+async def _sent_schema(schema, *, strict: bool) -> dict:
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=ok_body())
+
+    llm = client(handler, capabilities=LLMCapabilities(json_schema=True, strict_schema=strict))
+    await llm.complete(LLMRequest(system="", user="u", schema=schema))
+    return seen[-1]["response_format"]["json_schema"]["schema"]
+
+
+async def test_a_strict_request_requires_every_property_and_makes_optional_ones_nullable():
+    sent = await _sent_schema(OPTIONAL_SCHEMA, strict=True)
+    assert _strict_violations(sent) == []
+    assert sent["properties"]["a"] == {"type": "string"}  # was required: unchanged
+    assert sent["properties"]["b"]["type"] == ["array", "null"]
+    assert sent["properties"]["c"]["type"] == ["string", "null"]  # already nullable
+    assert OPTIONAL_SCHEMA["required"] == ["a"]  # the caller's schema is not mutated
+
+
+async def test_a_non_strict_request_sends_the_schema_unchanged():
+    assert await _sent_schema(OPTIONAL_SCHEMA, strict=False) == OPTIONAL_SCHEMA
+
+
+@pytest.mark.parametrize(
+    "name", ["SELECT_SCHEMA", "SCORE_SCHEMA", "VERIFY_SCHEMA", "REWRITE_SCHEMA"]
+)
+async def test_every_bundled_stage_schema_is_sent_in_a_strict_valid_form(name):
+    """The openai profile asks for strict mode; OpenAI refused SCORE_SCHEMA with HTTP 400."""
+    from xwalk.prompts import contract
+
+    assert _strict_violations(await _sent_schema(getattr(contract, name), strict=True)) == []
+
+
+async def test_a_gateway_wrapped_error_names_the_upstream_message():
+    """OpenRouter puts the provider's real error under error.metadata.raw."""
+    raw = json.dumps({"error": {"message": "Invalid schema for response_format 'score'"}})
+    wrapped = {
+        "error": {"message": "Provider returned error", "code": 400, "metadata": {"raw": raw}}
+    }
+    llm = client(lambda r: httpx.Response(400, json=wrapped))
+    with pytest.raises(LLMFatalError, match="Invalid schema for response_format"):
+        await llm.complete(LLMRequest(system="", user="u"))
+
+
+async def test_a_gateway_wrapped_format_rejection_falls_back_to_prompt_only_json():
+    raw = json.dumps({"error": {"message": "response_format json_schema is not supported"}})
+    wrapped = {
+        "error": {"message": "Provider returned error", "code": 400, "metadata": {"raw": raw}}
+    }
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body)
+        if "response_format" in body:
+            return httpx.Response(400, json=wrapped)
+        return httpx.Response(200, json=ok_body())
+
+    llm = client(handler, capabilities=LLMCapabilities(json_schema=True))
+    response = await llm.complete(LLMRequest(system="", user="u", schema=SCHEMA))
+    assert response.structured is False and len(calls) == 2
