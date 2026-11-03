@@ -84,11 +84,11 @@ colour scheme.
 | Name | Default | Meaning |
 |---|---|---|
 | `OPENROUTER_API_KEY` | unset | The operator's key, used for the chat call and query embeddings. Without it (and not offline) `/api/ner` answers 503 `not_configured`. |
-| `NER_SITE_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL. |
+| `NER_SITE_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL for the **chat call only**. Query embeddings always go to OpenRouter (`https://openrouter.ai/api/v1/embeddings`) with `OPENROUTER_API_KEY`, whatever this says: the committed dense indexes record that embeddings URL in their identity, so embedding elsewhere would need a code change and rebuilt indexes. |
 | `NER_SITE_MODELS` | `openai/gpt-4o-mini,google/gemini-2.5-flash-lite,qwen/qwen3-next-80b-a3b-instruct` | Comma-separated model allowlist; the first is the default. |
-| `NER_SITE_PASSCODE` | unset | When set, every `/api/ner` request must send it as `X-Passcode`; the page asks for it and keeps it in `sessionStorage`. |
+| `NER_SITE_PASSCODE` | unset | When set, every `/api/ner` request must send it as `X-Passcode`; the page asks for it and keeps it in `sessionStorage`. ASCII only (8 characters or more recommended): header values arrive as Latin-1, so a non-ASCII passcode could never match and is refused with 503 `not_configured`. |
 | `NER_SITE_MAX_CHARS` | 5000 | Maximum text length (characters). |
-| `NER_SITE_MAX_ENTITIES` | 25 | Maximum entities kept per request. |
+| `NER_SITE_MAX_ENTITIES` | 25 | Maximum entities kept per request; the default prompt (and `/api/health`'s `default_prompt`) states this number. |
 | `NER_SITE_MAX_PROMPT_CHARS` | 4000 | Maximum prompt length (characters). |
 | `NER_SITE_OFFLINE` | unset | `1` replaces the LLM with the stand-in extractor; `/api/health` reports `"mode": "offline"`. |
 | `NER_SITE_DENSE_DIR` | `<project root>/indexes` | Where the committed dense indexes live. |
@@ -98,8 +98,10 @@ colour scheme.
 
 - **Set a spend limit on the OpenRouter key.** It is the only hard cap that holds
   across all function instances. Per request the service allows at most 3 LLM calls
-  (retries included) and 25 entities (one embedding request each), and a function run
-  is cut off at 120 s, but nothing stops many requests in a row.
+  (retries included) and 25 entities (one embedding request each, never retried), and
+  a request finishes by about 105 s (90 s for the extraction, one deadline for all of
+  the mapping; Vercel cuts a run off at 120 s), but nothing stops many requests in a
+  row.
 - **Set `NER_SITE_PASSCODE` for a public deployment.** Without it anyone who finds the
   URL can spend your key. Share the passcode out of band; the service compares it
   in constant time. For more, Vercel's firewall rate limiting is an option.
@@ -164,7 +166,45 @@ real key.
   which is not in the 200-term ChEBI sample, got only loose dense neighbours. The
   request log line held no text, prompt or key.
 
+After the review fixes (request deadline, per-request thread pool, no retry sleeps on
+query embeddings), the same live check was repeated in the 3.12 venv: 223 site tests
+pass; two runs of the example text gave 10 entities, all with candidates, one LLM call
+(641 + 186 tokens), 10 embedding requests, dense ok, in 10.7 and 12.6 s. Mapping took
+7.5 to 10 s against about 1 s in the first live run; single query embeddings through
+OpenRouter were measured at 0.2 to 3.3 s each at that time, so the spread is provider
+latency, not the fixes. Expect a few seconds to about 15 s per request.
+
 Still not run: a Vercel build or deployment.
+
+### Review fixes, 3 November 2026 (Python 3.13, the repository venv)
+
+What was run, and nothing more (offline only: FakeLLM, the offline stand-in,
+`httpx.MockTransport`; no OpenRouter call, no Vercel build):
+
+- New tests first, each seen failing for its reason before the fix: a stalled query
+  gateway (6 s) with a 1 s retriever timeout and six entities made `handle` take 11.4 s
+  (it waited for abandoned threads); with a 2 s request deadline 11.4 s; a 429 with
+  `Retry-After: 120` left the query encoder sleeping; dense failing for every entity
+  still reported `dense: ok`; a lone surrogate gave 500 `internal`
+  (`UnicodeEncodeError` in httpx); `Content-Length: ²`, `¹` and 5000 digits dropped the
+  shim's connection; a non-ASCII passcode was accepted; the default prompt said "at
+  most 25" with `NER_SITE_MAX_ENTITIES=7`; a retriever note carried the key and URL
+  userinfo into the entity notes. After the fixes the stalled request returns in about
+  2 s and the deadline one inside 3.5 s, measured by wall clock in the tests.
+- Each redaction step disabled in turn (scrub's secret replacement, scrub's URL
+  redaction, the note cleaning in `run`, the body filter, the log filter): every one
+  made at least one test fail; restored exactly.
+- `python -m pytest -q tests/test_site_*.py`: 223 passed. The four gates from
+  `CONTRIBUTING.md`, all passing.
+- `python ner-site/tools/serve_local.py --offline --port 8797` (key removed from its
+  environment): health 200 `mode: offline`, default prompt "at most 25 entities", dense
+  unavailable (key not set); POST with the page's example text 200, 11 entities, 9 with
+  matches, `llm_calls: 0`, null tokens; `Content-Length: ²` 400 `bad_header`; a
+  `"\ud800"` text 400 `bad_json`. `tools/screenshot.mjs` at 1280 px: exit 0, "11
+  entities found, 9 with candidate terms".
+
+Not run: the deadline against a real slow provider, anything live, Python 3.12 again,
+a Vercel deployment.
 
 ### For the operator after deploying
 

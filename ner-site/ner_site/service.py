@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from ner_site.extract import DEFAULT_PROMPT, MAX_TOKENS, TEMPERATURE, extract
+from ner_site.extract import MAX_TOKENS, TEMPERATURE, extract, render_default_prompt
 from ner_site.indexes import OntologyIndex, summarise_status
 from ner_site.mapping import MapStats, map_entities
 from ner_site.schema import (
@@ -54,11 +54,14 @@ LLM_TIMEOUT_S = 60.0  # one HTTP request
 LLM_MAX_RETRIES = 2  # so at most 3 requests, the same as the call budget
 
 # Wall-clock bounds inside the function's 120 s maxDuration (vercel.json): the whole
-# extraction step, retries included, then each retriever call while mapping.
+# extraction step, retries included; then the whole mapping step gets what is left of
+# REQUEST_DEADLINE_S (at least MIN_MAP_BUDGET_S), and each retriever call within it at
+# most MAP_RETRIEVER_TIMEOUT_S. Worst case: 90 s extracting, 10 s mapping, plus
+# mapping.LOCAL_GRACE_S for BM25 only, so a request ends by about 105 s.
 EXTRACT_TIMEOUT_S = 90.0
 MAP_RETRIEVER_TIMEOUT_S = 30.0
-REQUEST_DEADLINE_S = 115.0
-MIN_RETRIEVER_TIMEOUT_S = 5.0
+REQUEST_DEADLINE_S = 100.0
+MIN_MAP_BUDGET_S = 5.0
 
 MAX_ERROR_DETAIL = 300
 MIN_SCRUBBED_CHARS = 8
@@ -133,6 +136,12 @@ class Settings:
         else:
             models = DEFAULT_MODELS
 
+        passcode = get("NER_SITE_PASSCODE") or None
+        if passcode is not None and not passcode.isascii():
+            # http.server decodes header values as Latin-1 and browsers refuse other
+            # characters in a header, so a non-ASCII passcode could never match.
+            raise SettingsError("NER_SITE_PASSCODE must be ASCII (printable, no accents)")
+
         offline_raw = get("NER_SITE_OFFLINE").lower()
         if offline_raw not in _TRUE | _FALSE:
             raise SettingsError("NER_SITE_OFFLINE must be 1 or 0 (or true/false, yes/no, on/off)")
@@ -152,7 +161,7 @@ class Settings:
             api_key=get("OPENROUTER_API_KEY") or None,
             base_url=base_url.rstrip("/"),
             models=models,
-            passcode=get("NER_SITE_PASSCODE") or None,
+            passcode=passcode,
             limits=Limits(**numbers),
             offline=offline_raw in _TRUE,
             dense_dir=Path(dense) if dense else PROJECT_ROOT / "indexes",
@@ -171,6 +180,12 @@ class Settings:
     @property
     def default_model(self) -> str:
         return self.offered_models[0]
+
+    @property
+    def default_prompt(self) -> str:
+        """The extraction prompt used when a request sends none, stating this
+        deployment's entity limit; ``/api/health`` serves it."""
+        return render_default_prompt(self.limits.max_entities)
 
     @property
     def configured(self) -> bool:
@@ -248,7 +263,9 @@ def validate_request(request: NerRequest, settings: Settings) -> NerRequest:
             "text_too_long",
             f"text is {len(request.text)} characters; the limit is {limits.max_chars}",
         )
-    prompt = request.prompt if request.prompt and request.prompt.strip() else DEFAULT_PROMPT
+    prompt = (
+        request.prompt if request.prompt and request.prompt.strip() else settings.default_prompt
+    )
     if len(prompt) > limits.max_prompt_chars:
         raise _bad(
             "prompt_too_long",
@@ -309,6 +326,35 @@ def retrieval_status(
     return summary
 
 
+def _clean(note: str, settings: Settings) -> str:
+    """A retriever note fit for a response: secrets and URL userinfo removed, capped."""
+    note = scrub(note, settings)
+    return note if len(note) <= MAX_ERROR_DETAIL else note[: MAX_ERROR_DETAIL - 3] + "..."
+
+
+def _dense_outcome(
+    retrieval: dict[str, RetrieverStatus], stats: MapStats, notes: list[str]
+) -> None:
+    """What dense retrieval did in this request, beyond its open-time status: failing
+    for every entity that tried it makes it unavailable; failing for some is a warning
+    naming them."""
+    dense = retrieval.get("dense")
+    tried, failed = stats.dense_entities, stats.dense_failed
+    if dense is None or dense.status != "ok" or not tried or not failed:
+        return
+    if all(eid in failed for eid in tried):
+        retrieval["dense"] = RetrieverStatus(
+            status="unavailable",
+            reason=f"every dense search failed in this request: {failed[tried[0]]}",
+        )
+        return
+    ids = [eid for eid in tried if eid in failed]
+    notes.append(
+        f"dense search failed for {len(ids)} of {len(tried)} entities ({', '.join(ids)}); "
+        "their matches use BM25 only"
+    )
+
+
 def _ms(seconds: float) -> int:
     return round(seconds * 1000)
 
@@ -319,8 +365,12 @@ async def run(
     settings: Settings,
     llm: LLMClient,
     indexes: Mapping[str, OntologyIndex],
+    started_at: float | None = None,
 ) -> NerResponse:
     """One request: validate, extract with ``llm`` (one call), map, report.
+
+    ``started_at`` (``time.monotonic()``) is when the request began, if earlier than
+    this call (opening the indexes on a cold start); the mapping deadline counts from it.
 
     Raises :class:`ServiceError`: 400 codes from :func:`validate_request`, 422 from the
     extraction, 429 ``call_budget_exhausted``, 502 ``provider_error``."""
@@ -355,18 +405,22 @@ async def run(
     extracted = time.monotonic()
 
     stats = MapStats()
-    remaining = REQUEST_DEADLINE_S - (extracted - started)
+    began = started if started_at is None else min(started_at, started)
+    budget = max(MIN_MAP_BUDGET_S, REQUEST_DEADLINE_S - (extracted - began))
     results = await map_entities(
         entities,
         indexes,
         top_k=req.top_k,
-        timeout=max(MIN_RETRIEVER_TIMEOUT_S, min(MAP_RETRIEVER_TIMEOUT_S, remaining)),
+        timeout=min(MAP_RETRIEVER_TIMEOUT_S, budget),
+        deadline=budget,
         stats=stats,
+        clean=lambda note: _clean(note, settings),
     )
     mapped = time.monotonic()
 
     retrieval = retrieval_status(indexes, settings)
     notes: list[str] = list(warnings) + stats.warnings
+    _dense_outcome(retrieval, stats, notes)
     routed = any(r.ontology is not None for r in results)
     for kind in ("bm25", "dense"):
         status = retrieval.get(kind)

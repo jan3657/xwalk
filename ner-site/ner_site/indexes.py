@@ -33,10 +33,12 @@ NAME_FIELDS = ("label", "synonyms")
 DEFAULT_LIMIT = 20
 BUILD_TOOL = "ner-site/tools/build_indexes.py"
 
-# Query embeddings at request time: short timeout and one retry, so a slow provider
-# degrades a request instead of eating the function's whole duration. Neither changes
-# what a vector means, so an index built with the defaults still matches.
-QUERY_ENCODER_SETTINGS: dict[str, Any] = {"timeout": 20.0, "max_retries": 1}
+# Query embeddings at request time: a short timeout and no retry, so a slow or
+# rate-limited provider degrades a request (BM25 only) instead of eating the function's
+# whole duration. With no retry the encoder never sleeps, so a 429 with a long
+# Retry-After (which it would otherwise honour for up to 300 s) fails at once. Neither
+# setting changes what a vector means, so an index built with the defaults still matches.
+QUERY_ENCODER_SETTINGS: dict[str, Any] = {"timeout": 15.0, "max_retries": 0}
 
 _BUILD_LOCK = threading.Lock()
 _MEMO_LOCK = threading.Lock()

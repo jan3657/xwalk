@@ -165,13 +165,41 @@ sent.
   `warnings` summarises it, and BM25 matches are still returned. `provider_error` (502)
   is for the extraction call only, and also covers an extraction that takes longer than
   90 s (retries included). Each retriever call then gets `min(30 s, what is left of
-  115 s)`, at least 5 s.
+  115 s)`, at least 5 s. **[superseded after review, below]**
 - When the retrieval block says dense (or BM25) is unavailable and some entity was routed,
   `warnings` also carries `"dense retrieval unavailable; matches use BM25 only"`. A reason
   shared by all four ontologies is reported once, with "(all 4 ontologies)".
 - The key, and a passcode of 8 or more characters, are also string-replaced out of every
   response body and log line as a last line of defence. Provider messages pass through
   `redact_url` for every URL and are cut to 300 characters.
+- **[amended after review]** Time: the whole mapping step gets one wall-clock deadline,
+  what is left of 100 s since the request began (opening the indexes and the
+  extraction included; at least 5 s); each retriever call within
+  it at most 30 s. A dense search still running at the deadline is cut off and one not
+  yet started is skipped (BM25 gets 5 s of grace, so every entity keeps its BM25
+  matches); the entity gets the note `"dense-qwen3: cut off by the request deadline"`
+  and `warnings` the usual `"<note> (<entity ids>)"` summary. Worst case about 105 s,
+  inside `maxDuration` 120 s. Each request runs on its own event loop and thread pool,
+  shut down without waiting (`http.run_request`): an abandoned embeddings thread
+  finishes in the background and cannot touch a later response. Query embeddings use
+  `max_retries=0` (timeout 15 s), so a 429 with a long `Retry-After` fails at once
+  instead of sleeping.
+- **[amended after review]** Dense at request time: when every entity that reached a
+  dense search had it fail, time out or be cut off, the response's `retrieval.dense` is
+  `unavailable` with reason `"every dense search failed in this request: <first note>"`
+  (plus the `"dense retrieval unavailable; matches use BM25 only"` warning), even though
+  `/api/health` says `ok`. When only some failed, dense stays `ok` and `warnings` adds
+  `"dense search failed for N of M entities (e2, e5); their matches use BM25 only"`.
+- **[amended after review]** Entity `notes` from retrievers pass through the same scrub
+  as provider messages (key and passcode removed, every URL through `redact_url`) and
+  are cut to 300 characters.
+- **[amended after review]** `bad_json` also covers a `text`, `prompt` or `model` that
+  is not encodable as UTF-8 (a lone surrogate escape such as `"\ud800"`), which used to
+  be a 500. `Content-Length` must be 1 to 18 ASCII digits (`"²"` passes `str.isdigit()`
+  but not `int()`); anything else is 400 `bad_header`.
+- **[amended after review]** `default_prompt` (health, and the prompt used when a
+  request sends none) states the configured `NER_SITE_MAX_ENTITIES`
+  (`extract.render_default_prompt(limit)`; `extract.DEFAULT_PROMPT` is the one for 25).
 - Vercel (https://vercel.com/docs/functions/runtimes/python/api-directory, read
   2026-11-03): a file-based function defines a top-level `handler` class that inherits
   from `BaseHTTPRequestHandler` (or `app`/`application` for ASGI/WSGI); `api/ner.py`
@@ -185,9 +213,9 @@ sent.
 | Name | Default | Meaning |
 |---|---|---|
 | `OPENROUTER_API_KEY` | unset | the operator's key; used for the chat call and query embeddings |
-| `NER_SITE_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
+| `NER_SITE_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL. **[amended after review]** For the chat call only: query embeddings always go to OpenRouter (`https://openrouter.ai/api/v1/embeddings`) with `OPENROUTER_API_KEY`. The committed dense indexes record that embeddings base URL in their identity, so moving embeddings elsewhere means rebuilding them (`tools/build_indexes.py`) and changing the code |
 | `NER_SITE_MODELS` | `openai/gpt-4o-mini,google/gemini-2.5-flash-lite,qwen/qwen3-next-80b-a3b-instruct` | allowlist, first is default. **[amended]** All three ids exist on OpenRouter and list `structured_outputs` (checked 2026-11-03) |
-| `NER_SITE_PASSCODE` | unset | when set, `X-Passcode` must equal it (`hmac.compare_digest`) |
+| `NER_SITE_PASSCODE` | unset | when set, `X-Passcode` must equal it (`hmac.compare_digest`). **[amended after review]** ASCII only: `http.server` reads header values as Latin-1, so another value could never match; it is refused (503 `not_configured` naming the variable) |
 | `NER_SITE_MAX_CHARS` / `NER_SITE_MAX_ENTITIES` / `NER_SITE_MAX_PROMPT_CHARS` | 5000 / 25 / 4000 | limits. **[amended by WS-D]** Whole numbers in 1..20000 / 1..100 / 1..16000; anything else is refused (503 `not_configured` naming the variable), not clamped. Empty means unset. `NER_SITE_OFFLINE` accepts 1/0, true/false, yes/no, on/off |
 | `NER_SITE_OFFLINE` | unset | `1` swaps the LLM for `ner_site.fake.offline_llm`; `/api/health` reports `"mode": "offline"` |
 | `NER_SITE_DENSE_DIR` | `<project root>/indexes` | where committed dense indexes live |
@@ -251,7 +279,8 @@ llm_call_cap=3)`.
 ```python
 from xwalk.llm.base import LLMClient, LLMRequest
 
-DEFAULT_PROMPT: str
+DEFAULT_PROMPT: str  # [amended after review] = render_default_prompt(25)
+def render_default_prompt(max_entities: int) -> str: ...  # Settings.default_prompt uses it
 SYSTEM_PROMPT: str  # fixed, not user-editable
 ENTITY_SCHEMA: dict  # JSON schema passed as LLMRequest.schema
 
@@ -304,6 +333,8 @@ def get_indexes(settings: object) -> Mapping[str, OntologyIndex]: ...  # module-
 ```python
 async def map_entities(entities: list, indexes: object, *, top_k: int,
                        concurrency: int = 4, timeout: float = 30.0) -> list: ...
+# [amended after review] also: deadline: float | None (seconds for the whole call),
+# stats: MapStats | None, clean: Callable[[str], str] | None (applied to every note).
 ```
 
 `ner-site/ner_site/service.py` and `http.py` (WS-D):
@@ -383,6 +414,8 @@ def handle(method: str, path: str, headers: dict, body: bytes, *, settings: Sett
   `NCBIGene:n` -> `https://www.ncbi.nlm.nih.gov/gene/n`; `FOODON:n` ->
   `http://purl.obolibrary.org/obo/FOODON_n`; otherwise `null`.
 - Latency budget: extract <= 60 s, each retriever call <= 30 s, `maxDuration` 120 s.
+  **[amended after review]** Extraction <= 90 s, the whole mapping step bounded by one
+  deadline (section 3.1), so a request ends by about 105 s.
 
 ## 6. The page (WS-C)
 

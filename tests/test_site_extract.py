@@ -67,6 +67,15 @@ def test_default_prompt_covers_the_types_and_the_rules() -> None:
     assert f"at most {Limits().max_entities}" in DEFAULT_PROMPT
 
 
+def test_the_default_prompt_renders_for_any_entity_limit() -> None:
+    from ner_site.extract import render_default_prompt
+
+    assert render_default_prompt(Limits().max_entities) == DEFAULT_PROMPT
+    seven = render_default_prompt(7)
+    assert "Extract at most 7 entities." in seven and "at most 25" not in seven
+    assert seven.replace("at most 7", f"at most {Limits().max_entities}") == DEFAULT_PROMPT
+
+
 def test_entity_schema_requires_the_four_fields_and_the_enum() -> None:
     assert ENTITY_SCHEMA["required"] == ["entities"]
     items = ENTITY_SCHEMA["properties"]["entities"]["items"]

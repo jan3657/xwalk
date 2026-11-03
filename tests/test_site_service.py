@@ -452,3 +452,58 @@ def test_one_reason_shared_by_every_ontology_is_reported_once(tmp_path: Path) ->
     same = indexes_mod.open_indexes(cache_dir=tmp_path / "c", dense_dir=None, api_key=None)
     once = retrieval_status(same, _settings(tmp_path))["dense"].reason
     assert once == "no dense index directory configured (NER_SITE_DENSE_DIR) (all 4 ontologies)"
+
+
+# --- review fixes -------------------------------------------------------------------
+
+
+def test_a_non_ascii_passcode_is_a_settings_error() -> None:
+    """http.server reads header values as Latin-1, so a non-ASCII passcode could never
+    match what a visitor sends; it is refused at settings load, naming the variable."""
+    with pytest.raises(SettingsError) as exc:
+        Settings.from_env({"NER_SITE_PASSCODE": "pässwort-geheim"})
+    assert "NER_SITE_PASSCODE" in str(exc.value) and "ASCII" in str(exc.value)
+    assert "pässwort" not in str(exc.value)
+    assert Settings.from_env({"NER_SITE_PASSCODE": "plain-ascii-ok"}).passcode
+
+
+def test_the_default_prompt_follows_the_configured_entity_limit(tmp_path: Path) -> None:
+    s = _settings(tmp_path, NER_SITE_MAX_ENTITIES="7")
+    assert "at most 7 entities" in s.default_prompt
+    got = validate_request(NerRequest(text="abc"), s)
+    assert got.prompt == s.default_prompt
+    assert _settings(tmp_path).default_prompt == DEFAULT_PROMPT
+
+
+class _LeakyRetriever:
+    """Fails with the key, a URL with userinfo and a very long message."""
+
+    name = "dense-qwen3"
+    fingerprint = "leaky"
+    default_limit = 5
+
+    async def search(self, request: Any) -> Any:
+        raise RuntimeError(
+            f"HTTP 401: No auth credentials: Bearer {SENTINEL_KEY} "
+            f"at https://user:hunter2@emb.example/v1/embeddings " + "x" * 2000
+        )
+
+
+def test_run_scrubs_and_caps_entity_notes_and_warnings(tmp_path: Path, bm25_only: Any) -> None:
+    chebi = bm25_only["chebi-sample"]
+    leaky = {
+        "chebi-sample": indexes_mod.OntologyIndex(
+            "chebi-sample", chebi.store, [*chebi.retrievers, _LeakyRetriever()], chebi.status
+        )
+    }
+    llm = FakeLLM([_answer(("haloperidol", "chemical", 0, 11))])
+    s = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    out = asyncio.run(run(NerRequest(text="haloperidol"), settings=s, llm=llm, indexes=leaky))
+    (entity,) = out.entities
+    assert entity.matches and entity.matches[0].id == "CHEBI:5613"  # BM25 still serves
+    leaked = [n for n in entity.notes if "No auth credentials" in n]
+    assert leaked, entity.notes
+    for text in [*entity.notes, *out.warnings]:
+        assert SENTINEL_KEY not in text and "hunter2" not in text
+        assert len(text) <= service.MAX_ERROR_DETAIL + 40
+    assert "emb.example" in leaked[0] and "[redacted]" in leaked[0]

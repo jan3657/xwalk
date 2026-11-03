@@ -302,10 +302,13 @@ def test_passcode_is_compared_in_constant_time(
         return real(a, b)
 
     monkeypatch.setattr(http_mod.hmac, "compare_digest", spy)
-    s = _settings(cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_PASSCODE="pässe")
-    headers = {**POST_HEADERS, "x-passcode": "pässe"}
+    # ASCII only (a non-ASCII passcode is refused at settings load; see test_site_service).
+    s = _settings(
+        cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_PASSCODE="passe-x1"
+    )
+    headers = {**POST_HEADERS, "x-passcode": "passe-x1"}
     assert _post(s, {"text": "x"}, headers=headers, llm_factory=_fake('{"entities": []}'))[0] == 200
-    assert seen == [("pässe".encode(), "pässe".encode())]
+    assert seen == [(b"passe-x1", b"passe-x1")]
 
 
 # --- request validation codes -------------------------------------------------------
@@ -775,3 +778,334 @@ def test_a_short_passcode_does_not_corrupt_responses(cache_dir: Path, tmp_path: 
         llm_factory=_fake('{"entities": []}'),
     )
     assert result[0] == 200 and _json(result)["ok"] is True
+
+
+# --- review fixes: wall-time bound, dense status per request, scrubbing, parsing ---
+
+SIX = "haloperidol ketamine cedrol Alkaptonuria NAT2 cumin"
+SIX_ANSWER = _answer(
+    ("haloperidol", "chemical", 0, 11),
+    ("ketamine", "chemical", 12, 20),
+    ("cedrol", "chemical", 21, 27),
+    ("Alkaptonuria", "disease", 28, 40),
+    ("NAT2", "gene", 41, 45),
+    ("cumin", "food", 46, 51),
+)
+
+
+@pytest.fixture(scope="module")
+def qwen_dense_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Dense indexes built once by the site's default Qwen3 encoder against the
+    histogram gateway; each test then decides how the query embeddings answer."""
+    out = tmp_path_factory.mktemp("qwen-dense") / "indexes"
+    encoder = embeddings_api.default_embeddings_encoder(
+        api_key=SENTINEL_KEY, transport=httpx.MockTransport(_histogram_gateway([]))
+    )
+    _build_tool().build_all(out, encoder)
+    return out
+
+
+def _query_gateway(
+    monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]
+) -> None:
+    """Every embeddings client created from now on (the site's query encoder) answers
+    through `handler`."""
+    real_client = httpx.Client
+
+    def client(**kwargs: Any) -> httpx.Client:
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client(**kwargs)
+
+    monkeypatch.setattr("xwalk.retrieval.embeddings_api.httpx.Client", client)
+
+
+def _dense_settings(cache_dir: Path, tmp_path: Path, dense_dir: Path) -> Settings:
+    return _settings(
+        cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_DENSE_DIR=str(dense_dir)
+    )
+
+
+@pytest.fixture
+def stalled() -> Iterator[threading.Event]:
+    """A query gateway that hangs for up to 6 s; released at teardown so no thread
+    outlives the test by long."""
+    release = threading.Event()
+    yield release
+    release.set()
+
+
+def test_abandoned_embedding_threads_do_not_hold_the_response(
+    cache_dir: Path,
+    tmp_path: Path,
+    qwen_dense_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stalled: threading.Event,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The reviewer's repro: an encoder stuck for 6 s, a 1 s retriever timeout and six
+    entities. The response must not wait for the stuck threads to finish."""
+    import time
+
+    def stuck(request: httpx.Request) -> httpx.Response:
+        stalled.wait(6.0)
+        return _histogram_gateway([])(request)
+
+    _query_gateway(monkeypatch, stuck)
+    monkeypatch.setattr("ner_site.service.MAP_RETRIEVER_TIMEOUT_S", 1.0)
+    s = _dense_settings(cache_dir, tmp_path, qwen_dense_dir)
+    started = time.monotonic()
+    result = _post(s, {"text": SIX, "top_k": 3}, llm_factory=_fake(SIX_ANSWER))
+    elapsed = time.monotonic() - started
+    assert result[0] == 200, result[2]
+    assert elapsed < 4.0, f"handle took {elapsed:.1f} s; it waited for abandoned threads"
+    out = NerResponse.model_validate_json(result[2])
+    assert out.timing_ms["total"] <= 4000
+    assert all(e.matches and e.matches[0].retrievers.get("bm25") for e in out.entities)
+
+    # The stuck threads finish after the response; a later response is its own.
+    stalled.set()
+    _query_gateway(monkeypatch, _histogram_gateway([]))
+    indexes_mod.reset()
+    again = _post(s, {"text": SIX, "top_k": 3}, llm_factory=_fake(SIX_ANSWER))
+    later = NerResponse.model_validate_json(again[2])
+    assert later.retrieval["dense"].status == "ok"
+    assert later.usage.embedding_requests == 6
+    assert not any("timed out" in n for e in later.entities for n in e.notes)
+    assert out.usage.embedding_requests == 6  # the first response is unchanged
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_one_deadline_bounds_the_whole_mapping_step(
+    cache_dir: Path,
+    tmp_path: Path,
+    qwen_dense_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stalled: threading.Event,
+) -> None:
+    """Six entities, four at a time, each dense search stuck: without one overall
+    deadline the per-call timeouts add up. With it the request ends at the deadline,
+    every entity keeps its BM25 matches and says its dense search was cut off."""
+    import time
+
+    def stuck(request: httpx.Request) -> httpx.Response:
+        stalled.wait(6.0)
+        return _histogram_gateway([])(request)
+
+    _query_gateway(monkeypatch, stuck)
+    monkeypatch.setattr("ner_site.service.REQUEST_DEADLINE_S", 2.0)
+    monkeypatch.setattr("ner_site.service.MIN_MAP_BUDGET_S", 1.0)
+    s = _dense_settings(cache_dir, tmp_path, qwen_dense_dir)
+    started = time.monotonic()
+    result = _post(s, {"text": SIX, "top_k": 3}, llm_factory=_fake(SIX_ANSWER))
+    elapsed = time.monotonic() - started
+    assert result[0] == 200, result[2]
+    assert elapsed < 3.5, f"handle took {elapsed:.1f} s past a 2 s deadline"
+    out = NerResponse.model_validate_json(result[2])
+    assert out.timing_ms["total"] <= 3000
+    for entity in out.entities:
+        assert entity.matches and entity.matches[0].retrievers.get("bm25") == 1, entity
+        assert any("cut off by the request deadline" in n for n in entity.notes), entity.notes
+    assert any("cut off by the request deadline" in w for w in out.warnings)
+    dense = out.retrieval["dense"]
+    assert dense.status == "unavailable"
+    assert dense.reason and dense.reason.startswith("every dense search failed in this request")
+    assert "dense retrieval unavailable; matches use BM25 only" in out.warnings
+
+
+def test_the_deadline_leaves_room_inside_max_duration() -> None:
+    """Worst case: the extraction uses its whole budget, then mapping gets the rest of
+    the request deadline (at least its minimum), plus the grace for local BM25."""
+    from ner_site import mapping, service
+
+    max_duration = json.loads((PROJECT / "vercel.json").read_text())["functions"]["api/*.py"][
+        "maxDuration"
+    ]
+    worst = (
+        max(service.REQUEST_DEADLINE_S, service.EXTRACT_TIMEOUT_S + service.MIN_MAP_BUDGET_S)
+        + mapping.LOCAL_GRACE_S
+    )
+    assert worst <= 105 < max_duration
+
+
+def test_the_query_encoder_never_waits_out_a_retry_after(
+    cache_dir: Path, qwen_dense_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 429 with Retry-After: 120 must fail the one query at once (no retry, no sleep):
+    a sleeping encoder thread outlives the function's duration."""
+    seen: list[httpx.Request] = []
+
+    def limited(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            429, headers={"retry-after": "120"}, json={"error": {"message": "slow down"}}
+        )
+
+    _query_gateway(monkeypatch, limited)
+    opened = indexes_mod.open_indexes(
+        cache_dir=cache_dir, dense_dir=qwen_dense_dir, api_key=SENTINEL_KEY
+    )
+    dense = opened["chebi-sample"].retrievers[-1]
+    encoder = dense._encoder  # type: ignore[attr-defined]
+    outcome: list[BaseException] = []
+
+    def query() -> None:
+        try:
+            encoder.encode(["aspirin"], is_query=True)
+        except BaseException as exc:  # noqa: BLE001 - recorded for the assertion
+            outcome.append(exc)
+
+    worker = threading.Thread(target=query, daemon=True)
+    worker.start()
+    worker.join(5.0)
+    assert not worker.is_alive(), "the query encoder is sleeping on Retry-After"
+    assert len(seen) == 1 and isinstance(outcome[0], embeddings_api.EmbeddingAPIError)
+
+
+def _failing_for(words: tuple[str, ...]) -> Callable[[httpx.Request], httpx.Response]:
+    good = _histogram_gateway([])
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        texts = json.loads(request.content)["input"]
+        if any(w in t for t in texts for w in words):
+            return httpx.Response(500, json={"error": {"message": "upstream exploded"}})
+        return good(request)
+
+    return gateway
+
+
+def test_dense_failing_for_every_entity_is_reported_unavailable(
+    cache_dir: Path, tmp_path: Path, qwen_dense_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _query_gateway(monkeypatch, _failing_for(("Query:",)))  # every query
+    s = _dense_settings(cache_dir, tmp_path, qwen_dense_dir)
+    health = _json(http_mod.handle("GET", "/api/health", {}, b"", settings=s))
+    assert health["retrieval"]["dense"] == {"status": "ok"}  # open-time status
+    result = _post(s, {"text": SIX, "top_k": 3}, llm_factory=_fake(SIX_ANSWER))
+    assert result[0] == 200, result[2]
+    out = NerResponse.model_validate_json(result[2])
+    dense = out.retrieval["dense"]
+    assert dense.status == "unavailable"
+    assert dense.reason is not None
+    assert dense.reason.startswith("every dense search failed in this request: ")
+    assert "HTTP 500" in dense.reason and "upstream exploded" in dense.reason
+    assert "dense retrieval unavailable; matches use BM25 only" in out.warnings
+    assert all(e.matches for e in out.entities)
+    assert _json(result)["retrieval"]["dense"]["status"] == "unavailable"
+
+
+def test_dense_failing_for_some_entities_names_them(
+    cache_dir: Path, tmp_path: Path, qwen_dense_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _query_gateway(monkeypatch, _failing_for(("ketamine", "NAT2")))
+    s = _dense_settings(cache_dir, tmp_path, qwen_dense_dir)
+    result = _post(s, {"text": SIX, "top_k": 3}, llm_factory=_fake(SIX_ANSWER))
+    assert result[0] == 200, result[2]
+    out = NerResponse.model_validate_json(result[2])
+    assert out.retrieval["dense"].status == "ok"
+    assert "dense retrieval unavailable; matches use BM25 only" not in out.warnings
+    named = [w for w in out.warnings if w.startswith("dense search failed for 2 of 6 entities")]
+    assert named and "(e2, e5)" in named[0], out.warnings
+
+
+def test_an_embeddings_401_echoing_the_key_leaks_it_nowhere(
+    cache_dir: Path,
+    tmp_path: Path,
+    qwen_dense_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def echo(request: httpx.Request) -> httpx.Response:
+        auth = request.headers["authorization"]
+        return httpx.Response(401, json={"error": {"message": f"No auth credentials: {auth}"}})
+
+    _query_gateway(monkeypatch, echo)
+    s = _dense_settings(cache_dir, tmp_path, qwen_dense_dir)
+    capsys.readouterr()
+    result = _post(s, {"text": SIX, "top_k": 3}, llm_factory=_fake(SIX_ANSWER))
+    assert result[0] == 200, result[2]
+    assert b"No auth credentials" in result[2]  # the error itself is reported
+    assert SENTINEL_KEY.encode() not in result[2]
+    assert SENTINEL_KEY[8:].encode() not in result[2]
+    assert SENTINEL_KEY not in capsys.readouterr().err
+
+
+def test_a_chat_401_echoing_the_key_leaks_it_nowhere(
+    cache_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def chat(request: httpx.Request) -> httpx.Response:
+        auth = request.headers["authorization"]
+        return httpx.Response(401, json={"error": {"message": f"User not found: {auth}"}})
+
+    s = _settings(cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    capsys.readouterr()
+    result = _post(
+        s,
+        {"text": "abc"},
+        llm_factory=lambda st, m: make_llm(st, m, transport=httpx.MockTransport(chat)),
+    )
+    assert _error(result) == (502, "provider_error")
+    assert b"User not found" in result[2]
+    assert SENTINEL_KEY.encode() not in result[2]
+    assert SENTINEL_KEY not in capsys.readouterr().err
+
+
+def test_the_body_and_log_filters_remove_the_key(
+    cache_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The last line of defence on its own: whatever reaches the body or the log line."""
+    s = _settings(cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_PASSCODE=PASSCODE)
+    body = http_mod._json_body({"leak": f"x {SENTINEL_KEY} {PASSCODE} y"}, s)
+    assert SENTINEL_KEY.encode() not in body and PASSCODE.encode() not in body
+    capsys.readouterr()
+    http_mod._log({"leak": f"x {SENTINEL_KEY} {PASSCODE} y"}, s)
+    err = capsys.readouterr().err
+    assert "[redacted]" in err and SENTINEL_KEY not in err and PASSCODE not in err
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b'{"text": "aspirin \\ud800 here"}', b'{"text": "aspirin", "prompt": "find \\udfff"}'],
+)
+def test_a_lone_surrogate_is_a_400_not_a_500(
+    cache_dir: Path, tmp_path: Path, payload: bytes
+) -> None:
+    def chat(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"entities": []}'}}]})
+
+    s = _settings(cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    result = _post(
+        s,
+        None,
+        raw=payload,
+        llm_factory=lambda st, m: make_llm(st, m, transport=httpx.MockTransport(chat)),
+    )
+    assert _error(result) == (400, "bad_json")
+    assert b"UTF-8" in result[2]
+
+
+@pytest.mark.parametrize("value", [b"\xb2", b"\xb9", b"9" * 5000])
+def test_shim_refuses_a_content_length_that_only_looks_numeric(
+    shim_server: int, value: bytes
+) -> None:
+    """U+00B2 is str.isdigit() but not int()-able; 5000 digits exceed int()'s limit."""
+    status_line, body = _raw_exchange(
+        shim_server,
+        b"POST /api/ner HTTP/1.1\r\nHost: x\r\nX-Requested-With: xwalk-ner\r\n"
+        b"Content-Length: " + value + b"\r\nConnection: close\r\n\r\n",
+    )
+    assert b" 400 " in status_line, status_line
+    assert json.loads(body)["error"]["code"] == "bad_header"
+
+
+def test_the_default_prompt_follows_the_entity_limit(cache_dir: Path, tmp_path: Path) -> None:
+    s = _settings(cache_dir, tmp_path, NER_SITE_OFFLINE="1", NER_SITE_MAX_ENTITIES="7")
+    health = _json(http_mod.handle("GET", "/api/health", {}, b"", settings=s))
+    assert "at most 7 entities" in health["default_prompt"]
+    assert "at most 25" not in health["default_prompt"]
+    llm = FakeLLM(['{"entities": []}'])
+    s_live = _settings(
+        cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_MAX_ENTITIES="7"
+    )
+    result = _post(s_live, {"text": "nothing", "prompt": None}, llm_factory=lambda st, m: llm)
+    assert result[0] == 200, result[2]
+    assert "at most 7 entities" in llm.requests[0].user

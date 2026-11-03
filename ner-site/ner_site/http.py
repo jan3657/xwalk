@@ -19,19 +19,20 @@ import asyncio
 import hmac
 import json
 import os
+import re
 import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Coroutine, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
 from ner_site import fake
-from ner_site.extract import DEFAULT_PROMPT
 from ner_site.indexes import get_indexes
 from ner_site.ontologies import catalog
 from ner_site.schema import (
@@ -52,6 +53,7 @@ from ner_site.service import (
 )
 from xwalk.llm.base import LLMClient
 
+T = TypeVar("T")
 Response = tuple[int, dict[str, str], bytes]
 LLMFactory = Callable[[Settings, str], LLMClient]
 
@@ -60,6 +62,8 @@ NER_PATH = "/api/ner"
 ALLOWED = {HEALTH_PATH: ("GET", "HEAD"), NER_PATH: ("POST",)}
 REQUESTED_WITH = "xwalk-ner"
 MAX_LOGGED_PATH = 80
+MAX_LENGTH_DIGITS = 18
+REQUEST_WORKERS = 16  # threads per request for retriever searches (BM25 and embeddings)
 
 
 def _headers(extra: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -138,6 +142,52 @@ def _parse(body: bytes) -> NerRequest:
         raise ServiceError("bad_json", message, status=400) from None
 
 
+def _check_encodable(request: NerRequest) -> NerRequest:
+    """JSON may carry a lone surrogate (``"\\ud800"``) that no UTF-8 encoder accepts; it
+    would fail later, in the provider call or the response, as a 500."""
+    for name in ("text", "prompt", "model"):
+        value = getattr(request, name)
+        if value is None:
+            continue
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ServiceError(
+                "bad_json",
+                f"'{name}' is not valid UTF-8 text (it contains a lone surrogate escape)",
+                status=400,
+            ) from None
+    return request
+
+
+def run_request(coro: Coroutine[Any, Any, T]) -> T:
+    """``asyncio.run`` without its wait for executor threads.
+
+    Retriever searches run in threads (``asyncio.to_thread``). A search cut off by its
+    timeout or the request deadline cannot be stopped: ``asyncio.run`` would then wait
+    for it in ``shutdown_default_executor`` (up to the encoder's own HTTP timeout, or a
+    Retry-After sleep) after the answer is ready. Here each request gets its own pool,
+    shut down without waiting: an abandoned thread finishes in the background on a warm
+    instance, and its result goes to a future of this closed loop, never into a later
+    response (nothing it writes is shared with one)."""
+    loop = asyncio.new_event_loop()
+    executor = ThreadPoolExecutor(max_workers=REQUEST_WORKERS, thread_name_prefix="ner-site")
+    loop.set_default_executor(executor)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        try:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+            loop.close()
+
+
 def _health(settings: Settings) -> dict[str, Any]:
     indexes = get_indexes(settings.index_settings())
     health = HealthResponse(
@@ -146,7 +196,7 @@ def _health(settings: Settings) -> dict[str, Any]:
         models=list(settings.offered_models),
         limits=settings.limits.public(),
         passcode_required=settings.passcode is not None,
-        default_prompt=DEFAULT_PROMPT,
+        default_prompt=settings.default_prompt,
         ontologies=[OntologySummary.model_validate(o) for o in catalog()],
         retrieval=retrieval_status(indexes, settings),
     )
@@ -168,6 +218,7 @@ def _health(settings: Settings) -> dict[str, Any]:
 async def _ner(
     settings: Settings, request: NerRequest, factory: LLMFactory, log: dict[str, Any]
 ) -> dict[str, Any]:
+    started = time.monotonic()  # the request deadline also covers opening the indexes
     valid = validate_request(request, settings)
     assert valid.model is not None
     log["model"] = valid.model
@@ -175,7 +226,7 @@ async def _ner(
     indexes = get_indexes(settings.index_settings())
     llm = factory(settings, valid.model)
     try:
-        response = await run(valid, settings=settings, llm=llm, indexes=indexes)
+        response = await run(valid, settings=settings, llm=llm, indexes=indexes, started_at=started)
     finally:
         close = getattr(llm, "aclose", None)
         if callable(close):
@@ -276,10 +327,10 @@ def _dispatch(
             "(or NER_SITE_OFFLINE=1 for the stand-in extractor)",
             status=503,
         )
-    request = _parse(body)
+    request = _check_encodable(_parse(body))
     log["text_chars"] = len(request.text)
     log["custom_prompt"] = bool(request.prompt and request.prompt.strip())
-    data = asyncio.run(_ner(settings, request, llm_factory or default_llm_factory, log))
+    data = run_request(_ner(settings, request, llm_factory or default_llm_factory, log))
     return 200, _headers(), _json_body(data, settings)
 
 
@@ -323,10 +374,11 @@ def _shim_response(request: BaseHTTPRequestHandler, settings: Settings) -> Respo
             early = ServiceError(
                 "length_required", "a POST needs a Content-Length header", status=411
             )
-    elif not raw_length.strip().isdigit():
+    elif not re.fullmatch(rf"[0-9]{{1,{MAX_LENGTH_DIGITS}}}", raw_length.strip()):
+        # ASCII digits only: str.isdigit() also accepts "²", which int() refuses.
         early = ServiceError("bad_header", "Content-Length is not a valid length", status=400)
     else:
-        length = int(raw_length)
+        length = int(raw_length.strip())
         if length > cap:
             early = ServiceError(
                 "body_too_large", f"the request body is larger than {cap} bytes", status=413

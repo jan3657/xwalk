@@ -152,8 +152,13 @@ def make_handler(
             super().end_headers()
 
         def _api(self, method: str) -> None:
-            length = int(self.headers.get("Content-Length") or 0)
-            if length > MAX_READ_BYTES:
+            raw_length = (self.headers.get("Content-Length") or "0").strip()
+            # ASCII digits only, as the Vercel shim: "²" passes str.isdigit(), not int().
+            length = int(raw_length) if re.fullmatch(r"[0-9]{1,18}", raw_length) else -1
+            if length < 0:
+                status, headers, body = _envelope(400, "bad_header", "bad Content-Length")
+                self.close_connection = True
+            elif length > MAX_READ_BYTES:
                 status, headers, body = _envelope(413, "body_too_large", "request body too large")
                 self.close_connection = True
             else:

@@ -73,7 +73,10 @@ TEXT[start:end] is exactly "text". Offset 0 is the first character after the lin
 - List the entities in the order they appear in TEXT.
 - If there is nothing to extract, output {"entities": []}."""
 
-DEFAULT_PROMPT = f"""\
+
+def render_default_prompt(max_entities: int) -> str:
+    """The default extraction prompt for a deployment that keeps `max_entities`."""
+    return f"""\
 Extract every mention of these entity types:
 - chemical: a chemical compound, element or drug (e.g. "aspirin", "glucose", \
 "sodium chloride").
@@ -91,7 +94,10 @@ punctuation; do not correct, expand or normalise it.
 - Each occurrence is its own entity: a mention that appears twice is listed twice.
 - Mentions must not nest or overlap: when one contains another, keep only the longer \
 (e.g. "rheumatoid arthritis", not also "arthritis").
-- Extract at most {Limits().max_entities} entities."""
+- Extract at most {max_entities} entities."""
+
+
+DEFAULT_PROMPT = render_default_prompt(Limits().max_entities)
 
 ENTITY_SCHEMA: Mapping[str, Any] = {
     "type": "object",
