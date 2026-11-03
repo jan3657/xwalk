@@ -39,6 +39,17 @@ from xwalk.retrieval.base import RetrieverError
 
 ADAPTER = "openai_embeddings"
 ADAPTER_VERSION = 1
+# The default API encoder, chosen by the 2026-11-03 bake-off
+# (benchmarks/results/embeddings-2026-11-03/FINDINGS.md): level with the best models on
+# the pilots at the lowest price, open weights, several providers. 1024 dimensions
+# scored the same as the native 4096 with a quarter of the index; the query instruction
+# is worth about 0.4 MRR and must not be dropped.
+DEFAULT_MODEL = "qwen/qwen3-embedding-8b"
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_API_KEY_ENV = "OPENROUTER_API_KEY"
+DEFAULT_DIMENSIONS = 1024
+DEFAULT_QUERY_PREFIX = "Instruct: Given a term, retrieve the ontology concept it names\nQuery:"
+
 _MAX_RETRY_AFTER = 300.0  # seconds; a longer Retry-After is waited for this long, then retried
 
 
@@ -377,4 +388,30 @@ def _retry_after(response: httpx.Response) -> float | None:
     return seconds if math.isfinite(seconds) and seconds >= 0 else None
 
 
-__all__ = ["EmbeddingAPIError", "EmbeddingUsage", "OpenAIEmbeddingsEncoder"]
+def default_embeddings_encoder(
+    *, api_key: str | None, base_url: str = DEFAULT_BASE_URL, **settings: Any
+) -> OpenAIEmbeddingsEncoder:
+    """The default API encoder: Qwen3-Embedding 8B at 1024 dimensions with its query
+    instruction, the same encoder a job's `encoder: openai_embeddings` retriever gets
+    when it names no model. `settings` override any constructor argument."""
+    defaults: dict[str, Any] = {
+        "dimensions": DEFAULT_DIMENSIONS,
+        "send_dimensions": True,
+        "query_prefix": DEFAULT_QUERY_PREFIX,
+    }
+    return OpenAIEmbeddingsEncoder(
+        base_url, DEFAULT_MODEL, api_key=api_key, **{**defaults, **settings}
+    )
+
+
+__all__ = [
+    "DEFAULT_API_KEY_ENV",
+    "DEFAULT_BASE_URL",
+    "DEFAULT_DIMENSIONS",
+    "DEFAULT_MODEL",
+    "DEFAULT_QUERY_PREFIX",
+    "EmbeddingAPIError",
+    "EmbeddingUsage",
+    "OpenAIEmbeddingsEncoder",
+    "default_embeddings_encoder",
+]

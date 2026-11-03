@@ -303,6 +303,13 @@ OpenAIEmbeddingsEncoder(
   one response without a count makes that total `None` (unknown), never zero.
   `xwalk index` prints what each build spent.
 
+`default_embeddings_encoder(api_key=...)` returns the default encoder a job gets with
+`encoder: openai_embeddings` and no `model`: Qwen3-Embedding 8B through OpenRouter at
+1024 dimensions with its query instruction (`DEFAULT_MODEL`, `DEFAULT_BASE_URL`,
+`DEFAULT_DIMENSIONS`, `DEFAULT_QUERY_PREFIX` in the same module). Keyword arguments
+override any setting. `probe_dimension()` spends one call to report the native vector
+length; nothing else probes.
+
 Identity (`settings`) covers the redacted base URL, `send_dimensions`, `truncate`,
 `normalize`, both prefixes, both input types and `provider`, plus `adapter:
 "openai_embeddings"` so a local and a remote model of the same name never share an
@@ -323,6 +330,7 @@ def build(
     name: str | None = None,
     default_limit: int = 20,
     batch: int = 256,
+    name_fields: Sequence[str] | None = None,
 ) -> DenseRetriever
 ```
 
@@ -338,6 +346,13 @@ def open(
     expected: Mapping[str, Any] | None = None,
 ) -> DenseRetriever
 ```
+
+With `name_fields`, `build` also encodes each distinct non-blank value of those fields
+(each item of a list field) as a document of its own, and a record scores by the best of
+its vectors, the whole-doc vector included. Search scores every vector, keeps each
+record's best and cuts to `limit` records, so each record appears once. The identity gains
+`name_fields` and `format_version` 2 only when it is set; an index without it keeps the
+identity it had. `xwalk_meta.json` records `doc_count` (records) and `vector_count` (rows).
 
 `build` encodes rendered docs in batches of `batch` and validates that every vector's
 length matches `encoder.dimension`, raising `ValueError` otherwise. When `name` is

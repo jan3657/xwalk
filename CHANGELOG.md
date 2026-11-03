@@ -26,6 +26,19 @@ offline only (FakeDecider, no paid calls).
   by the endpoint (unknown when not reported). Tested offline against a mocked endpoint
   only.
 
+- A default API encoder: an `encoder: openai_embeddings` retriever with no `model` uses
+  Qwen3-Embedding 8B through OpenRouter at 1024 dimensions with its query instruction
+  (`default_embeddings_encoder` in code), each setting applied only where the job left
+  it unset. Chosen with `python -m benchmarks.embeddings`, a retrieval-only bake-off of
+  the embedding models OpenRouter serves, on the four in-repo pilots
+  (`benchmarks/results/embeddings-2026-11-03/`).
+
+- Per-name vectors for dense retrieval: `name_fields: [label, synonyms]` embeds each
+  distinct name as its own vector beside the whole-document vector, and a record scores
+  by its best. On the NCBI Disease pilot this raised MRR from 0.61 to 0.71 with the
+  default encoder; the other pilots were unchanged. Opt-in: indexes without it keep
+  their identity.
+
 ### Fixed
 
 - Jev and ChatGPT settle each budget dispatch once after interpreting its outcome,

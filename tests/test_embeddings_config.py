@@ -314,3 +314,134 @@ def test_a_cluster_job_reports_the_embeddings_credential(tmp_path, monkeypatch):
     result = ops.validate(_cluster_file(tmp_path))
     assert [e.code for e in result.errors] == ["credential_missing"]
     assert "dense.api_key_env" in result.errors[0].message
+
+
+# --- the default preset (Qwen3-Embedding 8B, measured 2026-11-03) ---------------------
+
+
+def test_an_api_encoder_without_a_model_gets_the_measured_default():
+    from xwalk.retrieval import embeddings_api as api
+
+    spec = RetrieverSpec.model_validate({"kind": "dense", "encoder": "openai_embeddings"})
+    assert spec.model == api.DEFAULT_MODEL == "qwen/qwen3-embedding-8b"
+    assert spec.base_url == api.DEFAULT_BASE_URL == "https://openrouter.ai/api/v1"
+    assert spec.api_key_env == api.DEFAULT_API_KEY_ENV == "OPENROUTER_API_KEY"
+    assert spec.dimensions == 1024 and spec.send_dimensions is True
+    assert spec.query_prefix == api.DEFAULT_QUERY_PREFIX
+    assert spec.query_prefix.startswith("Instruct: ") and spec.query_prefix.endswith("Query:")
+
+
+def test_the_default_is_the_preset_the_bake_off_measured():
+    from benchmarks.embeddings import PRESETS
+    from xwalk.retrieval import embeddings_api as api
+
+    measured = PRESETS["qwen3-8b-1024"]
+    assert measured.model == api.DEFAULT_MODEL
+    assert measured.dimensions == api.DEFAULT_DIMENSIONS
+    assert measured.send_dimensions is True
+    assert measured.query_prefix == api.DEFAULT_QUERY_PREFIX
+
+
+def test_settings_given_beside_the_default_model_are_kept():
+    spec = RetrieverSpec.model_validate(
+        {
+            "kind": "dense",
+            "encoder": "openai_embeddings",
+            "dimensions": 4096,
+            "send_dimensions": False,
+            "query_prefix": "",
+            "api_key_env": "MY_KEY",
+            "base_url": "https://gateway.example/v1",
+        }
+    )
+    assert spec.model == "qwen/qwen3-embedding-8b"
+    assert (spec.dimensions, spec.send_dimensions, spec.query_prefix) == (4096, False, "")
+    assert (spec.api_key_env, spec.base_url) == ("MY_KEY", "https://gateway.example/v1")
+
+
+def test_a_named_model_gets_nothing_filled_in():
+    """Only the default model brings the default settings; another model's prefix and
+    dimension are the user's to state."""
+    with pytest.raises(ValueError, match="base_url"):
+        RetrieverSpec.model_validate(
+            {"kind": "dense", "encoder": "openai_embeddings", "model": "vendor/m"}
+        )
+    spec = RetrieverSpec.model_validate(
+        {
+            "kind": "dense",
+            "encoder": "openai_embeddings",
+            "model": "vendor/m",
+            "base_url": "https://x.example/v1",
+            "dimensions": 8,
+        }
+    )
+    assert spec.query_prefix == "" and spec.api_key_env is None
+
+
+def test_a_local_encoder_still_needs_a_model():
+    with pytest.raises(ValueError, match="needs a model"):
+        RetrieverSpec.model_validate({"kind": "dense"})
+
+
+def test_the_default_spec_and_the_sdk_default_encoder_agree(monkeypatch):
+    from xwalk.retrieval.dense import encoder_identity
+    from xwalk.retrieval.embeddings_api import default_embeddings_encoder
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    from_spec = JobSpec.build_encoder(
+        RetrieverSpec.model_validate({"kind": "dense", "encoder": "openai_embeddings"})
+    )
+    assert encoder_identity(from_spec) == encoder_identity(
+        default_embeddings_encoder(api_key="sk-test")
+    )
+
+
+# --- name_fields ---------------------------------------------------------------------
+
+
+def test_name_fields_is_a_dense_setting():
+    spec = _spec(name_fields=["label", "synonyms"])
+    assert spec.name_fields == ["label", "synonyms"]
+    local = RetrieverSpec.model_validate({"kind": "dense", "model": "m", "name_fields": ["label"]})
+    assert local.name_fields == ["label"]
+    with pytest.raises(ValueError, match="name_fields does not apply to kind 'bm25'"):
+        RetrieverSpec.model_validate({"kind": "bm25", "name_fields": ["label"]})
+
+
+@pytest.mark.parametrize("value", [[], [""], ["label", "label"]])
+def test_name_fields_must_be_distinct_non_blank_names(value):
+    with pytest.raises(ValueError, match="name_fields must"):
+        _spec(name_fields=value)
+
+
+def test_index_builds_name_vectors_and_refuses_a_change_of_them(tmp_path, gateway):
+    job = _job_file(tmp_path, {**API, "name_fields": ["label", "synonyms"]})
+    first = ops.index(job, tmp_path / "idx")
+    assert first.data["retrievers"][0]["action"] == "built"
+    meta = json.loads((tmp_path / "idx" / "api" / "xwalk_meta.json").read_text())
+    assert meta["components"]["name_fields"] == ["label", "synonyms"]
+    assert meta["vector_count"] > meta["doc_count"]
+    assert ops.index(job, tmp_path / "idx").data["retrievers"][0]["action"] == "opened"
+
+    plain = _job_file(tmp_path, dict(API))
+    with pytest.raises(ops.OpError) as info:
+        ops.index(plain, tmp_path / "idx")
+    assert "name_fields" in info.value.result.data["differences"]["api"]
+
+
+def test_search_with_name_vectors_returns_each_record_once(tmp_path, gateway):
+    job = _job_file(tmp_path, {**API, "name_fields": ["label", "synonyms"]})
+    ops.index(job, tmp_path / "idx")
+    result = ops.search(job, "glucose", index_dir=tmp_path / "idx", limit=10)
+    ids = [c["id"] for c in result.data["candidates"]]
+    assert len(ids) == len(set(ids))
+
+
+def test_a_cluster_job_refuses_name_fields(tmp_path):
+    data = yaml.safe_load(_cluster_file(tmp_path).read_text(encoding="utf-8"))
+    data["dense"]["name_fields"] = ["label"]
+    path = tmp_path / "cluster2.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    result = ops.validate(path, check_credentials=False)
+    assert result.exit_code == 2
+    assert any("name_fields does not apply to a clustering job" in e.message for e in result.errors)

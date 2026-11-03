@@ -125,6 +125,11 @@ class ClusterJobSpec(_Spec):
     def _check(self) -> ClusterJobSpec:
         if self.dense is not None and self.dense.kind != "dense":
             raise ValueError("dense must describe a dense encoder (kind: dense)")
+        if self.dense is not None and self.dense.name_fields is not None:
+            raise ValueError(
+                "dense: name_fields does not apply to a clustering job (its pool embeds "
+                "each source record once)"
+            )
         return self
 
     def build_templates(self) -> TemplateSet:

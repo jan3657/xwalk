@@ -47,7 +47,11 @@ from xwalk.records import Record
 from xwalk.retrieval.base import IndexMismatchError, Retriever
 from xwalk.retrieval.bm25 import BM25Retriever
 from xwalk.retrieval.dense import DenseRetriever, Encoder, encoder_identity, index_components
-from xwalk.retrieval.embeddings_api import EmbeddingUsage, OpenAIEmbeddingsEncoder
+from xwalk.retrieval.embeddings_api import (
+    DEFAULT_QUERY_PREFIX,
+    EmbeddingUsage,
+    OpenAIEmbeddingsEncoder,
+)
 from xwalk.retrieve import retrieve
 from xwalk.stores.memory import MemoryStore
 from xwalk.templates import TemplateSet
@@ -59,7 +63,7 @@ DEPTH = 50  # dense retrieval depth; recall is reported up to it
 CONCURRENCY = 8
 
 # Qwen3-Embedding's documented query format: an instruction, then "Query:" and the text.
-QWEN_QUERY = "Instruct: Given a term, retrieve the ontology concept it names\nQuery:"
+QWEN_QUERY = DEFAULT_QUERY_PREFIX  # the default encoder's prefix is the one measured here
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,7 @@ class Preset:
     truncate: bool = False
     batch_size: int = 64  # texts per request; some free endpoints fail on larger batches
     requests_per_minute: float | None = None  # client-side throttle for rate-limited tiers
+    name_fields: tuple[str, ...] | None = None  # per-name vectors (DenseRetriever)
 
     @property
     def local(self) -> bool:
@@ -184,6 +189,15 @@ PRESETS: dict[str, Preset] = {
             query_prefix=QWEN_QUERY,
             dimensions=1024,
             send_dimensions=True,
+        ),
+        Preset(
+            "qwen3-8b-1024-names",
+            "qwen/qwen3-embedding-8b",
+            "the default encoder with per-name vectors (label, synonyms)",
+            query_prefix=QWEN_QUERY,
+            dimensions=1024,
+            send_dimensions=True,
+            name_fields=("label", "synonyms"),
         ),
         Preset(
             "qwen3-8b-noinst",
@@ -559,8 +573,13 @@ def _bm25(loaded: Loaded, index_root: Path) -> list[Retriever]:
     return built
 
 
-def _dense_index(loaded: Loaded, encoder: Encoder, directory: Path) -> tuple[DenseRetriever, str]:
-    expected = index_components(loaded.targets, loaded.templates, encoder)
+def _dense_index(
+    loaded: Loaded,
+    encoder: Encoder,
+    directory: Path,
+    name_fields: Sequence[str] | None = None,
+) -> tuple[DenseRetriever, str]:
+    expected = index_components(loaded.targets, loaded.templates, encoder, name_fields=name_fields)
     if (directory / "xwalk_meta.json").is_file():
         try:
             return (
@@ -570,7 +589,12 @@ def _dense_index(loaded: Loaded, encoder: Encoder, directory: Path) -> tuple[Den
         except (IndexMismatchError, ValueError):
             pass
     built = DenseRetriever.build(
-        loaded.targets, loaded.templates, directory, encoder, default_limit=DEPTH
+        loaded.targets,
+        loaded.templates,
+        directory,
+        encoder,
+        default_limit=DEPTH,
+        name_fields=name_fields,
     )
     return built, "built"
 
@@ -597,7 +621,7 @@ def run_preset(
         identity = encoder_identity(inner)
         row.dimension = int(identity["dimension"])
         directory = index_root / loaded.name / preset.name
-        dense, row.index_action = _dense_index(loaded, wrapped, directory)
+        dense, row.index_action = _dense_index(loaded, wrapped, directory, preset.name_fields)
         wrapped.prefetch([q for queries in loaded.queries for q in queries])
         wanted = [gold for _, gold in loaded.labelled]
         alone, degraded = asyncio.run(ranked_ids(loaded, [dense]))

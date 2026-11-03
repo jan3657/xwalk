@@ -201,6 +201,7 @@ class RecordSpec(_Spec):
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _DENSE_ONLY = (
     "encoder",
+    "name_fields",
     "model",
     "device",
     "query_prefix",
@@ -236,6 +237,8 @@ class RetrieverSpec(_Spec):
     fuzzy_distance: int = Field(default=0, ge=0, le=MAX_FUZZY_DISTANCE)
     # dense only
     encoder: Literal["sentence_transformers", "openai_embeddings"] = "sentence_transformers"
+    # one extra vector per distinct value of these fields; a record scores by its best
+    name_fields: list[str] | None = None
     model: str | None = None
     query_prefix: str = ""
     doc_prefix: str = ""
@@ -273,8 +276,16 @@ class RetrieverSpec(_Spec):
                 "an environment variable"
             )
         if self.kind == "dense":
+            if self.encoder == "openai_embeddings" and not self.model:
+                self._apply_default_model()
             if not self.model:
                 raise ValueError("a dense retriever needs a model name")
+            if self.name_fields is not None:
+                names = [n.strip() for n in self.name_fields]
+                if not names or not all(names) or len(set(names)) != len(names):
+                    raise ValueError(
+                        "name_fields must list one or more distinct, non-blank field names"
+                    )
             self._reject_inapplicable(
                 ("exact_fields", "analyzer", "fuzzy_distance"), kind=self.kind
             )
@@ -292,6 +303,23 @@ class RetrieverSpec(_Spec):
         else:
             self._reject_inapplicable((*_DENSE_ONLY, *_API_ENCODER_ONLY), kind=self.kind)
         return self
+
+    def _apply_default_model(self) -> None:
+        """No model on an API encoder: the default encoder, with each of its settings
+        applied only where the job left that setting unset. A job that names a model
+        gets none of this; its prefix and dimension are its own to state."""
+        from xwalk.retrieval import embeddings_api as api
+
+        self.model = api.DEFAULT_MODEL
+        given = self.model_fields_set
+        if "base_url" not in given:
+            self.base_url = api.DEFAULT_BASE_URL
+        if "api_key_env" not in given:
+            self.api_key_env = api.DEFAULT_API_KEY_ENV
+        if "dimensions" not in given:
+            self.dimensions = api.DEFAULT_DIMENSIONS
+        if "query_prefix" not in given:
+            self.query_prefix = api.DEFAULT_QUERY_PREFIX
 
     def _reject_for_encoder(self, fields: Sequence[str]) -> None:
         stray = [name for name in fields if name in self.model_fields_set]
@@ -540,6 +568,7 @@ class JobSpec(_Spec):
                         self.build_encoder(spec, where=f"retrievers.{position}"),
                         name=spec.name,
                         default_limit=spec.limit,
+                        name_fields=spec.name_fields,
                     )
                 )
         return built

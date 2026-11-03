@@ -615,7 +615,9 @@ def plan_indexes(
             plans.append(PlannedIndex(spec, directory, spec.name or "bm25", expected))
         else:
             encoder = factory(spec)
-            expected = dense_index.index_components(targets, templates, encoder)
+            expected = dense_index.index_components(
+                targets, templates, encoder, name_fields=spec.name_fields
+            )
             name = spec.name or f"dense:{encoder.name}"
             plans.append(PlannedIndex(spec, directory, name, expected, encoder))
     return plans
@@ -723,6 +725,7 @@ def prepare_indexes(
                     plan.encoder,
                     name=plan.name,
                     default_limit=spec.limit,
+                    name_fields=spec.name_fields,
                 )
             )
     for plan, retriever in zip(plans, retrievers, strict=True):

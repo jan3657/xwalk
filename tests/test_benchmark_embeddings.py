@@ -138,6 +138,18 @@ def test_a_preset_failing_after_its_index_is_built_is_recorded_per_dataset(tmp_p
     assert all(r.error is None for r in rows if r.method == "good")
 
 
+def test_a_preset_can_index_one_vector_per_name(tmp_path, gateway):
+    named = bake.Preset("named", "vendor/good", name_fields=("label", "synonyms"))
+    rows = bake.run(_options(tmp_path, gateway, named))
+    row = next(r for r in rows if r.method == "named")
+    assert row.error is None and row.alone is not None
+    meta = json.loads(
+        (tmp_path / "out" / "index" / "nlm_gene" / "named" / "xwalk_meta.json").read_text()
+    )
+    assert meta["components"]["name_fields"] == ["label", "synonyms"]
+    assert meta["vector_count"] > meta["doc_count"]
+
+
 def test_the_cost_guard_refuses_an_expensive_run(tmp_path, monkeypatch):
     monkeypatch.setenv("XWALK_TEST_BAKE_KEY", "sk-bake")
     pricey = OpenRouter(price="0.01")
