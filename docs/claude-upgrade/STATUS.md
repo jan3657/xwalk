@@ -396,7 +396,7 @@ from the key's reported usage: 0.018 on a 5-record trial, 0.374 on the gpt-4o-mi
   property (SCORE, VERIFY and REWRITE schemas all did). The client now sends strict schemas
   with every property required and the optional ones nullable; the verifier and rewriter
   treat null like an absent key. OpenRouter's wrapped errors (`metadata.raw`) now reach the
-  message and the prompt-only fallback. 9 regression tests, 8 failed first.
+  message and the prompt-only fallback. 11 regression cases, 8 failed first.
 - **gpt-4o-mini, LLM path** (`benchmarks/results/real-2026-11-03-gpt-4o-mini/`): xwalk_full is
   precise on cafeteria_fcd (1.000, coverage 0.70) but fuzzy_difflib has a higher F1 there.
   On ncbi_disease it has the best F1 (0.805) but accepts 7 no-match rows, more than exact
