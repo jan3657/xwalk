@@ -1,0 +1,42 @@
+{
+  "engine": "dense",
+  "name": "dense-qwen3",
+  "encoder": "qwen/qwen3-embedding-8b",
+  "dimension": 1024,
+  "default_limit": 20,
+  "fingerprint": "d6fae48632e73e9f",
+  "components": {
+    "engine": "dense",
+    "format_version": 2,
+    "doc_template": "{{ label }} {% if synonyms is string %}{{ synonyms }}{% else %}{{ synonyms | join(' ') }}{% endif %} {{ definition }} {{ organism }}",
+    "record_count": 200,
+    "records": "c5294972c0995649",
+    "encoder": {
+      "name": "qwen/qwen3-embedding-8b",
+      "dimension": 1024,
+      "adapter": "openai_embeddings",
+      "adapter_version": 1,
+      "base_url": "https://openrouter.ai/api/v1",
+      "revision": "unknown",
+      "send_dimensions": true,
+      "truncate": false,
+      "normalize": true,
+      "query_prefix": "Instruct: Given a term, retrieve the ontology concept it names\nQuery:",
+      "doc_prefix": "",
+      "query_input_type": null,
+      "doc_input_type": null,
+      "provider": {
+        "order": [
+          "deepinfra"
+        ],
+        "allow_fallbacks": true
+      }
+    },
+    "name_fields": [
+      "label",
+      "synonyms"
+    ]
+  },
+  "doc_count": 200,
+  "vector_count": 487
+}
