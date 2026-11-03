@@ -100,6 +100,9 @@ exclude = [
     "!docs/claude-upgrade/REVIEW.md",
     "!docs/claude-upgrade/CLUSTERING_DECISIONS.md",
     "benchmarks/results/",
+    # Anchored: an unanchored "ner-site/" would also drop docs/ner-site/. The committed
+    # dense vectors are deployment data for the Vercel demo, not source.
+    "/ner-site/indexes/",
     "scripts/run_pipeline.sh",
     "scripts/run_jev_eval.sh",
     "scripts/compare_runs.py",
@@ -113,6 +116,8 @@ exclude = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `ner-site/ner_site` (the Vercel demo, docs/ner-site/PLAN.md) is tested from tests/test_site_*.py.
+pythonpath = ["ner-site"]
 asyncio_mode = "auto"
 markers = [
     "integration: hits a real LLM provider; skipped without an API key",
@@ -138,7 +143,13 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["src/xwalk", "scripts", "examples"]
+files = [
+    "src/xwalk",
+    "scripts",
+    "examples",
+    "ner-site/ner_site",
+]
+mypy_path = "ner-site"
 
 # Optional extras are, by definition, absent from the base dev environment. Typing the
 # call sites is what matters; chasing stubs for a package the base install must not pull

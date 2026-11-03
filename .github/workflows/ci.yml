@@ -17,8 +17,8 @@ jobs:
       - run: pip install -e ".[dev,mcp]"
       # Same paths as the local gate. CI that lints a narrower tree than the developer
       # does is CI that passes while the local gate fails.
-      - run: ruff check src tests examples scripts benchmarks
-      - run: ruff format --check src tests examples scripts benchmarks
+      - run: ruff check src tests examples scripts benchmarks ner-site
+      - run: ruff format --check src tests examples scripts benchmarks ner-site
       - run: mypy
 
   test:

@@ -27,6 +27,7 @@ Task-oriented, in the order you will need them.
 | [Drafting and optimising prompts](guide/prompt-optimisation.md) | Your failures are *misjudged* rather than *never retrieved*. |
 | [Extending xwalk](guide/extending.md) | You need your own retriever, source, store, or model client. |
 | [Troubleshooting](guide/troubleshooting.md) | Something is behaving oddly. |
+| [NER-to-ontology demo site plan](ner-site/PLAN.md) | You are building or deploying the Vercel demo in `ner-site/`: paste text, extract entities with an LLM, map each onto a bundled sample ontology. |
 | [Ref_zivila food crosswalk plan](ref-zivila-mapping-plan.md) | The worked plan for mapping the Slovenian food-composition table onto FoodOn. |
 
 ## Reference
