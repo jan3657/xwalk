@@ -76,6 +76,7 @@ class Preset:
     dimensions: int | None = None  # None: the model's native length, found with one call
     send_dimensions: bool = False
     truncate: bool = False
+    batch_size: int = 64  # texts per request; some free endpoints fail on larger batches
 
     @property
     def local(self) -> bool:
@@ -94,6 +95,7 @@ PRESETS: dict[str, Preset] = {
             "NVIDIA, Oct 2026, free; 4096-d, truncatable",
             query_prefix="query: ",
             doc_prefix="passage: ",
+            batch_size=2,  # larger batches fail with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3.5-8b-it",
@@ -101,6 +103,7 @@ PRESETS: dict[str, Preset] = {
             "as above, roles sent as input_type",
             query_input_type="search_query",
             doc_input_type="search_document",
+            batch_size=2,  # larger batches fail with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3.5-1b",
@@ -108,6 +111,7 @@ PRESETS: dict[str, Preset] = {
             "NVIDIA, Oct 2026, free; distilled from the 8B",
             query_prefix="query: ",
             doc_prefix="passage: ",
+            batch_size=1,  # larger batches fail with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3.5-1b-it",
@@ -115,6 +119,7 @@ PRESETS: dict[str, Preset] = {
             "as above, roles sent as input_type",
             query_input_type="search_query",
             doc_input_type="search_document",
+            batch_size=1,  # larger batches fail with HTTP 500 (2026-11-03)
         ),
         Preset(
             "nemotron-3-1b",
@@ -377,6 +382,7 @@ def build_encoder(
         doc_prefix=preset.doc_prefix,
         query_input_type=preset.query_input_type,
         doc_input_type=preset.doc_input_type,
+        batch_size=preset.batch_size,
         transport=transport,
     )
 
