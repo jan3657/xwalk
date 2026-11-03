@@ -31,6 +31,7 @@ import json
 import math
 import os
 import sys
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -77,6 +78,7 @@ class Preset:
     send_dimensions: bool = False
     truncate: bool = False
     batch_size: int = 64  # texts per request; some free endpoints fail on larger batches
+    requests_per_minute: float | None = None  # client-side throttle for rate-limited tiers
 
     @property
     def local(self) -> bool:
@@ -96,6 +98,7 @@ PRESETS: dict[str, Preset] = {
             query_prefix="query: ",
             doc_prefix="passage: ",
             batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
+            requests_per_minute=15,  # free tier: about 20 per minute
         ),
         Preset(
             "nemotron-3.5-8b-it",
@@ -104,6 +107,7 @@ PRESETS: dict[str, Preset] = {
             query_input_type="search_query",
             doc_input_type="search_document",
             batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
+            requests_per_minute=15,  # free tier: about 20 per minute
         ),
         Preset(
             "nemotron-3.5-1b",
@@ -112,6 +116,7 @@ PRESETS: dict[str, Preset] = {
             query_prefix="query: ",
             doc_prefix="passage: ",
             batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
+            requests_per_minute=15,  # free tier: about 20 per minute
         ),
         Preset(
             "nemotron-3.5-1b-it",
@@ -120,6 +125,7 @@ PRESETS: dict[str, Preset] = {
             query_input_type="search_query",
             doc_input_type="search_document",
             batch_size=1,  # batches fail intermittently with HTTP 500 (2026-11-03)
+            requests_per_minute=15,  # free tier: about 20 per minute
         ),
         Preset(
             "nemotron-3-1b",
@@ -127,6 +133,7 @@ PRESETS: dict[str, Preset] = {
             "NVIDIA, Jul 2026, free; text-only",
             query_prefix="query: ",
             doc_prefix="passage: ",
+            requests_per_minute=15,  # free tier: about 20 per minute
         ),
         Preset(
             "qwen3-8b",
@@ -163,7 +170,12 @@ PRESETS: dict[str, Preset] = {
             query_prefix="query: ",
             doc_prefix="passage: ",
         ),
-        Preset("lfm-350m", "liquid/lfm-2.5-embedding-350m:free", "Liquid AI, free, 1024-d"),
+        Preset(
+            "lfm-350m",
+            "liquid/lfm-2.5-embedding-350m:free",
+            "Liquid AI, free, 1024-d",
+            requests_per_minute=15,
+        ),
         Preset(
             "local-e5-small",
             "local:intfloat/multilingual-e5-small",
@@ -332,6 +344,46 @@ class PrefetchedQueries:
         return self._inner.encode(texts, is_query=is_query)
 
 
+class ThrottledTransport(httpx.BaseTransport):
+    """Spaces requests at least `60 / requests_per_minute` seconds apart, across
+    threads. Free tiers answer a burst with HTTP 429 long before the retries run out."""
+
+    def __init__(
+        self,
+        requests_per_minute: float,
+        inner: httpx.BaseTransport | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        if requests_per_minute <= 0:
+            raise ValueError("requests_per_minute must be positive")
+        self._interval = 60.0 / requests_per_minute
+        self._inner = inner or httpx.HTTPTransport()
+        self._clock = clock
+        self._sleep = sleep
+        self._lock = threading.Lock()
+        self._next = 0.0
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        with self._lock:
+            now = self._clock()
+            wait = max(0.0, self._next - now)
+            self._next = max(now, self._next) + self._interval
+        if wait:
+            self._sleep(wait)
+        return self._inner.handle_request(request)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+def _transport(preset: Preset, transport: Any) -> Any:
+    if preset.requests_per_minute is None:
+        return transport
+    return ThrottledTransport(preset.requests_per_minute, transport)
+
+
 def native_dimension(
     preset: Preset, *, base_url: str, api_key: str | None, transport: Any = None
 ) -> int:
@@ -368,6 +420,7 @@ def build_encoder(
             query_prefix=preset.query_prefix,
             doc_prefix=preset.doc_prefix,
         )
+    transport = _transport(preset, transport)
     dimensions = preset.dimensions or native_dimension(
         preset, base_url=base_url, api_key=api_key, transport=transport
     )

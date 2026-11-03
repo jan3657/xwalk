@@ -181,6 +181,27 @@ def test_the_query_prefetch_keeps_the_encoder_identity(gateway):
     )
 
 
+def test_the_throttle_spaces_requests_evenly():
+    now = [0.0]
+    waits: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        waits.append(seconds)
+        now[0] += seconds
+
+    inner = httpx.MockTransport(lambda request: httpx.Response(200))
+    throttle = bake.ThrottledTransport(30, inner, clock=lambda: now[0], sleep=sleep)
+    with httpx.Client(transport=throttle) as client:
+        for _ in range(3):
+            client.get("https://x.example/")
+    assert waits == [2.0, 2.0]
+
+
+def test_free_presets_are_throttled():
+    free = [p for p in bake.PRESETS.values() if p.model.endswith(":free")]
+    assert free and all(p.requests_per_minute for p in free)
+
+
 def test_every_preset_is_well_formed():
     for name, preset in bake.PRESETS.items():
         assert name == preset.name
