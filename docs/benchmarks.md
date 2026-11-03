@@ -223,6 +223,44 @@ Other candidates inspected and not changed:
 - Dense-array copies: not measurable without `xwalk[dense]`.
 - Peak Python memory of a full run is about 1.6-2.0 MiB at this size; nothing to fix.
 
+## Embedding bake-off
+
+`benchmarks/embeddings.py` compares embedding models for dense retrieval with no LLM in
+the loop. For each pilot dataset and each preset it builds a dense index over the
+catalog, embeds every labelled query, and reports recall@1/5/10/20/50 and MRR for the
+dense retriever alone, for the job's own BM25 alone, and for both fused by reciprocal
+rank (what a hybrid job retrieves).
+
+```bash
+pip install -e ".[dev,ontology]"
+python -m benchmarks.embeddings --dry-run     # datasets, presets, estimated cost; no calls
+export OPENROUTER_API_KEY=...
+python -m benchmarks.embeddings               # every preset; about $0.02 at November 2026 prices
+python -m benchmarks.embeddings --model nemotron-3.5-8b --model qwen3-8b --dataset chebi
+python -m benchmarks.embeddings --job my/job.yaml --gold my/gold.csv --model voyage-4-lite
+```
+
+Presets cover the OpenRouter embedding models current in November 2026: NVIDIA Nemotron
+3.5 Embed 8B and 1B and Nemotron 3 Embed 1B (free), Qwen3-Embedding 8B and 4B, Voyage 4
+lite/base/large, OpenAI `text-embedding-3-small`/`-large`, Gemini Embedding 2, Perplexity
+pplx-embed v1, BGE-M3, multilingual E5 large, LFM 2.5 350M (free), and the examples'
+local `multilingual-e5-small` (needs `xwalk[dense]`). Where a model card names query
+and document roles but it is not known whether OpenRouter forwards `input_type` for that
+model, there are two presets: prefixes in the text, and `-it` with `input_type`.
+
+`--max-cost` (default $1) refuses to start when the estimate from OpenRouter's public
+price list is higher. Free models need the account's privacy setting that allows
+free-model providers; otherwise OpenRouter answers 404 and the preset's rows carry that
+error while the rest of the run continues. Results go to
+`benchmarks/results/embeddings-<date>/` (`results.json` with every value, `results.md`
+with the tables); indexes are cached under its `index/` directory (gitignored), so a
+rerun pays only for the query embeddings. Token counts and cost are what the endpoint
+reported, and "unknown" when it reported nothing.
+
+The pilot catalogs hold about 200 targets each, so deep cut-offs saturate: compare
+recall@1, recall@5 and MRR, and confirm a winner on a full catalog before making it a
+default.
+
 ## Limitations
 
 - 50 records per dataset and 8-9 test records: differences of a few records are noise.

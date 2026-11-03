@@ -39,6 +39,7 @@ from xwalk.retrieval.base import RetrieverError
 
 ADAPTER = "openai_embeddings"
 ADAPTER_VERSION = 1
+_MAX_RETRY_AFTER = 300.0  # seconds; a longer Retry-After is waited for this long, then retried
 
 
 class EmbeddingAPIError(RetrieverError):
@@ -196,19 +197,29 @@ class OpenAIEmbeddingsEncoder:
                 cost=self._cost if self._cost_known else None,
             )
 
+    def probe_dimension(self, text: str = "dimension probe") -> int:
+        """The length of the vector the endpoint returns for one document text, as sent
+        with this encoder's settings. Spends one call; nothing else here probes."""
+        return len(self._embed_raw([f"{self._doc_prefix}{text}"], False)[0])
+
     def close(self) -> None:
         self._client.close()
 
     # --- one batch -------------------------------------------------------------------
 
     def _embed(self, texts: list[str], is_query: bool) -> list[list[float]]:
+        return [self._shape(vector) for vector in self._embed_raw(texts, is_query)]
+
+    def _embed_raw(self, texts: list[str], is_query: bool) -> list[list[float]]:
         try:
             return self._embed_once(texts, is_query)
         except _Payload413 as exc:
             if len(texts) == 1:
                 raise EmbeddingAPIError(str(exc), status=413) from None
             middle = len(texts) // 2
-            return self._embed(texts[:middle], is_query) + self._embed(texts[middle:], is_query)
+            return self._embed_raw(texts[:middle], is_query) + self._embed_raw(
+                texts[middle:], is_query
+            )
 
     def _body(self, texts: list[str], is_query: bool) -> dict[str, Any]:
         body: dict[str, Any] = {"model": self._model, "input": texts, "encoding_format": "float"}
@@ -250,7 +261,7 @@ class OpenAIEmbeddingsEncoder:
 
     def _delay(self, attempt: int, last: EmbeddingAPIError | None) -> float:
         if last is not None and last.retry_after is not None:
-            return min(last.retry_after, self._backoff_cap * 4)
+            return min(last.retry_after, _MAX_RETRY_AFTER)
         ceiling = min(self._backoff_cap, self._backoff_base * 2 ** (attempt - 1))
         return float(random.uniform(0.0, ceiling))  # noqa: S311 -- jitter, not security
 
@@ -314,7 +325,7 @@ class OpenAIEmbeddingsEncoder:
             vector = [float(v) for v in raw]
             if not all(math.isfinite(v) for v in vector):
                 raise EmbeddingAPIError("embeddings endpoint returned a non-finite value")
-            vectors.append(self._shape(vector))
+            vectors.append(vector)
         return vectors
 
     def _shape(self, vector: list[float]) -> list[float]:

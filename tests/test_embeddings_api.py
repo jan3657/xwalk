@@ -527,6 +527,23 @@ def test_a_failed_query_embedding_surfaces_as_a_search_error(tmp_path):
         asyncio.run(retriever.search(SearchRequest(text="glucose", limit=3)))
 
 
+def test_probe_dimension_returns_the_native_length_in_one_call():
+    gateway = Gateway(dimension=40)
+    enc = encoder(gateway, dimensions=1, doc_prefix="passage: ")
+    assert enc.probe_dimension() == 40
+    assert len(gateway.bodies) == 1
+    assert gateway.bodies[0]["input"] == ["passage: dimension probe"]
+
+
+def test_usage_is_booked_even_when_the_vector_shape_is_refused():
+    """The endpoint billed the call; refusing its answer does not unspend it."""
+    gateway = Gateway(dimension=32, usage={"prompt_tokens": 4, "total_tokens": 4})
+    enc = encoder(gateway, dimensions=26)
+    with pytest.raises(EmbeddingAPIError):
+        enc.encode(["glucose"])
+    assert enc.usage.prompt_tokens == 4
+
+
 # --- construction --------------------------------------------------------------------
 
 
