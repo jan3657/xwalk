@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "mode": "offline",
+  "default_model": "openai/gpt-4o-mini",
+  "models": [
+    "openai/gpt-4o-mini",
+    "google/gemini-2.5-flash-lite",
+    "qwen/qwen3-next-80b-a3b-instruct"
+  ],
+  "limits": {
+    "max_chars": 5000,
+    "max_prompt_chars": 4000,
+    "max_entities": 25,
+    "top_k_max": 10
+  },
+  "passcode_required": false,
+  "default_prompt": "Extract every mention of a chemical compound or drug (chemical), a disease or disorder (disease), a gene or protein (gene), and a food or ingredient (food). Label anything else notable as other. Keep each mention exactly as written in the text. Do not nest or overlap mentions. Return at most 25.",
+  "ontologies": [
+    {
+      "slug": "chebi-sample",
+      "name": "ChEBI (sample)",
+      "type": "chemical",
+      "count": 200
+    },
+    {
+      "slug": "ctd-disease-sample",
+      "name": "CTD diseases / MeSH (sample)",
+      "type": "disease",
+      "count": 200
+    },
+    {
+      "slug": "ncbi-gene-sample",
+      "name": "NCBI Gene (sample)",
+      "type": "gene",
+      "count": 200
+    },
+    {
+      "slug": "foodon-sample",
+      "name": "FoodOn (sample)",
+      "type": "food",
+      "count": 200
+    }
+  ],
+  "retrieval": {
+    "bm25": {
+      "status": "ok"
+    },
+    "dense": {
+      "status": "unavailable",
+      "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"
+    }
+  }
+}

@@ -11,7 +11,105 @@ are in [docs/ner-site/PLAN.md](../docs/ner-site/PLAN.md).
 
 - `ner_site/`: all logic, importable and tested offline from `tests/test_site_*.py`
   (pytest puts `ner-site/` on `sys.path`).
+- `api/ner.py`, `api/health.py`: the two Vercel Python functions, thin shims over
+  `ner_site.http.handle`.
+- `public/`: the page (`index.html`, `app.js`, `app.css`; no build step, no
+  dependencies). It builds every element with `textContent`, so model output is only
+  ever rendered as text.
+- `vercel.json`: function duration and bundled files, and the security headers.
+- `tools/serve_local.py`: a standard-library server for `public/` and `/api/*`.
+- `tools/screenshot.mjs`: Playwright smoke check that loads the page, runs the example
+  and writes a PNG.
+- `tools/fixtures/`: canned `/api` responses (`health*.json`, `ner*.json`,
+  `error.json`) for working on the page without the service.
 
 ## Deploy
 
-Deploy instructions: see section 11 of the plan; WS-C fills this in.
+### Run it locally first
+
+From the repository root, with the venv active (`. .venv/bin/activate`):
+
+```bash
+# Page only, canned API answers (no ner_site import, no key, no network)
+python ner-site/tools/serve_local.py --canned ner-site/tools/fixtures
+# ... the same with dense retrieval unavailable and offline mode, to see the banner
+python ner-site/tools/serve_local.py --canned ner-site/tools/fixtures --scenario degraded
+
+# The real service with the stand-in extractor (NER_SITE_OFFLINE=1; no key needed)
+python ner-site/tools/serve_local.py --offline
+
+# The real service against OpenRouter (spends money on your key)
+OPENROUTER_API_KEY=... python ner-site/tools/serve_local.py
+```
+
+The server binds `127.0.0.1`, port 8765 by default (`--port`), and adds the headers
+from `vercel.json` to every response, so the page runs under the production
+Content-Security-Policy. With `--canned`, posting text that contains `ERROR` returns
+`fixtures/error.json` with HTTP 400 to show the error box; `--delay SECONDS` slows the
+POST to show the busy state.
+
+Smoke check (Playwright is resolved from `NODE_PATH` or `npm root -g`):
+
+```bash
+node ner-site/tools/screenshot.mjs http://127.0.0.1:8765 /tmp/ner.png --width 1280
+node ner-site/tools/screenshot.mjs http://127.0.0.1:8765 /tmp/ner-360.png --width 360
+```
+
+It clicks **Load example** and **Run**, waits for the result cards and exits non-zero
+on a page error, a console error, a failed run, or horizontal scrolling. `--expect
+error --text "...ERROR..."` checks the error state instead; `--dark` uses the dark
+colour scheme.
+
+### Deploy on Vercel (operator)
+
+1. Import the repository into Vercel. Set **Root Directory** to `ner-site` and
+   **Framework Preset** to "Other" (no build command). Vercel serves `public/` as the
+   static site and `api/*.py` as Python functions (`.python-version` selects 3.12).
+2. Under Settings, Environment Variables, add `OPENROUTER_API_KEY` (mark it
+   sensitive). Optionally add `NER_SITE_PASSCODE` and `NER_SITE_MODELS`; see the table
+   below. Redeploy after changing variables.
+3. Open `https://<deployment>/api/health` and check `"mode": "live"`,
+   `"retrieval": {"dense": {"status": "ok"}}` and the model list. `dense: unavailable`
+   with a reason means the committed indexes under `indexes/` are missing or stale, or
+   the key is not set; mapping then runs on BM25 alone and the page shows a banner.
+4. Load the page, run the example text, and confirm the entities, their highlighted
+   spans and the matches. Check the function log for the cold-start time. If a
+   passcode is set, confirm that a request without it gets 401
+   (`curl -si -X POST -H 'Content-Type: application/json' -H 'X-Requested-With: xwalk-ner' -d '{"text":"aspirin"}' https://<deployment>/api/ner`).
+5. Set a spend limit on the OpenRouter key (see the security notes), then record what
+   was verified in a "Verified" section of this file.
+
+### Environment variables (function runtime)
+
+| Name | Default | Meaning |
+|---|---|---|
+| `OPENROUTER_API_KEY` | unset | The operator's key, used for the chat call and query embeddings. Without it (and not offline) `/api/ner` answers 503 `not_configured`. |
+| `NER_SITE_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL. |
+| `NER_SITE_MODELS` | `openai/gpt-4o-mini,google/gemini-2.5-flash-lite,qwen/qwen3-next-80b-a3b-instruct` | Comma-separated model allowlist; the first is the default. |
+| `NER_SITE_PASSCODE` | unset | When set, every `/api/ner` request must send it as `X-Passcode`; the page asks for it and keeps it in `sessionStorage`. |
+| `NER_SITE_MAX_CHARS` | 5000 | Maximum text length (characters). |
+| `NER_SITE_MAX_ENTITIES` | 25 | Maximum entities kept per request. |
+| `NER_SITE_MAX_PROMPT_CHARS` | 4000 | Maximum prompt length (characters). |
+| `NER_SITE_OFFLINE` | unset | `1` replaces the LLM with the stand-in extractor; `/api/health` reports `"mode": "offline"`. |
+| `NER_SITE_DENSE_DIR` | `<project root>/indexes` | Where the committed dense indexes live. |
+| `NER_SITE_CACHE_DIR` | `/tmp/xwalk-ner-site` | Where BM25 indexes are built at cold start. |
+
+### Security notes for the operator
+
+- **Set a spend limit on the OpenRouter key.** It is the only hard cap that holds
+  across all function instances. Per request the service allows at most 3 LLM calls
+  (retries included) and 25 entities (one embedding request each), and a function run
+  is cut off at 120 s, but nothing stops many requests in a row.
+- **Set `NER_SITE_PASSCODE` for a public deployment.** Without it anyone who finds the
+  URL can spend your key. Share the passcode out of band; the service compares it
+  in constant time. For more, Vercel's firewall rate limiting is an option.
+- The key lives only in the function environment. `/api/health` never returns it, and
+  error messages pass URLs through redaction. Do not put the key in `NER_SITE_BASE_URL`.
+- `vercel.json` sends `Content-Security-Policy: default-src 'self'; connect-src
+  'self'; img-src 'self' data:; style-src 'self'`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, and `Cache-Control: no-store` on `/api/*`. No CORS
+  headers are sent, and the API requires `X-Requested-With: xwalk-ner`, so other
+  sites cannot call it from a browser.
+- Visitors' text is sent to the model provider (OpenRouter and the model's host). The
+  function log records sizes, counts, timings and status only, never the text, the
+  prompt or the key.
