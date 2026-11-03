@@ -320,6 +320,8 @@ class RetrieverSpec(_Spec):
             self.dimensions = api.DEFAULT_DIMENSIONS
         if "query_prefix" not in given:
             self.query_prefix = api.DEFAULT_QUERY_PREFIX
+        if "provider" not in given:
+            self.provider = dict(api.DEFAULT_PROVIDER)
 
     def _reject_for_encoder(self, fields: Sequence[str]) -> None:
         stray = [name for name in fields if name in self.model_fields_set]

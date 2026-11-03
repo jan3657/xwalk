@@ -328,6 +328,10 @@ def test_an_api_encoder_without_a_model_gets_the_measured_default():
     assert spec.api_key_env == api.DEFAULT_API_KEY_ENV == "OPENROUTER_API_KEY"
     assert spec.dimensions == 1024 and spec.send_dimensions is True
     assert spec.query_prefix == api.DEFAULT_QUERY_PREFIX
+    # a preferred provider (fastest of the three, 2026-11-03) with fallback allowed
+    assert (
+        spec.provider == api.DEFAULT_PROVIDER == {"order": ["deepinfra"], "allow_fallbacks": True}
+    )
     assert spec.query_prefix.startswith("Instruct: ") and spec.query_prefix.endswith("Query:")
 
 
@@ -352,8 +356,10 @@ def test_settings_given_beside_the_default_model_are_kept():
             "query_prefix": "",
             "api_key_env": "MY_KEY",
             "base_url": "https://gateway.example/v1",
+            "provider": {"only": ["nebius"]},
         }
     )
+    assert spec.provider == {"only": ["nebius"]}
     assert spec.model == "qwen/qwen3-embedding-8b"
     assert (spec.dimensions, spec.send_dimensions, spec.query_prefix) == (4096, False, "")
     assert (spec.api_key_env, spec.base_url) == ("MY_KEY", "https://gateway.example/v1")
@@ -375,7 +381,7 @@ def test_a_named_model_gets_nothing_filled_in():
             "dimensions": 8,
         }
     )
-    assert spec.query_prefix == "" and spec.api_key_env is None
+    assert spec.query_prefix == "" and spec.api_key_env is None and spec.provider is None
 
 
 def test_a_local_encoder_still_needs_a_model():

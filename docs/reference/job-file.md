@@ -253,7 +253,9 @@ Qwen3-Embedding 8B through OpenRouter, chosen by the November 2026 embedding bak
 (`benchmarks/results/embeddings-2026-11-03/FINDINGS.md`). It fills `model:
 qwen/qwen3-embedding-8b`, `base_url: https://openrouter.ai/api/v1`, `api_key_env:
 OPENROUTER_API_KEY`, `dimensions: 1024` (scored the same as the native 4096 with a
-quarter of the index) and the model's query instruction as `query_prefix`, each only where
+quarter of the index), the model's query instruction as `query_prefix` and `provider:
+{order: [deepinfra], allow_fallbacks: true}` (the fastest provider, falling back to the
+others if it is down), each only where
 the job did not set it; the filled values are index identity like any other. A job that
 names a model, even the same one, gets none of these. Do not drop the query
 instruction: without it the same model scored 0.42 mean MRR instead of 0.85.
@@ -264,9 +266,11 @@ measurable on the other three (same source). Names are short, so they also stay 
 the synonym count.
 
 OpenRouter may serve one model from several providers whose vectors are not identical:
-two runs of the same preset differed by up to 0.04 MRR. For an index that must be
-reproducible, pin one with `provider: {order: [<provider>], allow_fallbacks: false}`, at
-the cost of failing when that provider is down.
+two runs of the same preset differed by up to 0.04 MRR, and DeepInfra's Qwen3 vectors
+are at cosine 0.996 from Nebius's. The default prefers DeepInfra and falls back, so an
+outage costs a little consistency rather than the job. For an index that must be
+reproducible, set `provider: {only: [deepinfra], allow_fallbacks: false}`, at the cost of
+failing when that provider is down.
 Indexes are written to `<index_dir>/<name or kind>`. An unnamed `bm25` retriever is built
 as `bm25`; an unnamed `dense` retriever names itself `dense:<model>` even though its index
 lands in `<index_dir>/dense`.

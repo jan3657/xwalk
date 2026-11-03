@@ -27,7 +27,8 @@ offline only (FakeDecider, no paid calls).
   only.
 
 - A default API encoder: an `encoder: openai_embeddings` retriever with no `model` uses
-  Qwen3-Embedding 8B through OpenRouter at 1024 dimensions with its query instruction
+  Qwen3-Embedding 8B through OpenRouter at 1024 dimensions with its query instruction,
+  preferring the DeepInfra provider with fallback to the others
   (`default_embeddings_encoder` in code), each setting applied only where the job left
   it unset. Chosen with `python -m benchmarks.embeddings`, a retrieval-only bake-off of
   the embedding models OpenRouter serves, on the four in-repo pilots

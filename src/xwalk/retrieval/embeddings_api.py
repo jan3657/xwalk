@@ -49,6 +49,12 @@ DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_API_KEY_ENV = "OPENROUTER_API_KEY"
 DEFAULT_DIMENSIONS = 1024
 DEFAULT_QUERY_PREFIX = "Instruct: Given a term, retrieve the ontology concept it names\nQuery:"
+# OpenRouter serves the model from several providers whose vectors differ slightly
+# (cosine 0.996 between DeepInfra and Nebius, 0.9999 between Nebius and SiliconFlow;
+# up to 0.04 MRR between runs). DeepInfra was the fastest (about 1.6 s for 64 texts
+# against 11 s for Nebius) at the lowest price; fallback stays on so an outage degrades
+# consistency instead of failing the job.
+DEFAULT_PROVIDER: dict[str, Any] = {"order": ["deepinfra"], "allow_fallbacks": True}
 
 _MAX_RETRY_AFTER = 300.0  # seconds; a longer Retry-After is waited for this long, then retried
 
@@ -398,6 +404,7 @@ def default_embeddings_encoder(
         "dimensions": DEFAULT_DIMENSIONS,
         "send_dimensions": True,
         "query_prefix": DEFAULT_QUERY_PREFIX,
+        "provider": dict(DEFAULT_PROVIDER),
     }
     return OpenAIEmbeddingsEncoder(
         base_url, DEFAULT_MODEL, api_key=api_key, **{**defaults, **settings}
@@ -409,6 +416,7 @@ __all__ = [
     "DEFAULT_BASE_URL",
     "DEFAULT_DIMENSIONS",
     "DEFAULT_MODEL",
+    "DEFAULT_PROVIDER",
     "DEFAULT_QUERY_PREFIX",
     "EmbeddingAPIError",
     "EmbeddingUsage",

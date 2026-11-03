@@ -305,8 +305,9 @@ OpenAIEmbeddingsEncoder(
 
 `default_embeddings_encoder(api_key=...)` returns the default encoder a job gets with
 `encoder: openai_embeddings` and no `model`: Qwen3-Embedding 8B through OpenRouter at
-1024 dimensions with its query instruction (`DEFAULT_MODEL`, `DEFAULT_BASE_URL`,
-`DEFAULT_DIMENSIONS`, `DEFAULT_QUERY_PREFIX` in the same module). Keyword arguments
+1024 dimensions with its query instruction, preferring the DeepInfra provider with
+fallback (`DEFAULT_MODEL`, `DEFAULT_BASE_URL`, `DEFAULT_DIMENSIONS`,
+`DEFAULT_QUERY_PREFIX`, `DEFAULT_PROVIDER` in the same module). Keyword arguments
 override any setting. `probe_dimension()` spends one call to report the native vector
 length; nothing else probes.
 
