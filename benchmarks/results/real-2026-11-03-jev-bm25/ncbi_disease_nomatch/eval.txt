@@ -1,0 +1,37 @@
+## Where to spend effort
+  50% of failures never retrieved the gold record -- spend effort on retrieval: the doc template, the retriever set, or retrieval depth
+
+## Headline
+  accepted precision   : 100.0%
+  automatic coverage   : 26.0%
+  review rate          : 26.0%
+  unmatched rate       : 48.0%
+  error rate           : 0.0%
+  unresolved rate      : 8.0%
+  recall at any status : 68.0%
+
+## No-match handling
+  no-match precision   : 83.3%
+  no-match recall      : 80.0%
+
+## Failure decomposition
+  found             : 17
+  misjudged         : 4
+  truncated         : 0
+  never_retrieved   : 4
+  unavailable       : 0
+  gold_unreachable  : 0
+  gold surfaced by   : bm25 (21)
+
+## Threshold replay
+Conditional on recorded attempts; changed thresholds may change stopping in a new run.
+
+## Cost
+  model calls / record : 1.66
+  tokens / record      : 4105.22
+  cost / record        : $0.000172
+  seconds / record     : 0.40
+  duplicate targets    : 4
+
+## Calibration warning
+  confidence scores barely separate correct from incorrect matches (mean correct 0.84 vs mean incorrect 0.80, separation 0.04 < 0.1); threshold tuning will not help until the scoring prompt discriminates better
