@@ -243,6 +243,22 @@ What was run, and nothing more (offline only: FakeLLM, the offline stand-in,
 Not run: the deadline against a real slow provider, anything live, Python 3.12 again,
 a Vercel deployment.
 
+### Deployed on Vercel, 4 November 2026 (the orchestrating session)
+
+Project `xwalk-ner` (Hobby plan), deployed with the Vercel CLI from `git archive` of
+`ner-site/` at commit `13ee967` (bundled backend), framework preset "Other", functions
+in `fra1` (next to the Neon project in AWS eu-central-1). Production variables, both
+sensitive: `OPENROUTER_API_KEY` and `NER_SITE_PASSCODE`. Checked at
+https://xwalk-ner.vercel.app: the page and `/api/health` answer 200 (`mode: live`,
+`passcode_required: true`, BM25 ok, dense ok, llm ok); `POST /api/ner` without the
+passcode is 401 `passcode_required`; with it, a five-entity text returned 200 in 5.1 s
+round trip (extract 2.7 s, map 0.7 s, one gpt-4o-mini call, 609 + 96 tokens, 5
+embedding requests), every sample term at rank 1 in both retrievers. Domains
+`www.xwalk.si` (primary) and `xwalk.si` (308 to www) are attached; DNS at Dynadot
+still pointed at Dynadot parking when this was written (apex A records
+216.198.79.1 and 64.29.17.1, www CNAME to the project's `*.vercel-dns-017.com`
+target, per Vercel's domain config for the project).
+
 ### For the operator after deploying
 
 1. `GET /api/health`: `mode: live`, `llm: {"status": "ok"}`, `dense: ok`. Without
