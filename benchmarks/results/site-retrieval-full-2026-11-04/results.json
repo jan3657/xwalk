@@ -1,0 +1,148 @@
+{
+  "date": "2026-11-04",
+  "catalog": "full",
+  "ks": [
+    1,
+    5,
+    10,
+    20
+  ],
+  "depth": 20,
+  "neon": {
+    "schema": "xwalk_full",
+    "dimensions": 768
+  },
+  "backends": {
+    "neon": {
+      "chebi": {
+        "ontology": "chebi",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.52,
+            "recall@5": 0.56,
+            "recall@10": 0.6,
+            "recall@20": 0.6,
+            "mrr": 0.544
+          },
+          "dense": {
+            "recall@1": 0.7,
+            "recall@5": 0.96,
+            "recall@10": 0.96,
+            "recall@20": 0.96,
+            "mrr": 0.7573333333333337
+          },
+          "fused": {
+            "recall@1": 0.72,
+            "recall@5": 0.72,
+            "recall@10": 0.96,
+            "recall@20": 0.96,
+            "mrr": 0.7494444444444445
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.1251935830000548,
+          "dense": 0.9673039664999123
+        }
+      },
+      "ncbi_disease": {
+        "ontology": "ctd-disease",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.5,
+            "recall@5": 0.52,
+            "recall@10": 0.54,
+            "recall@20": 0.54,
+            "mrr": 0.5088888888888888
+          },
+          "dense": {
+            "recall@1": 0.58,
+            "recall@5": 0.7,
+            "recall@10": 0.7,
+            "recall@20": 0.7,
+            "mrr": 0.6366666666666666
+          },
+          "fused": {
+            "recall@1": 0.48,
+            "recall@5": 0.7,
+            "recall@10": 0.7,
+            "recall@20": 0.7,
+            "mrr": 0.5716666666666667
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.12744435400009024,
+          "dense": 1.547545284500302
+        }
+      },
+      "cafeteria_fcd": {
+        "ontology": "foodon",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.86,
+            "recall@5": 0.92,
+            "recall@10": 0.92,
+            "recall@20": 0.94,
+            "mrr": 0.8851515151515151
+          },
+          "dense": {
+            "recall@1": 0.32,
+            "recall@5": 0.66,
+            "recall@10": 0.8,
+            "recall@20": 0.88,
+            "mrr": 0.4751125541125541
+          },
+          "fused": {
+            "recall@1": 0.64,
+            "recall@5": 0.94,
+            "recall@10": 0.94,
+            "recall@20": 0.94,
+            "mrr": 0.7663333333333333
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.12588331550023213,
+          "dense": 0.45689759700007926
+        }
+      }
+    }
+  }
+}
