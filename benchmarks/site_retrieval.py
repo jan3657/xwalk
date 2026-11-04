@@ -15,7 +15,8 @@ first gold id. No LLM is called; each backend costs one query embedding per ment
 ``neon`` needs DATABASE_URL (queried over Neon's HTTPS endpoint) and both need
 OPENROUTER_API_KEY for the query embeddings. ``--catalog full`` searches the full
 catalogs instead (once ``ner-site/tools/load_neon.py --source full`` has loaded them);
-the gold ids are the same, the distractors are not.
+the gold ids are the same, the distractors are not (pass ``--schema`` and
+``--dimensions`` for the full load; NLM Gene is skipped there, genes not being routed).
 """
 
 from __future__ import annotations
@@ -71,7 +72,9 @@ class _Fixed:
         return self._hits
 
 
-def open_backend(backend: str, catalog: str) -> Mapping[str, site_indexes.OntologyIndex]:
+def open_backend(
+    backend: str, catalog: str, schema: str, dimensions: int
+) -> Mapping[str, site_indexes.OntologyIndex]:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if backend == "bundled":
         cache = Path(os.environ.get("NER_SITE_CACHE_DIR", "/tmp/xwalk-ner-site-eval"))
@@ -84,6 +87,8 @@ def open_backend(backend: str, catalog: str) -> Mapping[str, site_indexes.Ontolo
     return site_indexes.open_neon_indexes(
         executor=site_indexes.make_executor(url),
         api_key=api_key,
+        schema=schema,
+        dimensions=dimensions,
         catalog="full" if catalog == "full" else "samples",
     )
 
@@ -140,6 +145,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--backend", action="append", choices=("bundled", "neon"))
     parser.add_argument("--catalog", choices=("samples", "full"), default="samples")
+    parser.add_argument("--schema", default=site_indexes.NEON_SCHEMA, help="neon schema")
+    parser.add_argument(
+        "--dimensions", type=int, default=site_indexes.NEON_DIMENSIONS, help="neon vectors"
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     backends = args.backend or ["bundled", "neon"]
@@ -153,12 +162,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "catalog": args.catalog,
         "ks": list(KS),
         "depth": site_indexes.DEFAULT_LIMIT,
+        "neon": {"schema": args.schema, "dimensions": args.dimensions},
         "backends": {},
     }
     for backend in backends:
-        opened = open_backend(backend, args.catalog)
+        opened = open_backend(backend, args.catalog, args.schema, args.dimensions)
         per: dict[str, Any] = {}
         for name, data in loaded.items():
+            if TYPE_OF[name] not in routes:  # genes are not routed with the full catalogs
+                continue
             slug = routes[TYPE_OF[name]]
             index = opened[slug]
             status = {k: s.model_dump() for k, s in index.status.items()}
@@ -205,9 +217,9 @@ def render_markdown(results: Mapping[str, Any]) -> str:
                 cells = " | ".join(f"{m[f'recall@{k}']:.2f}" for k in ks)
                 lines.append(f"| {backend} | {name} | {kind} | {cells} | {m['mrr']:.3f} |")
                 means.setdefault((backend, kind), []).append(m["mrr"])
-    lines += ["", "| backend | retriever | mean MRR (4 datasets) |", "|---|---|---|"]
+    lines += ["", "| backend | retriever | mean MRR | datasets |", "|---|---|---|---|"]
     for (backend, kind), values in means.items():
-        lines.append(f"| {backend} | {kind} | {sum(values) / len(values):.3f} |")
+        lines.append(f"| {backend} | {kind} | {sum(values) / len(values):.3f} | {len(values)} |")
     lines += ["", "Median search latency (seconds, from the machine that ran this):", ""]
     for backend, per in results["backends"].items():
         for name, row in per.items():

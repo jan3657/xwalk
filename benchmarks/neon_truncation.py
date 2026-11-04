@@ -37,7 +37,7 @@ KS = (1, 5, 10, 20)
 SQL = (
     "select record_id from ("
     " select v.record_id, min(l2_normalize(subvector(v.embedding, 1, {d}))"
-    " <#> l2_normalize(subvector($2::halfvec(1024), 1, {d}))) as dist"
+    " <#> l2_normalize(subvector($2::halfvec({stored}), 1, {d}))) as dist"
     " from {schema}.term_vectors v where v.ontology = $1 group by v.record_id"
     ") r order by dist, record_id limit $3"
 )
@@ -49,6 +49,7 @@ def main() -> int:
     parser.add_argument("--ontology", required=True)
     parser.add_argument("--schema", default="xwalk")
     parser.add_argument("--dims", type=int, nargs="+", default=[1024, 768, 512])
+    parser.add_argument("--stored", type=int, default=1024, help="the loaded dimension")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
@@ -61,7 +62,7 @@ def main() -> int:
     queries = [
         TEMPLATES.render_query(Record(f"q{i}", {"mention": m})) for i, m in enumerate(mentions)
     ]
-    vectors = encoder.encode(queries, is_query=True)
+    vectors = [v[: args.stored] for v in encoder.encode(queries, is_query=True)]
     executor = NeonHTTPExecutor(os.environ["DATABASE_URL"], timeout=300, max_retries=2)
     count = executor.execute(
         f"select count(*) as n from {args.schema}.term_vectors where ontology = $1",
@@ -83,7 +84,7 @@ def main() -> int:
             [
                 row["record_id"]
                 for row in executor.execute(
-                    SQL.format(d=int(d), schema=args.schema),
+                    SQL.format(d=int(d), stored=int(args.stored), schema=args.schema),
                     [args.ontology, vector_literal(vec), DEFAULT_LIMIT],
                 )
             ]
