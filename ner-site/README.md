@@ -259,6 +259,36 @@ still pointed at Dynadot parking when this was written (apex A records
 216.198.79.1 and 64.29.17.1, www CNAME to the project's `*.vercel-dns-017.com`
 target, per Vercel's domain config for the project).
 
+### Switched to Neon, 4 November 2026
+
+Production variables added (production target): `DATABASE_URL` (Neon's pooled connection
+string, sensitive), `NER_SITE_BACKEND=neon`, `NER_SITE_NEON_CATALOG=samples` (the full
+catalogs are not loaded: the Neon org is on the free plan). Deployed with the Vercel CLI
+from `git archive` of `ner-site/` at `c20ed3d`, functions in `fra1`. Checked at
+https://www.xwalk.si and https://xwalk-ner.vercel.app:
+
+- DNS: Vercel's domain config reports `misconfigured: false` for `www.xwalk.si` (CNAME)
+  and `xwalk.si` (A 216.198.79.1, 64.29.17.1); `https://www.xwalk.si` answers 200 with a
+  Let's Encrypt certificate, `https://xwalk.si` 308 to `https://www.xwalk.si/`.
+- `/api/health` 200: `backend: neon`, `neon: {schema: xwalk, catalog: samples}`, BM25 ok,
+  dense ok, llm ok, `passcode_required: true`.
+- `POST /api/ner` without the passcode 401 `passcode_required`, with a wrong one 401
+  `passcode_invalid`.
+- With it, a six-entity text of sample terms: 200, every sample term at rank 1 in both
+  `bm25` and `dense-qwen3`, one gpt-4o-mini call (622 + 117 tokens), 6 embedding
+  requests; extract 2.2 to 2.7 s, **map 19 to 23 s**. The map time is the query
+  embeddings, not Neon: run locally against the same database with httpx logging, every
+  Neon SQL request took 120 to 170 ms while OpenRouter's embeddings requests (Qwen3 8B,
+  provider DeepInfra) took 0.5 to 12 s that hour (median 6.4 s, four in flight). One
+  single-entity run hit the encoder's 15 s timeout; the site answered with BM25 matches
+  and the warning "dense retrieval unavailable; matches use BM25 only", as designed.
+- Retrieval quality is unchanged by the switch: on the pilot gold sets the fused mean MRR
+  is 0.841 on Neon and 0.839 bundled (`benchmarks/results/site-retrieval-2026-11-04/`).
+
+Fallback: the committed dense indexes are still deployed, so setting
+`NER_SITE_BACKEND=bundled` (or removing it) and redeploying restores the bundled backend
+without a rebuild.
+
 ### For the operator after deploying
 
 1. `GET /api/health`: `mode: live`, `llm: {"status": "ok"}`, `dense: ok`. Without
