@@ -44,3 +44,4 @@ web/node_modules/
 
 # tsc -b writes its incremental cache next to the tsconfig.
 web/*.tsbuildinfo
+.neon

@@ -163,6 +163,16 @@ and precomputes their indexes; mapping runs reuse the shared library indexes. On
 macOS, dense search uses exact NumPy scoring to avoid native OpenMP conflicts between
 PyTorch and FAISS.
 
+Dense retrieval without PyTorch or a model download: pass `--dense api` to both the
+library builder and `xwalk ui` instead. It uses the default API encoder,
+Qwen3-Embedding 8B through OpenRouter with one vector per label and synonym, which
+scored above the local models on the pilot benchmarks
+(`benchmarks/results/embeddings-2026-11-03/FINDINGS.md`). Export `OPENROUTER_API_KEY`
+before starting both: with `--public` the shared library indexes and every visitor's
+query embeddings are paid with this operator key, never with a visitor's own key.
+Embedding is cheap (a 200-term catalog with its synonyms cost $0.0004 to index), but
+it is the operator's bill. `xwalk ui` refuses `--dense api` with `--offline-only`.
+
 ### Sign in with ChatGPT locally
 
 With `xwalk[chatgpt]` installed, `--chatgpt-login` adds **Continue with ChatGPT** in

@@ -1,5 +1,18 @@
 # OpenRouter dense retrieval: findings and implementation brief
 
+> **Update (2026-11-03, later the same day).** Implemented as
+> `xwalk.retrieval.embeddings_api.OpenAIEmbeddingsEncoder` / `encoder: openai_embeddings`
+> (see `docs/reference/job-file.md`), close to the sketch below with these differences:
+> the encoder lives in its own module; `dimensions` is required and `send_dimensions`
+> (default true) controls whether it is sent; `truncate` cuts and renormalises a longer
+> vector; `probe_dimension()` exists for tooling only. The default model is **not
+> chosen**: `python -m benchmarks.embeddings` measures the candidates on the pilot gold
+> sets and has not been run against a real endpoint yet. Newer than the table below:
+> `nvidia/nemotron-3.5-embed-8b:free` and `-1b:free` (released 2026-10-21; 4,096-d for
+> the 8B, truncatable with renormalisation; `query: ` / `passage: ` roles; benchmarked by
+> NVIDIA only on visual-document retrieval, ViDoRe v3.1 first at 61.17 nDCG@10), and
+> `liquid/lfm-2.5-embedding-350m:free`.
+
 Research only (2026-11-03). No code changed, no paid calls made. Prices and model
 metadata were read from `GET https://openrouter.ai/api/v1/embeddings/models` and
 `GET https://openrouter.ai/api/v1/models/<id>/endpoints` on that date.

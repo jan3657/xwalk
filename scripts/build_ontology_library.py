@@ -58,7 +58,12 @@ def _build(
 
 
 def _index(
-    library: Library, slug: str, cache: Path, *, dense: bool = False, device: str | None = None
+    library: Library,
+    slug: str,
+    cache: Path,
+    *,
+    dense: bool | str = False,
+    device: str | None = None,
 ) -> None:
     started = time.monotonic()
     choice = projects.TargetChoice(libraries=[slug])
@@ -94,8 +99,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--dense",
-        action="store_true",
-        help="also index the general and biomedical dense heads (requires xwalk[dense])",
+        nargs="?",
+        const="local",
+        default="off",
+        choices=("off", "local", "api"),
+        help="also index dense heads, matching `xwalk ui --dense`: 'local' (the default "
+        "when given alone) the general and biomedical models (requires xwalk[dense]), "
+        "'api' Qwen3-Embedding 8B through OpenRouter (needs OPENROUTER_API_KEY)",
     )
     parser.add_argument("--dense-device", help="dense encoder device, e.g. cpu or mps")
     parser.add_argument(

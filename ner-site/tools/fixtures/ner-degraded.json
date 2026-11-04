@@ -1,0 +1,262 @@
+{
+  "ok": true,
+  "model": "offline",
+  "mode": "offline",
+  "entities": [
+    {
+      "id": "e1",
+      "text": "Alkaptonuria",
+      "start": 31,
+      "end": 43,
+      "type": "disease",
+      "ontology": "ctd-disease-sample",
+      "matches": [
+        {
+          "id": "MESH:D000474",
+          "label": "Alkaptonuria",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "https://meshb.nlm.nih.gov/record/ui?ui=D000474"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e2",
+      "text": "Hydroxykynureninuria",
+      "start": 65,
+      "end": 85,
+      "type": "disease",
+      "ontology": "ctd-disease-sample",
+      "matches": [
+        {
+          "id": "MESH:C536081",
+          "label": "Hydroxykynureninuria",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "https://meshb.nlm.nih.gov/record/ui?ui=C536081"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e3",
+      "text": "haloperidol",
+      "start": 96,
+      "end": 107,
+      "type": "chemical",
+      "ontology": "chebi-sample",
+      "matches": [
+        {
+          "id": "CHEBI:5613",
+          "label": "haloperidol",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:5613"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e4",
+      "text": "ketamine",
+      "start": 115,
+      "end": 123,
+      "type": "chemical",
+      "ontology": "chebi-sample",
+      "matches": [
+        {
+          "id": "CHEBI:6121",
+          "label": "ketamine",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:6121"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e5",
+      "text": "aspirin",
+      "start": 129,
+      "end": 136,
+      "type": "chemical",
+      "ontology": "chebi-sample",
+      "matches": [],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e6",
+      "text": "fever",
+      "start": 143,
+      "end": 148,
+      "type": "other",
+      "ontology": null,
+      "matches": [],
+      "notes": [
+        "no ontology for type 'other'"
+      ]
+    },
+    {
+      "id": "e7",
+      "text": "NAT2",
+      "start": 169,
+      "end": 173,
+      "type": "gene",
+      "ontology": "ncbi-gene-sample",
+      "matches": [
+        {
+          "id": "NCBIGene:10",
+          "label": "NAT2",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "https://www.ncbi.nlm.nih.gov/gene/10"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e8",
+      "text": "ADA",
+      "start": 178,
+      "end": 181,
+      "type": "gene",
+      "ontology": "ncbi-gene-sample",
+      "matches": [
+        {
+          "id": "NCBIGene:100",
+          "label": "ADA",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "https://www.ncbi.nlm.nih.gov/gene/100"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e9",
+      "text": "hummus",
+      "start": 193,
+      "end": 199,
+      "type": "food",
+      "ontology": "foodon-sample",
+      "matches": [
+        {
+          "id": "FOODON:00003049",
+          "label": "hummus",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003049"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e10",
+      "text": "garlic",
+      "start": 201,
+      "end": 207,
+      "type": "food",
+      "ontology": "foodon-sample",
+      "matches": [
+        {
+          "id": "FOODON:00003582",
+          "label": "garlic bulb",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003582"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    },
+    {
+      "id": "e11",
+      "text": "cumin",
+      "start": 212,
+      "end": 217,
+      "type": "food",
+      "ontology": "foodon-sample",
+      "matches": [
+        {
+          "id": "FOODON:00003396",
+          "label": "cumin seed",
+          "score": 0.0164,
+          "retrievers": {
+            "bm25": 1
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003396"
+        },
+        {
+          "id": "FOODON:00003024",
+          "label": "cumin seed (dried)",
+          "score": 0.0161,
+          "retrievers": {
+            "bm25": 2
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003024"
+        }
+      ],
+      "notes": [
+        "dense retrieval unavailable; BM25 only"
+      ]
+    }
+  ],
+  "retrieval": {
+    "bm25": {
+      "status": "ok"
+    },
+    "dense": {
+      "status": "unavailable",
+      "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"
+    }
+  },
+  "warnings": [
+    "entity 'Hydroxykynurenine' dropped: not found in text",
+    "dense retrieval unavailable: no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"
+  ],
+  "usage": {
+    "llm_calls": 1,
+    "prompt_tokens": null,
+    "completion_tokens": null,
+    "embedding_requests": 0
+  },
+  "timing_ms": {
+    "extract": 3,
+    "map": 41,
+    "total": 46
+  }
+}

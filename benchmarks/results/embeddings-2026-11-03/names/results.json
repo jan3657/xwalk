@@ -1,0 +1,413 @@
+{
+  "meta": {
+    "date": "2026-11-03",
+    "base_url": "https://openrouter.ai/api/v1",
+    "ks": [
+      1,
+      5,
+      10,
+      20,
+      50
+    ],
+    "depth": 50,
+    "presets": {
+      "qwen3-8b-1024": {
+        "name": "qwen3-8b-1024",
+        "model": "qwen/qwen3-embedding-8b",
+        "note": "as qwen3-8b, asked for 1024-d (Matryoshka; the endpoint honours dimensions)",
+        "query_prefix": "Instruct: Given a term, retrieve the ontology concept it names\nQuery:",
+        "doc_prefix": "",
+        "query_input_type": null,
+        "doc_input_type": null,
+        "dimensions": 1024,
+        "send_dimensions": true,
+        "truncate": false,
+        "batch_size": 64,
+        "requests_per_minute": null,
+        "name_fields": null
+      },
+      "qwen3-8b-1024-names": {
+        "name": "qwen3-8b-1024-names",
+        "model": "qwen/qwen3-embedding-8b",
+        "note": "the default encoder with per-name vectors (label, synonyms)",
+        "query_prefix": "Instruct: Given a term, retrieve the ontology concept it names\nQuery:",
+        "doc_prefix": "",
+        "query_input_type": null,
+        "doc_input_type": null,
+        "dimensions": 1024,
+        "send_dimensions": true,
+        "truncate": false,
+        "batch_size": 64,
+        "requests_per_minute": null,
+        "name_fields": [
+          "label",
+          "synonyms"
+        ]
+      }
+    },
+    "datasets": {
+      "chebi": {
+        "job": "examples/chebi/job.yaml",
+        "gold": "examples/chebi/sample/gold.csv"
+      },
+      "ncbi_disease": {
+        "job": "examples/ncbi_disease/job.yaml",
+        "gold": "examples/ncbi_disease/sample/gold.csv"
+      },
+      "nlm_gene": {
+        "job": "examples/nlm_gene/job.yaml",
+        "gold": "examples/nlm_gene/sample/gold.csv"
+      },
+      "cafeteria_fcd": {
+        "job": "examples/cafeteria_fcd/job.yaml",
+        "gold": "examples/cafeteria_fcd/sample/gold.csv"
+      }
+    }
+  },
+  "rows": [
+    {
+      "dataset": "chebi",
+      "method": "bm25",
+      "model": "tantivy",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.6,
+        "recall@5": 0.6,
+        "recall@10": 0.6,
+        "recall@20": 0.6,
+        "recall@50": 0.6,
+        "mrr": 0.6
+      },
+      "fused": null,
+      "dimension": null,
+      "index_action": null,
+      "degraded_records": 0,
+      "requests": null,
+      "prompt_tokens": null,
+      "cost": null,
+      "seconds": null,
+      "error": null,
+      "note": "the job's own BM25"
+    },
+    {
+      "dataset": "ncbi_disease",
+      "method": "bm25",
+      "model": "tantivy",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.56,
+        "recall@5": 0.58,
+        "recall@10": 0.58,
+        "recall@20": 0.58,
+        "recall@50": 0.58,
+        "mrr": 0.5666666666666667
+      },
+      "fused": null,
+      "dimension": null,
+      "index_action": null,
+      "degraded_records": 0,
+      "requests": null,
+      "prompt_tokens": null,
+      "cost": null,
+      "seconds": null,
+      "error": null,
+      "note": "the job's own BM25"
+    },
+    {
+      "dataset": "nlm_gene",
+      "method": "bm25",
+      "model": "tantivy",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.66,
+        "recall@5": 0.68,
+        "recall@10": 0.68,
+        "recall@20": 0.68,
+        "recall@50": 0.7,
+        "mrr": 0.6646666666666667
+      },
+      "fused": null,
+      "dimension": null,
+      "index_action": null,
+      "degraded_records": 0,
+      "requests": null,
+      "prompt_tokens": null,
+      "cost": null,
+      "seconds": null,
+      "error": null,
+      "note": "the job's own BM25"
+    },
+    {
+      "dataset": "cafeteria_fcd",
+      "method": "bm25",
+      "model": "tantivy",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.94,
+        "recall@5": 0.94,
+        "recall@10": 0.94,
+        "recall@20": 0.94,
+        "recall@50": 0.94,
+        "mrr": 0.94
+      },
+      "fused": null,
+      "dimension": null,
+      "index_action": null,
+      "degraded_records": 0,
+      "requests": null,
+      "prompt_tokens": null,
+      "cost": null,
+      "seconds": null,
+      "error": null,
+      "note": "the job's own BM25"
+    },
+    {
+      "dataset": "chebi",
+      "method": "qwen3-8b-1024",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 1.0,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@20": 1.0,
+        "recall@50": 1.0,
+        "mrr": 1.0
+      },
+      "fused": {
+        "recall@1": 1.0,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@20": 1.0,
+        "recall@50": 1.0,
+        "mrr": 1.0
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 5,
+      "prompt_tokens": 13493,
+      "cost": 0.00024349999999999998,
+      "seconds": 8.48,
+      "error": null,
+      "note": "as qwen3-8b, asked for 1024-d (Matryoshka; the endpoint honours dimensions)"
+    },
+    {
+      "dataset": "ncbi_disease",
+      "method": "qwen3-8b-1024",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.6,
+        "recall@5": 0.6,
+        "recall@10": 0.64,
+        "recall@20": 0.64,
+        "recall@50": 0.68,
+        "mrr": 0.6082666666666667
+      },
+      "fused": {
+        "recall@1": 0.64,
+        "recall@5": 0.7,
+        "recall@10": 0.7,
+        "recall@20": 0.7,
+        "recall@50": 0.74,
+        "mrr": 0.6713333333333332
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 5,
+      "prompt_tokens": 13274,
+      "cost": 0.00019859000000000003,
+      "seconds": 5.73,
+      "error": null,
+      "note": "as qwen3-8b, asked for 1024-d (Matryoshka; the endpoint honours dimensions)"
+    },
+    {
+      "dataset": "nlm_gene",
+      "method": "qwen3-8b-1024",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.82,
+        "recall@5": 0.92,
+        "recall@10": 0.92,
+        "recall@20": 0.92,
+        "recall@50": 0.92,
+        "mrr": 0.8666666666666666
+      },
+      "fused": {
+        "recall@1": 0.68,
+        "recall@5": 0.7,
+        "recall@10": 0.7,
+        "recall@20": 0.92,
+        "recall@50": 0.92,
+        "mrr": 0.7007142857142857
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 5,
+      "prompt_tokens": 6084,
+      "cost": 6.083999999999994e-05,
+      "seconds": 29.0,
+      "error": null,
+      "note": "as qwen3-8b, asked for 1024-d (Matryoshka; the endpoint honours dimensions)"
+    },
+    {
+      "dataset": "cafeteria_fcd",
+      "method": "qwen3-8b-1024",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.84,
+        "recall@5": 0.94,
+        "recall@10": 0.98,
+        "recall@20": 0.98,
+        "recall@50": 1.0,
+        "mrr": 0.8910467980295568
+      },
+      "fused": {
+        "recall@1": 0.88,
+        "recall@5": 0.94,
+        "recall@10": 0.98,
+        "recall@20": 0.98,
+        "recall@50": 1.0,
+        "mrr": 0.915769020251779
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 5,
+      "prompt_tokens": 5867,
+      "cost": 8.239999999999994e-05,
+      "seconds": 7.18,
+      "error": null,
+      "note": "as qwen3-8b, asked for 1024-d (Matryoshka; the endpoint honours dimensions)"
+    },
+    {
+      "dataset": "chebi",
+      "method": "qwen3-8b-1024-names",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 1.0,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@20": 1.0,
+        "recall@50": 1.0,
+        "mrr": 1.0
+      },
+      "fused": {
+        "recall@1": 1.0,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@20": 1.0,
+        "recall@50": 1.0,
+        "mrr": 1.0
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 11,
+      "prompt_tokens": 25295,
+      "cost": 0.00043598,
+      "seconds": 32.96,
+      "error": null,
+      "note": "the default encoder with per-name vectors (label, synonyms)"
+    },
+    {
+      "dataset": "ncbi_disease",
+      "method": "qwen3-8b-1024-names",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.7,
+        "recall@5": 0.7,
+        "recall@10": 0.74,
+        "recall@20": 0.76,
+        "recall@50": 0.76,
+        "mrr": 0.7077192982456141
+      },
+      "fused": {
+        "recall@1": 0.7,
+        "recall@5": 0.7,
+        "recall@10": 0.7,
+        "recall@20": 0.76,
+        "recall@50": 0.76,
+        "mrr": 0.704688995215311
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 24,
+      "prompt_tokens": 26201,
+      "cost": 0.00026201000000000013,
+      "seconds": 74.96,
+      "error": null,
+      "note": "the default encoder with per-name vectors (label, synonyms)"
+    },
+    {
+      "dataset": "nlm_gene",
+      "method": "qwen3-8b-1024-names",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.9,
+        "recall@5": 0.92,
+        "recall@10": 0.92,
+        "recall@20": 0.92,
+        "recall@50": 0.92,
+        "mrr": 0.91
+      },
+      "fused": {
+        "recall@1": 0.68,
+        "recall@5": 0.7,
+        "recall@10": 0.7,
+        "recall@20": 0.92,
+        "recall@50": 0.92,
+        "mrr": 0.7057142857142857
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 12,
+      "prompt_tokens": 9042,
+      "cost": 9.042000000000013e-05,
+      "seconds": 22.52,
+      "error": null,
+      "note": "the default encoder with per-name vectors (label, synonyms)"
+    },
+    {
+      "dataset": "cafeteria_fcd",
+      "method": "qwen3-8b-1024-names",
+      "model": "qwen/qwen3-embedding-8b",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.84,
+        "recall@5": 0.94,
+        "recall@10": 0.96,
+        "recall@20": 0.98,
+        "recall@50": 1.0,
+        "mrr": 0.8896476833976835
+      },
+      "fused": {
+        "recall@1": 0.88,
+        "recall@5": 0.94,
+        "recall@10": 0.96,
+        "recall@20": 0.98,
+        "recall@50": 1.0,
+        "mrr": 0.9141516516516518
+      },
+      "dimension": 1024,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 9,
+      "prompt_tokens": 7266,
+      "cost": 7.266e-05,
+      "seconds": 24.05,
+      "error": null,
+      "note": "the default encoder with per-name vectors (label, synonyms)"
+    }
+  ]
+}

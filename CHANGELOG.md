@@ -14,6 +14,52 @@ Merged after 0.2.0rc1 was cut: the decider path, developed on the `jev-decider` 
 before the merge; nothing was re-measured for this entry, and the merged tree was tested
 offline only (FakeDecider, no paid calls).
 
+### Added
+
+- Retrieval over Postgres (`xwalk.retrieval.postgres`): `PostgresBM25Retriever` (Neon's
+  `lakebase_text` BM25 with the exact label/synonym rule of `BM25Retriever`),
+  `PgVectorRetriever` (pgvector `halfvec`, HNSW, inner product, per-name vectors
+  max-pooled per record) and `PostgresStore`, over a small `SQLExecutor` protocol with
+  `NeonHTTPExecutor` (Neon's HTTPS SQL endpoint, httpx only; no new dependency).
+  `PostgresIndexWriter` creates and fills the schema idempotently and stores each
+  index's components; `open(..., expected=...)` refuses a mismatch with
+  `IndexMismatchError` and an unfinished load with `IndexNotReadyError`. Tested offline
+  with a fake executor and `httpx.MockTransport`, and live against a Neon branch over
+  HTTPS (`tests/test_postgres_integration.py`, `-m integration`, needs `DATABASE_URL`).
+  The NER demo site uses it with `NER_SITE_BACKEND=neon` (`docs/ner-site/NEON.md`).
+
+- Dense retrieval through any OpenAI-compatible `/embeddings` endpoint (OpenRouter,
+  OpenAI, Voyage, DeepInfra, vLLM, Ollama) with `encoder: openai_embeddings` on a dense
+  retriever, or `xwalk.retrieval.embeddings_api.OpenAIEmbeddingsEncoder` in code. It
+  needs no optional extra. The vector length is declared (`dimensions`) and checked on
+  every response; per-side prefixes and `input_type`, OpenRouter provider routing and
+  Matryoshka truncation are identity; the key is not. `xwalk validate` checks its key
+  variable, and `xwalk index` reports the tokens and cost each build spent, as reported
+  by the endpoint (unknown when not reported). Tested offline against a mocked endpoint
+  only.
+
+- A default API encoder: an `encoder: openai_embeddings` retriever with no `model` uses
+  Qwen3-Embedding 8B through OpenRouter at 1024 dimensions with its query instruction,
+  preferring the DeepInfra provider with fallback to the others
+  (`default_embeddings_encoder` in code), each setting applied only where the job left
+  it unset. Chosen with `python -m benchmarks.embeddings`, a retrieval-only bake-off of
+  the embedding models OpenRouter serves, on the four in-repo pilots
+  (`benchmarks/results/embeddings-2026-11-03/`).
+
+- Per-name vectors for dense retrieval: `name_fields: [label, synonyms]` embeds each
+  distinct name as its own vector beside the whole-document vector, and a record scores
+  by its best. On the NCBI Disease pilot this raised MRR from 0.61 to 0.71 with the
+  default encoder; the other pilots were unchanged. Opt-in: indexes without it keep
+  their identity.
+
+- `xwalk ui --dense api` (and the same flag on `scripts/build_ontology_library.py`) adds
+  the default API encoder with per-name vectors as the explorer's dense head
+  (`dense-qwen3`, shown as "Semantic (Qwen3)"), with no PyTorch or model download.
+  `--dense` alone still means the local models. Locally, `OPENROUTER_API_KEY` can be set
+  on the Settings page; with `--public` it must be the operator's, in the environment,
+  because library indexes are shared. A missing key is reported as `credential_missing`
+  with a pointer to the Settings page. Settings shows the server's retrieval heads.
+
 ### Fixed
 
 - Jev and ChatGPT settle each budget dispatch once after interpreting its outcome,

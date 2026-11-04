@@ -8,7 +8,8 @@ actually work: the retriever never has to hold your target collection in memory,
 the store never has to know how ranking happened.
 
 Two retrievers ship with xwalk — BM25 over Tantivy and dense retrieval behind an
-`Encoder` protocol — plus reciprocal rank fusion to combine them. Anything that speaks
+`Encoder` protocol — plus reciprocal rank fusion to combine them, and the same pair over
+Postgres for collections too large to hold in memory ([Postgres retrieval](#postgres-retrieval)). Anything that speaks
 the `Retriever` protocol slots in beside or instead of them.
 
 ## The Retriever protocol
@@ -230,7 +231,7 @@ class Encoder(Protocol):
 ```
 
 Because the encoder is a protocol, an API embedding service can be plugged in with no
-torch installed at all.
+torch installed at all; `OpenAIEmbeddingsEncoder` below is the one xwalk ships.
 
 ### `SentenceTransformerEncoder`
 
@@ -251,6 +252,72 @@ SentenceTransformerEncoder(
 `name` is the model name; `dimension` comes from the model. `query_prefix` /
 `doc_prefix` are prepended per side for models that expect instruction prefixes.
 
+### `OpenAIEmbeddingsEncoder`
+
+`xwalk.retrieval.embeddings_api.OpenAIEmbeddingsEncoder` calls `POST {base_url}/embeddings`
+on any service that speaks the OpenAI embeddings shape: OpenRouter, OpenAI, Voyage,
+DeepInfra, a local vLLM or Ollama. It needs only httpx (a base dependency), so dense
+retrieval runs without torch or a downloaded model.
+
+```python
+OpenAIEmbeddingsEncoder(
+    base_url: str,
+    model: str,
+    *,
+    dimensions: int,
+    api_key: str | None = None,
+    send_dimensions: bool = True,
+    truncate: bool = False,
+    normalize: bool = True,
+    query_prefix: str = "",
+    doc_prefix: str = "",
+    query_input_type: str | None = None,
+    doc_input_type: str | None = None,
+    provider: Mapping[str, Any] | None = None,
+    batch_size: int = 64,
+    timeout: float = 60.0,
+    max_retries: int = 5,
+)
+```
+
+- `dimensions` is declared, never probed, so computing an index's identity spends no
+  call. With `send_dimensions` it is sent as the request's `dimensions` (for models
+  that can shorten their output); every returned vector must have exactly that length,
+  or the batch fails with `EmbeddingAPIError`. A provider that ignores the parameter is
+  caught here instead of silently building an index of another shape. `truncate: true`
+  cuts a longer vector to `dimensions` and renormalises it; use it only for models
+  trained for truncation (Matryoshka: Qwen3-Embedding, Voyage 4, OpenAI
+  `text-embedding-3-*`, Nemotron 3.5 Embed).
+- `query_input_type` / `doc_input_type` are sent as `input_type` on each side (for
+  example `search_query` / `search_document` on OpenRouter); the prefixes are prepended
+  to the text, as for `SentenceTransformerEncoder`.
+- `provider` is passed through verbatim as OpenRouter's provider routing preferences
+  (`order`, `only`, `allow_fallbacks`, ...). Pinning a provider makes vectors
+  reproducible when several serve the same model.
+- A blank text becomes a zero vector and is not sent (gateways reject empty strings).
+- HTTP 408/409/429/5xx/529, transport errors, a non-JSON body and an HTTP 200 carrying
+  a transient `error` object are retried with jittered backoff (`Retry-After` is
+  honoured); 400/401/402/403/404 are not. A 413 halves the batch. Failures raise
+  `EmbeddingAPIError`, a `RetrieverError`: during matching the attempt degrades to the
+  remaining retrievers like any failing retriever.
+- `usage` reports requests, texts, prompt tokens and cost as the endpoint stated them;
+  one response without a count makes that total `None` (unknown), never zero.
+  `xwalk index` prints what each build spent.
+
+`default_embeddings_encoder(api_key=...)` returns the default encoder a job gets with
+`encoder: openai_embeddings` and no `model`: Qwen3-Embedding 8B through OpenRouter at
+1024 dimensions with its query instruction, preferring the DeepInfra provider with
+fallback (`DEFAULT_MODEL`, `DEFAULT_BASE_URL`, `DEFAULT_DIMENSIONS`,
+`DEFAULT_QUERY_PREFIX`, `DEFAULT_PROVIDER` in the same module). Keyword arguments
+override any setting. `probe_dimension()` spends one call to report the native vector
+length; nothing else probes.
+
+Identity (`settings`) covers the redacted base URL, `send_dimensions`, `truncate`,
+`normalize`, both prefixes, both input types and `provider`, plus `adapter:
+"openai_embeddings"` so a local and a remote model of the same name never share an
+index. The key, batch size, timeout and retries are not identity. The remote model
+cannot be pinned, so `revision` is `"unknown"`.
+
 ### Building and reopening
 
 ```python
@@ -265,6 +332,7 @@ def build(
     name: str | None = None,
     default_limit: int = 20,
     batch: int = 256,
+    name_fields: Sequence[str] | None = None,
 ) -> DenseRetriever
 ```
 
@@ -280,6 +348,13 @@ def open(
     expected: Mapping[str, Any] | None = None,
 ) -> DenseRetriever
 ```
+
+With `name_fields`, `build` also encodes each distinct non-blank value of those fields
+(each item of a list field) as a document of its own, and a record scores by the best of
+its vectors, the whole-doc vector included. Search scores every vector, keeps each
+record's best and cuts to `limit` records, so each record appears once. The identity gains
+`name_fields` and `format_version` 2 only when it is set; an index without it keeps the
+identity it had. `xwalk_meta.json` records `doc_count` (records) and `vector_count` (rows).
 
 `build` encodes rendered docs in batches of `batch` and validates that every vector's
 length matches `encoder.dimension`, raising `ValueError` otherwise. When `name` is
@@ -369,6 +444,136 @@ store = MemoryStore.from_source(records)
 would make every downstream decision ambiguous. The fingerprint is the hash of the
 **sorted** per-record digests, so it depends only on content, never on source order.
 `MemoryStore` also supports `len(store)`, iteration over records, and `id in store`.
+
+## Postgres retrieval
+
+`xwalk.retrieval.postgres` keeps the records, a BM25 index and the vectors in one
+Postgres database, for target collections too large to ship with an application. It
+needs no optional extra: SQL travels through a small executor protocol, and the one
+executor xwalk ships speaks Neon's HTTPS SQL endpoint with httpx. The engines are Neon's
+own: `lakebase_text` for BM25 (Neon blocks new installs of ParadeDB's `pg_search`; it is
+listed in `neon.deprecated_extensions`) and pgvector `halfvec` with HNSW. A worked
+deployment, with sizes, throughput and costs measured on Neon, is
+[docs/ner-site/NEON.md](../ner-site/NEON.md).
+
+### The executor protocol
+
+```python
+class SQLExecutor(Protocol):
+    def execute(self, sql: str, params: Sequence[Any] = ()) -> list[dict[str, Any]]: ...
+    def transaction(
+        self, statements: Sequence[tuple[str, Sequence[Any]]], *, read_only: bool = False
+    ) -> list[list[dict[str, Any]]]: ...
+```
+
+Placeholders are Postgres's own `$1, $2, ...`. Values are JSON-shaped (text, numbers,
+booleans, `None`, lists for arrays, dicts for jsonb); every statement xwalk sends casts
+where the type matters, because over HTTP a bigint or numeric arrives as a string.
+`transaction` runs its statements in one transaction, all or nothing. Implementations
+must be thread-safe (searches run in threads). Every statement xwalk sends starts with
+a tag comment, `/* xwalk:bm25_search */`; `tag_of(sql)` reads it, which is what a fake
+executor in tests dispatches on.
+
+```python
+NeonHTTPExecutor(
+    connection_string: str,
+    *,
+    timeout: float = 30.0,
+    max_retries: int = 2,
+    backoff_base: float = 0.5,
+    transport: httpx.BaseTransport | None = None,
+    trust_env: bool = True,
+    endpoint: str | None = None,
+)
+```
+
+`POST https://<host>/sql` with the connection string in the `Neon-Connection-String`
+header, `{"query", "params"}` for a statement or `{"queries": [...]}` for a
+transaction, and `Neon-Array-Mode: true` (rows as arrays beside `fields`, so duplicate
+column names cannot collide). A SQL error is `PostgresError` (a `RetrieverError`) with
+the SQLSTATE in `code`; transport errors, HTTP 429/5xx and errors the server marks
+`neon:retryable` are retried with jittered backoff, so writes sent through it should be
+idempotent (the writer's are). Messages and `repr` never carry the connection string or
+its password, and URLs in them are redacted. `from_env(name="DATABASE_URL")` reads the
+variable; `stats` counts requests, statements and bytes.
+
+### Retrievers and store
+
+```python
+@classmethod
+def open(
+    cls,
+    executor: SQLExecutor,
+    ontology: str,
+    *,
+    schema: str = "xwalk",
+    name: str | None = None,
+    expected: Mapping[str, Any] | None = None,
+    verify_records: bool = True,
+    default_limit: int | None = None,
+    meta: Mapping[tuple[str, str], IndexMeta] | None = None,
+    store: PostgresStore | None = None,
+) -> PostgresBM25Retriever
+```
+
+`PgVectorRetriever.open(executor, ontology, encoder, ...)` takes the same keywords plus
+`overfetch` (default 5) and `ef_search`, and `PostgresStore.open(executor, ontology, ...)`
+the identity keywords. One schema holds any number of collections, each named by
+`ontology`.
+
+- **`PostgresBM25Retriever`** ranks with `tsv <@> to_bm25query(...)` over a partial
+  `lakebase_bm25` index per ontology, so BM25 statistics are per collection, as with one
+  Tantivy index each. The query text is tokenised by `to_tsvector('simple', text)` (the
+  stored identity's `text_config`); it is never parsed as query syntax, so no
+  sanitising is needed. With `exact_fields` (stored by the writer) records whose
+  `exact_form` of a label or synonym equals `exact_form(query)` come first, ordered by
+  their BM25 score, then the text matches: the same "an exact name outranks any text
+  match" rule as `BM25Retriever(exact_fields=...)`, without a numeric boost. `raw_score`
+  is the BM25 score (the negation of `<@>`); rows scoring 0 are dropped.
+- **`PgVectorRetriever`** embeds the query with any `Encoder`, fetches the
+  `limit * overfetch` nearest rows by inner product (`<#>`) from a partial HNSW index
+  (`halfvec_ip_ops`), keeps each record's best row and cuts to `limit` records, so each
+  record appears once even with per-name vectors, as `DenseRetriever(name_fields=...)`.
+  The search is one read-only transaction that first raises `hnsw.ef_search` to at
+  least the rows fetched. HNSW is approximate, unlike `DenseRetriever`'s exact scan;
+  on small collections Postgres's planner picks an exact scan by itself.
+- **`PostgresStore`** is a `TargetStore` over the stored records. A retriever opened
+  with `store=` hands it the records its search returned, so fusion's `get_many` after
+  a search usually needs no extra round trip.
+
+Ranks are 1-based and contiguous; an empty or whitespace query makes no call.
+
+### Identity
+
+The writer stores each index's components in `<schema>.index_meta`, one row per
+(ontology, kind) with kind `terms`, `bm25` or `dense`, and the retriever's `fingerprint`
+is `hash_value` of its stored components. `bm25_components(records, templates,
+exact_fields=..., text_config=...)` names the engine (`postgres-lakebase-bm25`), format
+and normalisation versions, the doc template, the exact fields and the record digest;
+`pgvector_components(records, templates, encoder, name_fields=...)` names the engine
+(`pgvector`), vector type, metric, doc template, record digest, the encoder identity
+(name, dimension and settings) and the name fields; `terms_components(records)` gives
+the store's fingerprint, the same digest as `MemoryStore.from_source(records)`.
+`open(..., expected=...)` refuses any difference with `IndexMismatchError`; an absent
+index, or one whose load has not finished (status `loading`), raises
+`IndexNotReadyError` (`state` is `missing` or `loading`); a stored fingerprint that
+does not hash its own components is refused too. A caller that does not hold the
+records passes `verify_records=False`: then everything but the record digest and count
+is compared, and the identity still contains the stored digest. `read_index_meta(executor,
+schema)` reads every identity in one query, for opening many collections at once.
+
+### Writing
+
+`PostgresIndexWriter(executor, schema="xwalk", dimension=1024)` creates the schema
+(`create_schema`: the two extensions, the `terms`, `term_vectors` and `index_meta`
+tables) and writes it: `upsert_terms` (rendered doc, `tsvector`, exact forms, digest),
+`vector_rows` (each record's doc as `ord` 0, then each distinct name),
+`present_vectors` (what is stored already, for resuming), `upsert_vectors` (one batch
+per statement, vectors sent as text rounded to float16), `prune`, `create_indexes`
+(the partial BM25 and HNSW indexes, after the bulk load), `write_meta` (status
+`loading` before changing a collection, `ready` after), `drop_ontology`, `vacuum` and
+`sizes`. Every write is an upsert, so a load can be rerun or resumed. A table already
+holding vectors of another dimension is refused with a message naming both.
 
 ## Gotchas
 

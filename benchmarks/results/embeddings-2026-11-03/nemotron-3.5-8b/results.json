@@ -1,0 +1,138 @@
+{
+  "meta": {
+    "date": "2026-11-03",
+    "base_url": "https://openrouter.ai/api/v1",
+    "ks": [
+      1,
+      5,
+      10,
+      20,
+      50
+    ],
+    "depth": 50,
+    "presets": {
+      "nemotron-3.5-8b": {
+        "name": "nemotron-3.5-8b",
+        "model": "nvidia/nemotron-3.5-embed-8b:free",
+        "note": "NVIDIA, Oct 2026, free; 4096-d, truncatable",
+        "query_prefix": "query: ",
+        "doc_prefix": "passage: ",
+        "query_input_type": null,
+        "doc_input_type": null,
+        "dimensions": null,
+        "send_dimensions": false,
+        "truncate": false,
+        "batch_size": 1,
+        "requests_per_minute": 15
+      }
+    },
+    "datasets": {
+      "ncbi_disease": {
+        "job": "examples/ncbi_disease/job.yaml",
+        "gold": "examples/ncbi_disease/sample/gold.csv"
+      },
+      "nlm_gene": {
+        "job": "examples/nlm_gene/job.yaml",
+        "gold": "examples/nlm_gene/sample/gold.csv"
+      }
+    }
+  },
+  "rows": [
+    {
+      "dataset": "ncbi_disease",
+      "method": "bm25",
+      "model": "tantivy",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.56,
+        "recall@5": 0.58,
+        "recall@10": 0.58,
+        "recall@20": 0.58,
+        "recall@50": 0.58,
+        "mrr": 0.5666666666666667
+      },
+      "fused": null,
+      "dimension": null,
+      "index_action": null,
+      "degraded_records": 0,
+      "requests": null,
+      "prompt_tokens": null,
+      "cost": null,
+      "seconds": null,
+      "error": null,
+      "note": "the job's own BM25"
+    },
+    {
+      "dataset": "nlm_gene",
+      "method": "bm25",
+      "model": "tantivy",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.66,
+        "recall@5": 0.68,
+        "recall@10": 0.68,
+        "recall@20": 0.68,
+        "recall@50": 0.7,
+        "mrr": 0.6646666666666667
+      },
+      "fused": null,
+      "dimension": null,
+      "index_action": null,
+      "degraded_records": 0,
+      "requests": null,
+      "prompt_tokens": null,
+      "cost": null,
+      "seconds": null,
+      "error": null,
+      "note": "the job's own BM25"
+    },
+    {
+      "dataset": "ncbi_disease",
+      "method": "nemotron-3.5-8b",
+      "model": "nvidia/nemotron-3.5-embed-8b:free",
+      "labelled": 50,
+      "alone": {
+        "recall@1": 0.58,
+        "recall@5": 0.7,
+        "recall@10": 0.76,
+        "recall@20": 0.78,
+        "recall@50": 0.78,
+        "mrr": 0.6223174603174603
+      },
+      "fused": {
+        "recall@1": 0.7,
+        "recall@5": 0.7,
+        "recall@10": 0.72,
+        "recall@20": 0.78,
+        "recall@50": 0.78,
+        "mrr": 0.7069841269841269
+      },
+      "dimension": 4096,
+      "index_action": "built",
+      "degraded_records": 0,
+      "requests": 225,
+      "prompt_tokens": 13573,
+      "cost": 0.0,
+      "seconds": 904.99,
+      "error": null,
+      "note": "NVIDIA, Oct 2026, free; 4096-d, truncatable"
+    },
+    {
+      "dataset": "nlm_gene",
+      "method": "nemotron-3.5-8b",
+      "model": "nvidia/nemotron-3.5-embed-8b:free",
+      "labelled": 50,
+      "alone": null,
+      "fused": null,
+      "dimension": 4096,
+      "index_action": null,
+      "degraded_records": 0,
+      "requests": 70,
+      "prompt_tokens": 2051,
+      "cost": 0.0,
+      "seconds": 276.08,
+      "error": "EmbeddingAPIError: embeddings endpoint returned HTTP 404: 0 endpoints out of 1 requested are available matching your guardrail restrictions and data policy. We removed them for the following reasons (an endpoint may have matched multiple reasons):\nZDR violation (account settings): 1 endpoint excluded; configurable at https://openrouter.ai/settings/privacy",
+      "note": "NVIDIA, Oct 2026, free; 4096-d, truncatable"
+    }
+  ]
+}

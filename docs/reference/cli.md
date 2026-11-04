@@ -583,8 +583,8 @@ library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
 | `--trust-proxy` | no | — | public mode: believe `X-Forwarded-Proto` and `X-Forwarded-For` from the HTTPS proxy in front ([hosting](../guide/hosting.md)) |
 | `--verbose` | no | — | log every request to stderr |
 | `--chatgpt-login` | no | — | enable local Sign in with ChatGPT (needs `xwalk[chatgpt]` and `--host 127.0.0.1`) |
-| `--dense` | no | — | enable general and biomedical dense retrieval alongside BM25 (needs `xwalk[dense]`) |
-| `--dense-device` | no | automatic | dense encoder device, e.g. `cpu` or `mps` |
+| `--dense [local\|api]` | no | `off` | dense retrieval alongside BM25. `--dense` or `--dense local`: general and biomedical sentence-transformers models (needs `xwalk[dense]`). `--dense api`: Qwen3-Embedding 8B through OpenRouter with per-name vectors (needs `OPENROUTER_API_KEY`, set in the environment or on the Settings page; with `--public` it must be in the environment, since the shared library indexes are embedded with the operator's key; refused with `--offline-only`) |
+| `--dense-device` | no | automatic | local dense encoder device, e.g. `cpu` or `mps` |
 
 A root that is not a directory or a cap below 1 exits `2`.
 

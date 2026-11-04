@@ -1,0 +1,323 @@
+{
+  "ok": true,
+  "model": "openai/gpt-4o-mini",
+  "mode": "live",
+  "entities": [
+    {
+      "id": "e1",
+      "text": "Alkaptonuria",
+      "start": 31,
+      "end": 43,
+      "type": "disease",
+      "ontology": "ctd-disease-sample",
+      "matches": [
+        {
+          "id": "MESH:D000474",
+          "label": "Alkaptonuria",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "https://meshb.nlm.nih.gov/record/ui?ui=D000474"
+        },
+        {
+          "id": "MESH:D010661",
+          "label": "Phenylketonurias",
+          "score": 0.0161,
+          "retrievers": {
+            "dense-qwen3": 2
+          },
+          "url": "https://meshb.nlm.nih.gov/record/ui?ui=D010661"
+        },
+        {
+          "id": "MESH:C562659",
+          "label": "Tyrosinosis",
+          "score": 0.0159,
+          "retrievers": {
+            "dense-qwen3": 3
+          },
+          "url": "https://meshb.nlm.nih.gov/record/ui?ui=C562659"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e2",
+      "text": "Hydroxykynureninuria",
+      "start": 65,
+      "end": 85,
+      "type": "disease",
+      "ontology": "ctd-disease-sample",
+      "matches": [
+        {
+          "id": "MESH:C536081",
+          "label": "Hydroxykynureninuria",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "https://meshb.nlm.nih.gov/record/ui?ui=C536081"
+        },
+        {
+          "id": "MESH:C536836",
+          "label": "Glutathionuria",
+          "score": 0.0161,
+          "retrievers": {
+            "dense-qwen3": 2
+          },
+          "url": "https://meshb.nlm.nih.gov/record/ui?ui=C536836"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e3",
+      "text": "haloperidol",
+      "start": 96,
+      "end": 107,
+      "type": "chemical",
+      "ontology": "chebi-sample",
+      "matches": [
+        {
+          "id": "CHEBI:5613",
+          "label": "haloperidol",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:5613"
+        },
+        {
+          "id": "CHEBI:107736",
+          "label": "metoclopramide",
+          "score": 0.0161,
+          "retrievers": {
+            "dense-qwen3": 2
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:107736"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e4",
+      "text": "ketamine",
+      "start": 115,
+      "end": 123,
+      "type": "chemical",
+      "ontology": "chebi-sample",
+      "matches": [
+        {
+          "id": "CHEBI:6121",
+          "label": "ketamine",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:6121"
+        },
+        {
+          "id": "CHEBI:38867",
+          "label": "anaesthetic",
+          "score": 0.0161,
+          "retrievers": {
+            "dense-qwen3": 2
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:38867"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e5",
+      "text": "aspirin",
+      "start": 129,
+      "end": 136,
+      "type": "chemical",
+      "ontology": "chebi-sample",
+      "matches": [
+        {
+          "id": "CHEBI:23888",
+          "label": "drug",
+          "score": 0.0164,
+          "retrievers": {
+            "dense-qwen3": 1
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:23888"
+        },
+        {
+          "id": "CHEBI:38867",
+          "label": "anaesthetic",
+          "score": 0.0161,
+          "retrievers": {
+            "dense-qwen3": 2
+          },
+          "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:38867"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e6",
+      "text": "fever",
+      "start": 143,
+      "end": 148,
+      "type": "other",
+      "ontology": null,
+      "matches": [],
+      "notes": [
+        "no ontology for type 'other'"
+      ]
+    },
+    {
+      "id": "e7",
+      "text": "NAT2",
+      "start": 169,
+      "end": 173,
+      "type": "gene",
+      "ontology": "ncbi-gene-sample",
+      "matches": [
+        {
+          "id": "NCBIGene:10",
+          "label": "NAT2",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "https://www.ncbi.nlm.nih.gov/gene/10"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e8",
+      "text": "ADA",
+      "start": 178,
+      "end": 181,
+      "type": "gene",
+      "ontology": "ncbi-gene-sample",
+      "matches": [
+        {
+          "id": "NCBIGene:100",
+          "label": "ADA",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "https://www.ncbi.nlm.nih.gov/gene/100"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e9",
+      "text": "hummus",
+      "start": 193,
+      "end": 199,
+      "type": "food",
+      "ontology": "foodon-sample",
+      "matches": [
+        {
+          "id": "FOODON:00003049",
+          "label": "hummus",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003049"
+        },
+        {
+          "id": "FOODON:00003855",
+          "label": "tahini",
+          "score": 0.0161,
+          "retrievers": {
+            "dense-qwen3": 2
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003855"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e10",
+      "text": "garlic",
+      "start": 201,
+      "end": 207,
+      "type": "food",
+      "ontology": "foodon-sample",
+      "matches": [
+        {
+          "id": "FOODON:00003582",
+          "label": "garlic bulb",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003582"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "e11",
+      "text": "cumin",
+      "start": 212,
+      "end": 217,
+      "type": "food",
+      "ontology": "foodon-sample",
+      "matches": [
+        {
+          "id": "FOODON:00003396",
+          "label": "cumin seed",
+          "score": 0.0328,
+          "retrievers": {
+            "bm25": 1,
+            "dense-qwen3": 1
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003396"
+        },
+        {
+          "id": "FOODON:00003024",
+          "label": "cumin seed (dried)",
+          "score": 0.0323,
+          "retrievers": {
+            "bm25": 2,
+            "dense-qwen3": 2
+          },
+          "url": "http://purl.obolibrary.org/obo/FOODON_00003024"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "retrieval": {
+    "bm25": {
+      "status": "ok"
+    },
+    "dense": {
+      "status": "ok"
+    }
+  },
+  "warnings": [
+    "entity 'Hydroxykynurenine' dropped: not found in text"
+  ],
+  "usage": {
+    "llm_calls": 1,
+    "prompt_tokens": 431,
+    "completion_tokens": 212,
+    "embedding_requests": 10
+  },
+  "timing_ms": {
+    "extract": 1840,
+    "map": 620,
+    "total": 2470
+  }
+}

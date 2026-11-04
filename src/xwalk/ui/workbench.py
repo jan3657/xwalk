@@ -34,6 +34,7 @@ from xwalk.ui.api import (
     _str,
 )
 from xwalk.ui.library import CATALOG, Library, LibraryError, download
+from xwalk.ui.retrieval import credential_names
 
 LOOKUPS_DIR = "lookups"
 MAX_TERMS_TEXT = 2 * 1024 * 1024
@@ -53,6 +54,16 @@ def _not_public(ws: Workspace, what: str) -> None:
 
 
 def _problem(exc: BaseException) -> ApiError:
+    from xwalk.config import CredentialMissingError
+
+    if isinstance(exc, CredentialMissingError):
+        # The explorer wrote the job file, not its user: point at where a key is set here.
+        return ApiError(
+            422,
+            "credential_missing",
+            f"{exc.variable} is not set; set it on the Settings page (or in the "
+            "environment before starting xwalk ui)",
+        )
     return ApiError(422, "file_problem", str(exc))
 
 
@@ -721,7 +732,8 @@ def credentials(ws: Workspace, params: Params) -> Response:
         if k != "chatgpt" and p["api_key_env"]
     }
     if ws.public:
-        # A visitor sees only the keys of their own session, never the server's.
+        # A visitor sees only the keys of their own session, never the server's (the
+        # embedding key of `--dense api` is the operator's).
         names |= set(ws.session_keys)
         return {
             "credentials": [
@@ -731,6 +743,7 @@ def credentials(ws: Workspace, params: Params) -> Response:
             "scope": "session",
         }
     names |= ws.session_credentials
+    names |= credential_names(ws.retrieval_heads)
     return {
         "scope": "process",
         "credentials": [

@@ -308,16 +308,27 @@ def job_model(job: JobSpec) -> str:
     return job.llm.model
 
 
+def _embedding_specs(job: JobSpec) -> list[tuple[str, RetrieverSpec]]:
+    """Every dense retriever served by an embeddings API, with its path: `retrievers.N`,
+    or a clustering job's `dense`."""
+    specs = [(f"retrievers.{i}", r) for i, r in enumerate(getattr(job, "retrievers", []))]
+    dense = getattr(job, "dense", None)
+    if dense is not None:
+        specs.append(("dense", dense))
+    return [(where, spec) for where, spec in specs if spec.uses_api_encoder]
+
+
 def _credential_check(job: JobSpec) -> tuple[dict[str, str], list[OpMessage]]:
     """Presence only. The value is never read into the result."""
     variables = [(where, spec.api_key_env) for where, spec in _llm_specs(job)]
     decider = getattr(job, "decider", None)
     if decider is not None:
         variables.insert(0, ("decider", decider.api_key_env))
+    variables += [(where, spec.api_key_env) for where, spec in _embedding_specs(job)]
     states: dict[str, str] = {}
     errors: list[OpMessage] = []
     for where, variable in variables:
-        if not variable:
+        if not variable or variable in states:  # one variable may serve several blocks
             continue
         if os.environ.get(variable):
             states[variable] = "set"
@@ -567,6 +578,10 @@ _ENCODER_FACTORY_LOCK = threading.Lock()
 
 
 def _default_encoder_factory(spec: RetrieverSpec) -> Encoder:
+    if spec.uses_api_encoder:
+        # Cheap to build, and it reads its key variable: a cache would keep a stale key
+        # in a long-lived process (the explorer) and share usage counters across calls.
+        return JobSpec.build_encoder(spec)
     with _ENCODER_FACTORY_LOCK:
         return _cached_encoder(spec.model_dump_json(exclude_unset=True))
 
@@ -600,7 +615,9 @@ def plan_indexes(
             plans.append(PlannedIndex(spec, directory, spec.name or "bm25", expected))
         else:
             encoder = factory(spec)
-            expected = dense_index.index_components(targets, templates, encoder)
+            expected = dense_index.index_components(
+                targets, templates, encoder, name_fields=spec.name_fields
+            )
             name = spec.name or f"dense:{encoder.name}"
             plans.append(PlannedIndex(spec, directory, name, expected, encoder))
     return plans
@@ -708,6 +725,7 @@ def prepare_indexes(
                     plan.encoder,
                     name=plan.name,
                     default_limit=spec.limit,
+                    name_fields=spec.name_fields,
                 )
             )
     for plan, retriever in zip(plans, retrievers, strict=True):
@@ -751,19 +769,69 @@ def index(
     templates = spec.build_templates()
     targets, _ = _read_targets(spec, "index")
     plans = plan_indexes(spec, targets, templates, index_dir, encoder_factory=encoder_factory)
+    before = {plan.name: _embedding_usage(plan.encoder) for plan in plans}
     retrievers, actions = prepare_indexes(plans, targets, templates, rebuild=rebuild)
+    spent = {
+        plan.name: _usage_since(before[plan.name], _embedding_usage(plan.encoder)) for plan in plans
+    }
     result = OpResult(operation="index", counts={"targets": len(targets)})
     result.artifacts["index"] = str(index_dir)
-    result.data["retrievers"] = [
-        {"name": r.name, "fingerprint": r.fingerprint, "action": actions[r.name]}
-        for r in retrievers
-    ]
+    result.data["retrievers"] = []
+    for r in retrievers:
+        entry: dict[str, Any] = {
+            "name": r.name,
+            "fingerprint": r.fingerprint,
+            "action": actions[r.name],
+        }
+        if spent.get(r.name) is not None:
+            entry["embedding_usage"] = spent[r.name]
+        result.data["retrievers"].append(entry)
     result.lines.append(
         f"indexed {len(targets)} target records into {len(retrievers)} retriever(s)"
     )
     for r in retrievers:
         result.lines.append(f"  {r.name}: {r.fingerprint} ({actions[r.name]})")
+        usage = spent.get(r.name)
+        if usage is not None and usage["texts"]:
+            result.lines.append(f"    {_describe_usage(usage)}")
     return result
+
+
+def _embedding_usage(encoder: Encoder | None) -> dict[str, Any] | None:
+    """An API encoder's usage so far, as plain data; `None` for a local model."""
+    from xwalk.retrieval.embeddings_api import EmbeddingUsage
+
+    usage = getattr(encoder, "usage", None)
+    if not isinstance(usage, EmbeddingUsage):
+        return None
+    return {
+        "requests": usage.requests,
+        "texts": usage.texts,
+        "prompt_tokens": usage.prompt_tokens,
+        "cost": usage.cost,
+    }
+
+
+def _usage_since(
+    before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """What one operation spent. Unknown stays unknown (`None`), never zero."""
+    if before is None or after is None:
+        return None
+    spent: dict[str, Any] = {}
+    for key in ("requests", "texts", "prompt_tokens", "cost"):
+        old, new = before[key], after[key]
+        spent[key] = None if old is None or new is None else new - old
+    return spent
+
+
+def _describe_usage(usage: dict[str, Any]) -> str:
+    tokens = "unknown" if usage["prompt_tokens"] is None else str(usage["prompt_tokens"])
+    cost = "unknown" if usage["cost"] is None else f"{usage['cost']:.6f}"
+    return (
+        f"embedded {usage['texts']} texts in {usage['requests']} request(s); "
+        f"prompt tokens {tokens}; cost {cost} (as reported by the endpoint)"
+    )
 
 
 async def search_async(

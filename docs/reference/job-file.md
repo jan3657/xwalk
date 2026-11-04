@@ -207,19 +207,70 @@ Both take the same shape. Several fields apply only to some `kind` values.
 | `exact_fields` | `list[str] \| None` | no | `None` → `["label", "synonyms"]` | bm25 | fields whose whole-string value gets a large boost |
 | `analyzer` | `default \| en_stem` | no | `default` | bm25 | tokenizer for the text field; `en_stem` adds ASCII folding and English stemming |
 | `fuzzy_distance` | `int` | no | `0` | bm25 | edit distance (0 to 2) for extra fuzzy clauses on query terms of 5+ characters; `0` is off |
-| `model` | `str \| None` | required for dense | `None` | dense | sentence-transformers model name |
-| `device` | `str \| None` | no | `None` | dense | torch device |
+| `encoder` | `sentence_transformers \| openai_embeddings` | no | `sentence_transformers` | dense | a local model (needs `xwalk[dense]`) or an OpenAI-compatible `/embeddings` endpoint (needs nothing extra) |
+| `model` | `str \| None` | required for `sentence_transformers` | `None` | dense | sentence-transformers model name, or the endpoint's model id (`qwen/qwen3-embedding-8b`). Omitted on `openai_embeddings`: the default encoder (below) |
+| `name_fields` | `list[str] \| None` | no | `None` | dense | also embed each distinct value of these fields (`[label, synonyms]`) as its own vector; a record scores by its best vector, the whole-doc vector included |
 | `query_prefix` | `str` | no | `""` | dense | prepended when encoding a query |
 | `doc_prefix` | `str` | no | `""` | dense | prepended when encoding a document |
-| `revision` | `str \| None` | no | `None` | dense | pinned model revision; unpinned is recorded as `"unknown"` in the index identity |
 | `normalize` | `bool` | no | `true` | dense | unit-normalise vectors |
+| `device` | `str \| None` | no | `None` | sentence_transformers | torch device |
+| `revision` | `str \| None` | no | `None` | sentence_transformers | pinned model revision; unpinned is recorded as `"unknown"` in the index identity |
+| `base_url` | `str` | required, unless `model` is omitted | — | openai_embeddings | endpoint base, `/embeddings` is appended (`https://openrouter.ai/api/v1`) |
+| `api_key_env` | `str \| None` | no | `None` | openai_embeddings | name of the environment variable holding the key; omit for a keyless local server. `api_key` is rejected |
+| `dimensions` | `int` | required, unless `model` is omitted | — | openai_embeddings | vector length; every returned vector must have it |
+| `send_dimensions` | `bool` | no | `true` | openai_embeddings | send `dimensions` in the request; turn off for a model that rejects the parameter |
+| `truncate` | `bool` | no | `false` | openai_embeddings | cut a longer vector to `dimensions` and renormalise (Matryoshka models only) |
+| `query_input_type` | `str \| None` | no | `None` | openai_embeddings | sent as `input_type` for queries (`search_query`) |
+| `doc_input_type` | `str \| None` | no | `None` | openai_embeddings | sent as `input_type` for documents (`search_document`) |
+| `provider` | `dict \| None` | no | `None` | openai_embeddings | OpenRouter provider routing, passed through (`{order: [nebius], allow_fallbacks: false}`) |
+| `batch_size` | `int` | no | `64` | openai_embeddings | texts per request; a 413 halves it |
+| `timeout` | `float` | no | `60` | openai_embeddings | seconds per request |
+| `max_retries` | `int` | no | `5` | openai_embeddings | retries of a transient failure |
 
 `limit` must be at least 1, and a field marked for one kind is rejected on the other. The
 index identity stored with each built index covers the doc template, the target records and
 these engine settings (for dense: model name, `revision`, dimension, `normalize`, both
-prefixes and the max sequence length); `xwalk match` opens a matching index and refuses a
-different one unless `--rebuild-index`.
+prefixes and the max sequence length; for `openai_embeddings` also the redacted
+`base_url`, `send_dimensions`, `truncate`, both input types and `provider`, but never the
+key, `batch_size`, `timeout` or `max_retries`); `xwalk match` opens a matching index and
+refuses a different one unless `--rebuild-index`. `xwalk validate` checks that an
+`openai_embeddings` retriever's `api_key_env` is set, as it does for the LLM's.
 
+The recommended dense retriever is the default API encoder with per-name vectors:
+
+```yaml
+retrievers:
+  - kind: bm25
+    name: bm25
+  - kind: dense
+    name: qwen3
+    encoder: openai_embeddings      # no model: the default encoder
+    name_fields: [label, synonyms]
+```
+
+An `openai_embeddings` retriever that names no `model` gets the default encoder,
+Qwen3-Embedding 8B through OpenRouter, chosen by the November 2026 embedding bake-off
+(`benchmarks/results/embeddings-2026-11-03/FINDINGS.md`). It fills `model:
+qwen/qwen3-embedding-8b`, `base_url: https://openrouter.ai/api/v1`, `api_key_env:
+OPENROUTER_API_KEY`, `dimensions: 1024` (scored the same as the native 4096 with a
+quarter of the index), the model's query instruction as `query_prefix` and `provider:
+{order: [deepinfra], allow_fallbacks: true}` (the fastest provider, falling back to the
+others if it is down), each only where
+the job did not set it; the filled values are index identity like any other. A job that
+names a model, even the same one, gets none of these. Do not drop the query
+instruction: without it the same model scored 0.42 mean MRR instead of 0.85.
+
+`name_fields` gave 0.07 to 0.10 more MRR on the NCBI Disease pilot and changed nothing
+measurable on the other three (same source). Names are short, so they also stay within a
+512-token model's limit. It adds one vector per distinct name, so the index grows with
+the synonym count.
+
+OpenRouter may serve one model from several providers whose vectors are not identical:
+two runs of the same preset differed by up to 0.04 MRR, and DeepInfra's Qwen3 vectors
+are at cosine 0.996 from Nebius's. The default prefers DeepInfra and falls back, so an
+outage costs a little consistency rather than the job. For an index that must be
+reproducible, set `provider: {only: [deepinfra], allow_fallbacks: false}`, at the cost of
+failing when that provider is down.
 Indexes are written to `<index_dir>/<name or kind>`. An unnamed `bm25` retriever is built
 as `bm25`; an unnamed `dense` retriever names itself `dense:<model>` even though its index
 lands in `<index_dir>/dense`.

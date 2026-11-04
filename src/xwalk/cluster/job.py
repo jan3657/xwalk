@@ -125,6 +125,11 @@ class ClusterJobSpec(_Spec):
     def _check(self) -> ClusterJobSpec:
         if self.dense is not None and self.dense.kind != "dense":
             raise ValueError("dense must describe a dense encoder (kind: dense)")
+        if self.dense is not None and self.dense.name_fields is not None:
+            raise ValueError(
+                "dense: name_fields does not apply to a clustering job (its pool embeds "
+                "each source record once)"
+            )
         return self
 
     def build_templates(self) -> TemplateSet:
@@ -144,7 +149,7 @@ class ClusterJobSpec(_Spec):
         return ClusterPrompts(relation=self.relation)
 
     def build_encoder(self) -> Encoder | None:
-        return None if self.dense is None else JobSpec.build_encoder(self.dense)
+        return None if self.dense is None else JobSpec.build_encoder(self.dense, where="dense")
 
     def build_llm(self) -> LLMClient:
         """The job's client. Reuses the matching job's construction (credentials too)."""

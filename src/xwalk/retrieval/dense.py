@@ -30,6 +30,25 @@ _META_FILE = "xwalk_meta.json"
 _VECTOR_FILE = "vectors.f32"
 _IDS_FILE = "record_ids.json"
 INDEX_FORMAT_VERSION = 1
+# An index with per-name vectors: several rows per record, `record_ids.json` naming the
+# record of every row. Code that predates it would return a record once per row.
+NAMES_FORMAT_VERSION = 2
+
+
+def record_names(record: Record, fields: Sequence[str]) -> list[str]:
+    """The distinct non-blank values of `fields` in `record`, in field order. A list
+    field contributes each item; a missing or null field contributes nothing."""
+    names: dict[str, None] = {}
+    for field in fields:
+        value = record.fields.get(field)
+        values = value if isinstance(value, list | tuple) else [value]
+        for item in values:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if text:
+                names.setdefault(text, None)
+    return list(names)
 
 
 @runtime_checkable
@@ -123,9 +142,17 @@ def encoder_identity(encoder: Encoder) -> dict[str, Any]:
 
 
 def index_components(
-    records: Iterable[Record], templates: TemplateSet, encoder: Encoder
+    records: Iterable[Record],
+    templates: TemplateSet,
+    encoder: Encoder,
+    *,
+    name_fields: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """The identity of a dense index, computed without encoding anything."""
+    """The identity of a dense index, computed without encoding anything.
+
+    `name_fields` (per-name vectors) appears only when set, with format version 2, so
+    an index without them keeps the identity it had before they existed.
+    """
     digests: list[str] = []
     nulls = False
     for record in records:
@@ -134,12 +161,14 @@ def index_components(
     digests.sort()
     components: dict[str, Any] = {
         "engine": "dense",
-        "format_version": INDEX_FORMAT_VERSION,
+        "format_version": NAMES_FORMAT_VERSION if name_fields else INDEX_FORMAT_VERSION,
         "doc_template": templates.doc,
         "record_count": len(digests),
         "records": hash_value(digests),
         "encoder": encoder_identity(encoder),
     }
+    if name_fields:
+        components["name_fields"] = list(name_fields)
     if nulls:
         # The embedded text of a record with a null field changed with render version 2.
         components["template_render_version"] = TEMPLATE_RENDER_VERSION
@@ -179,7 +208,10 @@ class DenseRetriever:
         default_limit: int = 20,
     ) -> None:
         self._vectors = [list(v) for v in vectors]
+        # One id per row. With per-name vectors a record owns several rows and scores by
+        # its best one; without, rows and records are one to one.
         self._record_ids = list(record_ids)
+        self._multi = len(set(self._record_ids)) < len(self._record_ids)
         self._encoder = encoder
         self._fingerprint = fingerprint
         self._name = name
@@ -236,13 +268,25 @@ class DenseRetriever:
         name: str | None = None,
         default_limit: int = 20,
         batch: int = 256,
+        name_fields: Sequence[str] | None = None,
     ) -> DenseRetriever:
+        """Encode every record's rendered doc and write the index.
+
+        With `name_fields`, each distinct value of those fields (a label, every synonym)
+        is encoded as a document of its own beside the whole-doc vector, and a record
+        scores by its best vector. The rows are the docs first, then the names.
+        """
         index_dir = Path(index_dir)
         index_dir.mkdir(parents=True, exist_ok=True)
 
         records = list(records)
         record_ids = [record.id for record in records]
         texts = [templates.render_doc(record) for record in records]
+        if name_fields:
+            for record in records:
+                for text in record_names(record, name_fields):
+                    record_ids.append(record.id)
+                    texts.append(text)
 
         vectors: list[list[float]] = []
         for start in range(0, len(texts), batch):
@@ -255,7 +299,7 @@ class DenseRetriever:
                     f"but produced a vector of length {len(vector)}"
                 )
 
-        components = index_components(records, templates, encoder)
+        components = index_components(records, templates, encoder, name_fields=name_fields)
         fingerprint = hash_value(components)
 
         _write_vectors(index_dir / _VECTOR_FILE, vectors)
@@ -270,7 +314,8 @@ class DenseRetriever:
                     "default_limit": default_limit,
                     "fingerprint": fingerprint,
                     "components": components,
-                    "doc_count": len(record_ids),
+                    "doc_count": len(records),
+                    "vector_count": len(record_ids),
                 },
                 indent=2,
             ),
@@ -360,7 +405,34 @@ class DenseRetriever:
         if not text.strip() or not self._vectors:
             return []
         query = self._encoder.encode([text], is_query=True)[0]
+        # With several rows per record, every row is scored and each record keeps its
+        # best; the cut to `limit` is then over records, not rows.
+        pairs = self._rank_rows(query, len(self._vectors) if self._multi else limit)
+        if self._multi:
+            pairs = self._best_per_record(pairs)[:limit]
+        return [
+            RetrievalHit(
+                record_id=self._record_ids[index],
+                retriever=self._name,
+                raw_score=score,
+                rank=rank,
+            )
+            for rank, (score, index) in enumerate(pairs, start=1)
+        ]
 
+    def _best_per_record(self, pairs: list[tuple[float, int]]) -> list[tuple[float, int]]:
+        """Keep each record's first (best) row. `pairs` is already ranked best-first."""
+        seen: set[str] = set()
+        best: list[tuple[float, int]] = []
+        for score, index in pairs:
+            record_id = self._record_ids[index]
+            if record_id not in seen:
+                seen.add(record_id)
+                best.append((score, index))
+        return best
+
+    def _rank_rows(self, query: list[float], limit: int) -> list[tuple[float, int]]:
+        """The top `limit` rows as (score, row), best first; ties by ascending row."""
         if self._faiss_index is not None:
             import faiss
             import numpy as np
@@ -387,16 +459,7 @@ class DenseRetriever:
                 ),
                 key=lambda p: (-p[0], p[1]),
             )[:limit]
-
-        return [
-            RetrievalHit(
-                record_id=self._record_ids[index],
-                retriever=self._name,
-                raw_score=score,
-                rank=rank,
-            )
-            for rank, (score, index) in enumerate(pairs, start=1)
-        ]
+        return pairs
 
     async def search(self, request: SearchRequest) -> Sequence[RetrievalHit]:
         return await asyncio.to_thread(self._search_sync, request.text, request.limit)
