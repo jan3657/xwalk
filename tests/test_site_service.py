@@ -301,7 +301,12 @@ def test_run_end_to_end_with_fake_llm(tmp_path: Path, bm25_only: Any) -> None:
         "prompt_tokens": 100,
         "completion_tokens": 20,
         "embedding_requests": 0,
+        "selector_calls": 0,
+        "selector_prompt_tokens": None,
+        "selector_completion_tokens": None,
+        "selector_cost_usd": None,
     }
+    assert out.selector == "retrieval" and all(e.pick is None for e in out.entities)
     assert set(out.timing_ms) == {"extract", "map", "total"}
     assert llm.requests[0].user.endswith(f"TEXT:\n{text}")
     assert DEFAULT_PROMPT in llm.requests[0].user
@@ -507,3 +512,72 @@ def test_run_scrubs_and_caps_entity_notes_and_warnings(tmp_path: Path, bm25_only
         assert SENTINEL_KEY not in text and "hunter2" not in text
         assert len(text) <= service.MAX_ERROR_DETAIL + 40
     assert "emb.example" in leaked[0] and "[redacted]" in leaked[0]
+
+
+# --- selection --------------------------------------------------------------------
+
+
+def test_selectors_are_offered_and_validated(tmp_path: Path) -> None:
+    from ner_site.select import JEV, RETRIEVAL_ONLY
+
+    plain = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    assert plain.offered_selectors[0] == RETRIEVAL_ONLY and JEV in plain.offered_selectors
+    assert plain.default_selector == RETRIEVAL_ONLY
+    assert validate_request(NerRequest(text="ok"), plain).selector == RETRIEVAL_ONLY
+    jev = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_SELECTOR="jev")
+    assert jev.default_selector == JEV
+    assert validate_request(NerRequest(text="ok"), jev).selector == JEV
+    chosen = validate_request(NerRequest(text="ok", selector=RETRIEVAL_ONLY), jev)
+    assert chosen.selector == RETRIEVAL_ONLY
+    with pytest.raises(ServiceError) as exc:
+        validate_request(NerRequest(text="ok", selector="openai/gpt-1"), jev)
+    assert exc.value.code == "unknown_selector" and exc.value.status == 400
+    own = _settings(tmp_path, NER_SITE_SELECTORS="jev, qwen/qwen3.7-flash")
+    assert own.offered_selectors == (RETRIEVAL_ONLY, JEV, "qwen/qwen3.7-flash")
+    with pytest.raises(SettingsError):
+        _settings(tmp_path, NER_SITE_SELECTOR="nobody")
+    offline = _settings(tmp_path, NER_SITE_OFFLINE="1")
+    assert offline.offered_selectors == (RETRIEVAL_ONLY, JEV)
+
+
+def test_run_with_jev_picks_among_the_retrieved_terms(tmp_path: Path, bm25_only: Any) -> None:
+    from xwalk.decide.fake import FakeDecider
+
+    text = "She took haloperidol for a fever."
+    llm = FakeLLM([_answer(("haloperidol", "chemical", 9, 20))])
+    decider = FakeDecider()
+    s = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_SELECTOR="jev")
+    out = asyncio.run(
+        run(NerRequest(text=text), settings=s, llm=llm, indexes=bm25_only, decider=decider)
+    )
+    (entity,) = out.entities
+    assert out.selector == "jev"
+    assert entity.pick is not None and entity.pick.selector == "jev"
+    assert entity.pick.status in {"match", "review", "no_match"}
+    assert entity.pick.id is None or entity.pick.id.startswith("CHEBI:")
+    assert out.usage.selector_calls == len(decider.calls) > 0
+    assert out.usage.selector_prompt_tokens == 100 * len(decider.calls)
+    assert "select" in out.timing_ms
+    # Jev saw the mention in its sentence.
+    assert any("took" in json.dumps(state) for state, _ in decider.calls)
+
+
+def test_run_with_an_llm_selector_needs_its_client(tmp_path: Path, bm25_only: Any) -> None:
+    text = "She took haloperidol for a fever."
+    s = _settings(
+        tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_SELECTORS="qwen/qwen3.7-flash"
+    )
+    picker = FakeLLM(['{"chosen_key": "C01", "confidence_score": 0.7, "explanation": "first"}'])
+    out = asyncio.run(
+        run(
+            NerRequest(text=text, selector="qwen/qwen3.7-flash"),
+            settings=s,
+            llm=FakeLLM([_answer(("haloperidol", "chemical", 9, 20))]),
+            indexes=bm25_only,
+            select_llm=picker,
+        )
+    )
+    (entity,) = out.entities
+    assert entity.pick is not None and entity.pick.status == "match"
+    assert entity.pick.id == entity.matches[0].id == "CHEBI:5613"
+    assert out.usage.selector_calls == 1 and out.usage.selector_cost_usd is None

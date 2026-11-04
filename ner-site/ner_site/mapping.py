@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from ner_site.indexes import OntologyIndex
 from ner_site.ontologies import TEMPLATES, route, term_url
 from ner_site.schema import Entity, EntityResult, Match
-from xwalk.records import Record, RetrievalHit
+from xwalk.records import Candidate, Record, RetrievalHit
 from xwalk.retrieval.base import Retriever, SearchRequest
 from xwalk.retrieval.dense import DenseRetriever
 from xwalk.retrieval.postgres import PgVectorRetriever
@@ -59,6 +59,9 @@ class MapStats:
 
     embedding_requests: int = 0
     warnings: list[str] = field(default_factory=list)
+    # Every routed entity's fused candidates, best first, before the top_k cut: what a
+    # selector (``ner_site.select``) chooses among.
+    candidates: dict[str, list[Candidate]] = field(default_factory=dict)
     dense_entities: list[str] = field(default_factory=list)
     dense_failed: dict[str, str] = field(default_factory=dict)
 
@@ -192,6 +195,7 @@ async def map_entities(
             failed = next((b for b in dense if b.failure is not None), None)
             if failed is not None:
                 stats.dense_failed[entity.id] = tidy(f"{failed.name}: {failed.failure}")
+        stats.candidates[entity.id] = list(candidates)
         notes = [tidy(note) for note in notes]
         for note in notes:
             degraded.setdefault(note, []).append(entity.id)

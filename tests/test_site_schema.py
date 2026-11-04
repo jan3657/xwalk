@@ -27,19 +27,24 @@ from ner_site.schema import (
 from pydantic import ValidationError
 
 NER_RESPONSE = """
-{"ok": true, "model": "openai/gpt-4o-mini", "mode": "live",
+{"ok": true, "model": "openai/gpt-4o-mini", "mode": "live", "selector": "jev",
  "entities": [
    {"id": "e1", "text": "Aspirin", "start": 0, "end": 7, "type": "chemical", "ontology": "chebi-sample",
     "matches": [{"id": "CHEBI:15365", "label": "acetylsalicylic acid", "score": 0.0325,
                  "retrievers": {"bm25": 1, "dense-qwen3": 2},
                  "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:15365"}],
-    "notes": []},
+    "notes": [],
+    "pick": {"selector": "jev", "status": "match", "id": "CHEBI:15365", "label": "acetylsalicylic acid",
+             "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:15365", "confidence": 0.93,
+             "explanation": "rubric 0.95, properties 0.97"}},
    {"id": "e2", "text": "fever", "start": 16, "end": 21, "type": "other", "ontology": null,
-    "matches": [], "notes": ["no ontology for type 'other'"]}],
+    "matches": [], "notes": ["no ontology for type 'other'"], "pick": null}],
  "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "ok"}},
  "warnings": ["entity 'feverr' dropped: not found in text"],
- "usage": {"llm_calls": 1, "prompt_tokens": 412, "completion_tokens": 88, "embedding_requests": 2},
- "timing_ms": {"extract": 1800, "map": 900, "total": 2800}}
+ "usage": {"llm_calls": 1, "prompt_tokens": 412, "completion_tokens": 88, "embedding_requests": 2,
+           "selector_calls": 3, "selector_prompt_tokens": 2900, "selector_completion_tokens": 0,
+           "selector_cost_usd": 0.0001},
+ "timing_ms": {"extract": 1800, "map": 900, "select": 1400, "total": 4200}}
 """
 
 HEALTH_RESPONSE = """
@@ -48,7 +53,8 @@ HEALTH_RESPONSE = """
  "limits": {"max_chars": 5000, "max_prompt_chars": 4000, "max_entities": 25, "top_k_max": 10},
  "passcode_required": false, "default_prompt": "...",
  "ontologies": [{"slug": "chebi-sample", "name": "ChEBI (sample)", "type": "chemical", "count": 200}],
- "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "unavailable", "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"}}}
+ "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "unavailable", "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"}},
+ "selectors": ["retrieval", "jev", "openai/gpt-6-luna"], "default_selector": "jev"}
 """
 
 

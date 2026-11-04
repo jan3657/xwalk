@@ -12,7 +12,8 @@ Binding: docs/ner-site/PLAN.md section 3. Every response model serialises with
      "ontologies": [{"slug": "chebi-sample", "name": "ChEBI (sample)", "type": "chemical",
                      "count": 200}],
      "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "unavailable",
-       "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"}}}
+       "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"}},
+     "selectors": ["retrieval", "jev", "openai/gpt-6-luna"], "default_selector": "jev"}
 
 ``POST /api/ner`` request::
 
@@ -21,21 +22,27 @@ Binding: docs/ner-site/PLAN.md section 3. Every response model serialises with
 
 200 response::
 
-    {"ok": true, "model": "openai/gpt-4o-mini", "mode": "live",
+    {"ok": true, "model": "openai/gpt-4o-mini", "mode": "live", "selector": "jev",
      "entities": [
        {"id": "e1", "text": "Aspirin", "start": 0, "end": 7, "type": "chemical",
         "ontology": "chebi-sample",
         "matches": [{"id": "CHEBI:15365", "label": "acetylsalicylic acid", "score": 0.0325,
                      "retrievers": {"bm25": 1, "dense-qwen3": 2},
                      "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:15365"}],
-        "notes": []},
+        "notes": [],
+        "pick": {"selector": "jev", "status": "match", "id": "CHEBI:15365",
+                 "label": "acetylsalicylic acid", "url": "https://www.ebi.ac.uk/...",
+                 "confidence": 0.93, "explanation": "rubric 0.95, properties 0.97"}},
        {"id": "e2", "text": "fever", "start": 16, "end": 21, "type": "other", "ontology": null,
-        "matches": [], "notes": ["no ontology for type 'other'"]}],
+        "matches": [], "notes": ["no ontology for type 'other'"], "pick": null}],
      "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "ok"}},
      "warnings": ["entity 'feverr' dropped: not found in text"],
      "usage": {"llm_calls": 1, "prompt_tokens": 412, "completion_tokens": 88,
                "embedding_requests": 2},
-     "timing_ms": {"extract": 1800, "map": 900, "total": 2800}}
+     "timing_ms": {"extract": 1800, "map": 900, "select": 1400, "total": 4200}}
+
+    ``usage`` also carries ``selector_calls``, ``selector_prompt_tokens``,
+    ``selector_completion_tokens`` and ``selector_cost_usd`` (PLAN.md section 13).
 
 Token counts are ``null`` when the provider did not report them, never 0.
 
@@ -78,10 +85,30 @@ class Match(BaseModel):
     url: str | None
 
 
+PickStatus = Literal["match", "review", "no_match", "failed"]
+
+
+class Pick(BaseModel):
+    """The selector's verdict on one entity's retrieved candidates.
+
+    ``id`` is None unless ``status`` is "match" or "review", and is always one of the
+    candidates retrieved for the entity (an issued key resolved by exact lookup, or
+    Jev's choice among them); a model's raw text never becomes an id."""
+
+    selector: str
+    status: PickStatus
+    id: str | None = None
+    label: str | None = None
+    url: str | None = None
+    confidence: float | None = None
+    explanation: str = ""
+
+
 class EntityResult(Entity):
     ontology: str | None
     matches: list[Match]
     notes: list[str]
+    pick: Pick | None = None
 
 
 class RetrieverStatus(BaseModel):
@@ -103,6 +130,12 @@ class Usage(BaseModel):
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     embedding_requests: int
+    # The selection step (Jev or an LLM): its calls, tokens and the cost the provider
+    # reported (null when any call did not report it).
+    selector_calls: int = 0
+    selector_prompt_tokens: int | None = None
+    selector_completion_tokens: int | None = None
+    selector_cost_usd: float | None = None
 
 
 class NerRequest(BaseModel):
@@ -118,12 +151,14 @@ class NerRequest(BaseModel):
     prompt: str | None = None
     model: str | None = None
     top_k: int = 5
+    selector: str | None = None
 
 
 class NerResponse(BaseModel):
     ok: Literal[True] = True
     model: str
     mode: Mode
+    selector: str = "retrieval"
     entities: list[EntityResult]
     retrieval: dict[str, RetrieverStatus]
     warnings: list[str]
@@ -148,6 +183,8 @@ class HealthResponse(BaseModel):
     default_prompt: str
     ontologies: list[OntologySummary]
     retrieval: dict[str, RetrieverStatus]
+    selectors: list[str] = ["retrieval"]
+    default_selector: str = "retrieval"
 
 
 @dataclass(frozen=True)

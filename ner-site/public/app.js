@@ -30,6 +30,8 @@
     promptReset: $("prompt-reset"),
     modelField: $("model-field"),
     model: $("model"),
+    selectorField: $("selector-field"),
+    selector: $("selector"),
     topK: $("top-k"),
     passField: $("passcode-field"),
     passcode: $("passcode"),
@@ -263,6 +265,12 @@
     el.promptReset.disabled = !state.defaultPrompt;
     el.promptHint.textContent = `Up to ${state.limits.max_prompt_chars.toLocaleString()} characters. Edits apply to this run only; the output format is fixed.`;
 
+    const selectors = Array.isArray(health.selectors) ? health.selectors : [];
+    clear(el.selector);
+    for (const s of selectors) el.selector.append(h("option", { value: s, text: selectorName(s) }));
+    if (selectors.includes(health.default_selector)) el.selector.value = health.default_selector;
+    el.selectorField.hidden = selectors.length <= 1;
+
     const models = Array.isArray(health.models) ? health.models : [];
     clear(el.model);
     for (const m of models) el.model.append(h("option", { value: m, text: m }));
@@ -365,6 +373,44 @@
     return skipped;
   }
 
+  function selectorName(s) {
+    if (s === "retrieval") return "Retrieval ranking only";
+    if (s === "jev") return "Jev (TypeSafe decision model)";
+    return s;
+  }
+
+  const PICK_TEXT = {
+    match: "Picked",
+    review: "Picked, needs review",
+    no_match: "No candidate fits",
+    failed: "Selection failed",
+  };
+
+  function renderPick(p) {
+    const status = PICK_TEXT[p.status] ? p.status : "failed";
+    const href = safeHref(p.url);
+    const term = p.id
+      ? h(
+          "span",
+          { class: "pick-term" },
+          href ? h("a", { href, target: "_blank", rel: "noopener noreferrer", text: p.id }) : h("span", { text: p.id }),
+          h("span", { text: " " + (p.label || "") }),
+        )
+      : null;
+    const confidence = typeof p.confidence === "number" ? h("span", { class: "pick-conf", text: "confidence " + p.confidence.toFixed(2) }) : null;
+    return h(
+      "div",
+      { class: "pick pick-" + status },
+      h("span", { class: "pick-who", text: selectorName(p.selector) + ": " }),
+      h("strong", { class: "pick-status", text: PICK_TEXT[status] }),
+      term ? h("span", { text: " " }) : null,
+      term,
+      confidence ? h("span", { text: " · " }) : null,
+      confidence,
+      p.explanation ? h("p", { class: "pick-why", text: String(p.explanation) }) : null,
+    );
+  }
+
   function retrieverText(retrievers) {
     const parts = Object.entries(retrievers || {}).map(([name, rank]) => `${name} #${rank}`);
     return parts.length ? parts.join(", ") : "—";
@@ -381,6 +427,8 @@
       h("span", { class: "card-onto", text: ontologyName ? `→ ${ontologyName}` : "not mapped" }),
     );
     const card = h("article", { class: "card", id: `card-${e.id}`, "aria-labelledby": `card-title-${e.id}`, tabindex: "-1" }, head);
+    const picked = e.pick && e.pick.id ? e.pick.id : null;
+    if (e.pick) card.append(renderPick(e.pick));
 
     const matches = Array.isArray(e.matches) ? e.matches : [];
     if (matches.length) {
@@ -393,7 +441,7 @@
         tbody.append(
           h(
             "tr",
-            { class: i === 0 ? "top" : null },
+            { class: [i === 0 ? "top" : "", m.id === picked ? "picked" : ""].join(" ").trim() || null },
             h("td", { "data-label": "ID", class: "c-id" }, idCell),
             h("td", { "data-label": "Label", class: "c-label", text: m.label || "—" }),
             h("td", { "data-label": "Score", class: "c-score num", text: typeof m.score === "number" ? m.score.toFixed(4) : "—" }),
@@ -415,7 +463,8 @@
         ),
       );
     } else if (e.ontology) {
-      card.append(h("p", { class: "empty", text: "No term in this 200-term sample matched. The real ontology may well contain it." }));
+      const full = state.health && state.health.neon && state.health.neon.catalog === "full";
+      card.append(h("p", { class: "empty", text: full ? "No term matched." : "No term in this 200-term sample matched. The real ontology may well contain it." }));
     }
 
     const notes = Array.isArray(e.notes) ? e.notes : [];
@@ -435,7 +484,12 @@
         ? "tokens unknown"
         : `${p.toLocaleString()} + ${c.toLocaleString()} tokens`;
     const emb = `${usage.embedding_requests} embedding request${usage.embedding_requests === 1 ? "" : "s"}`;
-    return `${calls}, ${tokens}, ${emb}`;
+    const parts = [calls, tokens, emb];
+    if (usage.selector_calls) {
+      const cost = typeof usage.selector_cost_usd === "number" ? "$" + usage.selector_cost_usd.toFixed(5) : "cost unknown";
+      parts.push(usage.selector_calls + " selector call" + (usage.selector_calls === 1 ? "" : "s") + " (" + cost + ")");
+    }
+    return parts.join(", ");
   }
 
   function retrievalText(retrieval) {
@@ -464,9 +518,9 @@
     const timing = data.timing_ms || {};
     setStatus([
       retrievalText(data.retrieval),
-      `Model ${data.model || "unknown"} (${data.mode || "unknown"})`,
+      `Model ${data.model || "unknown"} (${data.mode || "unknown"}), picked by ${selectorName(data.selector || "retrieval")}`,
       usageText(data.usage),
-      `extract ${fmtSeconds(timing.extract)}, map ${fmtSeconds(timing.map)}, total ${fmtSeconds(timing.total)}`,
+      `extract ${fmtSeconds(timing.extract)}, map ${fmtSeconds(timing.map)}` + (timing.select !== undefined ? `, select ${fmtSeconds(timing.select)}` : "") + `, total ${fmtSeconds(timing.total)}`,
     ]);
     renderBanner(data.mode, data.retrieval);
     el.results.hidden = false;
@@ -509,6 +563,7 @@
       prompt: !promptValue.trim() || promptValue === state.defaultPrompt ? null : promptValue,
       model: el.model.value || null,
       top_k: Number(el.topK.value) || 5,
+      selector: el.selectorField.hidden ? null : el.selector.value || null,
     };
 
     setRunning(true);

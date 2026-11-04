@@ -505,6 +505,10 @@ def test_full_post_live_through_mock_transport(cache_dir: Path, tmp_path: Path) 
         "prompt_tokens": 412,
         "completion_tokens": 88,
         "embedding_requests": 0,
+        "selector_calls": 0,
+        "selector_prompt_tokens": None,
+        "selector_completion_tokens": None,
+        "selector_cost_usd": None,
     }
     assert bodies[0]["model"] == "google/gemini-2.5-flash-lite"
     assert SECRET_PROMPT in bodies[0]["messages"][-1]["content"]
