@@ -318,7 +318,7 @@
     for (const t of TYPES) {
       const o = byType[t];
       if (!o && t !== "other" && state.health && state.health.neon && state.health.neon.catalog === "full") continue;
-      const target = o ? `${o.name}, ${o.count} terms` : t === "other" ? "not mapped" : "no ontology";
+      const target = o ? `${o.name}, ${Number(o.count).toLocaleString("en")} terms` : t === "other" ? "not mapped" : "no ontology";
       el.legend.append(
         h("li", null, h("span", { class: `swatch type-${t}`, "aria-hidden": "true" }), h("span", { class: "legend-type", text: t }), h("span", { class: "legend-target", text: target })),
       );

@@ -289,6 +289,46 @@ Then set `NER_SITE_BACKEND=neon` and `NER_SITE_NEON_CATALOG=full` on the deploym
 The loader is resumable, so it can be stopped and rerun, and `--only` loads one ontology
 at a time.
 
+## The full load, done 4 November 2026 (Launch plan)
+
+The org moved to Neon's Launch plan (pay as you go: $0.35 a GB-month of storage, $0.106 a
+CU-hour of compute, scale to zero after 5 minutes). Loaded into schema `xwalk_full` at
+`halfvec(768)`, through the unpooled endpoint with `maintenance_work_mem = 1GB` set on the
+database (`alter database neondb set ...`; pooled sessions do not see it). **NCBI Gene was
+not loaded** (the operator's choice); the site does not route genes with the full
+catalogs.
+
+| Ontology | Records | Vectors | Tokens (reported) | Cost (reported) | Time |
+|---|---|---|---|---|---|
+| ctd-disease | 13,323 | 104,630 | 1,897,340 | $0.0190 | 14.7 min |
+| foodon | 28,684 | 65,301 | 1,344,408 | $0.0134 | 8.7 min |
+| chebi | 219,011 | 852,943 | 44,057,139 | $0.4406 | 54 min, then the index (below) |
+| total | 261,018 | 1,022,874 | 47,298,887 | $0.4730 | about 80 min |
+
+CTD was also loaded once at 1024 dimensions for the truncation test and dropped
+(another $0.0190). Embedding ran at 120 to 330 vectors a second with `--concurrency 8`,
+bound by OpenRouter.
+
+**Vector format.** `halfvec(768)`: on the fully loaded CTD vocabulary 768 dimensions
+matched 1024 at every cut-off and 512 lost 0.07 MRR; a dimension just under the 2 KB
+inline limit (1000, 1016) costs exactly what 1024 does, and `STORAGE PLAIN` saves 2%
+(`benchmarks/results/neon-truncation-2026-11-04/FINDINGS.md`). Stored:
+`term_vectors` 4,006.7 MB for 1,022,874 vectors (3,917 bytes each, heap and HNSW),
+`terms` 480.1 MB, the database 4,541 MB in all (the samples in `xwalk` included), so
+about $1.60 a month of storage.
+
+**The ChEBI HNSW build.** Over 852,943 vectors it outlived the loader's 120 s request:
+each of the three retries started the build again and the abandoned request cancelled
+it, so the loader stopped with a read timeout after storing every vector. Built by hand
+in one request (`set local maintenance_work_mem = '3GB'`, `set local
+max_parallel_maintenance_workers = 4`, the loader's `create index` statement): 110 s.
+A rerun of the loader then embedded nothing and marked ChEBI ready. The loader now builds
+indexes through a second executor with an hour's timeout and no retries.
+
+**Retrieval on the full catalogs**
+(`benchmarks/results/site-retrieval-full-2026-11-04/FINDINGS.md`): fused MRR ChEBI 0.749,
+CTD 0.572, FoodOn 0.766 (samples: 1.000, 0.704, 0.914), recall@20 0.96, 0.70, 0.94.
+
 ## Site configuration
 
 | Name | Default | Meaning |

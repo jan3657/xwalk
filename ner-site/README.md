@@ -289,6 +289,39 @@ Fallback: the committed dense indexes are still deployed, so setting
 `NER_SITE_BACKEND=bundled` (or removing it) and redeploying restores the bundled backend
 without a rebuild.
 
+### Full catalogs and selectors, 4 November 2026 (later the same day)
+
+Production now serves the full ChEBI, CTD diseases and FoodOn vocabularies from Neon
+(schema `xwalk_full`, `halfvec(768)`; NCBI Gene not loaded, genes not extracted) and lets
+the visitor choose what picks each entity's term (docs/ner-site/PLAN.md section 13).
+Production variables added or changed: `NER_SITE_NEON_CATALOG=full`,
+`NER_SITE_NEON_SCHEMA=xwalk_full`, `NER_SITE_NEON_DIMENSIONS=768`,
+`NER_SITE_SELECTOR=jev`, `NER_SITE_MODELS=google/gemini-3.1-flash-lite,openai/gpt-6-luna,anthropic/claude-haiku-5.5`.
+Deployed with the Vercel CLI from `git archive` of `ner-site/`. Checked at
+https://www.xwalk.si:
+
+- `/api/health` 200: `backend: neon`, `neon: {schema: xwalk_full, catalog: full}`,
+  ontologies ChEBI 219,011, CTD diseases 13,323, FoodOn 28,684 terms; BM25, dense and llm
+  ok; selectors `retrieval`, `jev`, `openai/gpt-6-luna`, `anthropic/claude-haiku-5.5`,
+  `google/gemini-3.1-flash-lite`, default `jev`; the default prompt asks for no genes.
+- `POST /api/ner` 401 without the passcode and with a wrong one.
+- With it, "Patients with Wilson disease and type 2 diabetes took aspirin and metformin;
+  the diet included whole milk yogurt and an apple." (Gemini 3.1 Flash Lite, Jev): 200 in
+  7.3 to 9.6 s round trip (extract 1.9 to 3.2 s, map 2.8 to 5.9 s, select 0.8 to 1.0 s),
+  695 + 170 tokens, 18 Jev calls reporting $0.0022; every pick looked right to me (this
+  text has no gold labels). Jev picked
+  "metformin" (CHEBI:6801) where retrieval ranked "metformin(2+)" first; the whole-milk
+  yogurt went to "review" on one run and "match" on the other.
+- Selectors compared live on the same text: GPT-6 Luna made the same picks in 6.1 s
+  (6 calls; its cost is not reported, so "unknown"), Claude Haiku 5.5 and Gemini 3.1 Flash
+  Lite answered too. DeepSeek V4.1 Flash returned non-JSON once and Qwen3.7 Flash had no
+  endpoint under the account's data policy, so neither is offered.
+- Extraction: GPT-6 Luna took 6 to 9 s and 500 to 840 output tokens on that text,
+  Gemini 3.1 Flash Lite 1.8 to 3.2 s and about 170, so Gemini is the default.
+- The page (headless Chromium, 1280 px): the selector dropdown, Jev's pick with its
+  properties above each table, the picked row ticked, the usage line with the selector
+  calls and cost.
+
 ### For the operator after deploying
 
 1. `GET /api/health`: `mode: live`, `llm: {"status": "ok"}`, `dense: ok`. Without
