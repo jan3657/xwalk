@@ -26,6 +26,7 @@ from functools import cache
 from pathlib import Path
 
 from ner_site.indexes import OntologyIndex
+from ner_site.mapping import MAX_LISTED
 from ner_site.ontologies import DOC_TEMPLATE, term_url
 from ner_site.schema import EntityResult, Pick, PickStatus
 from xwalk.decide.base import DecisionClient
@@ -53,7 +54,9 @@ JEV_RETRIES = 1
 
 SLOTS_DIR = Path(__file__).resolve().parent / "slots"
 CONTEXT_CHARS = 150  # either side of the mention, for the selector's context
-MAX_CANDIDATES = 30  # of the fused list (two retrievers at depth 20); one screen chunk
+# Of the fused list (two retrievers at depth 20): one screen chunk, and exactly the
+# candidates the page lists (matches plus more), so every pick is visible there.
+MAX_CANDIDATES = MAX_LISTED
 CONCURRENCY = 8  # entities selected at once
 DEADLINE_NOTE = "cut off by the request deadline"
 

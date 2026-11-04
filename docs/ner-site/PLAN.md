@@ -107,9 +107,12 @@ comes from the installed package via `importlib.resources.files("xwalk.ui") / "o
     "notes": [],
     "pick": {"selector": "jev", "status": "match", "id": "CHEBI:15365", "label": "acetylsalicylic acid",
              "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:15365", "confidence": 0.93,
-             "explanation": "rubric 0.95, properties 0.97"}},
+             "explanation": "rubric 0.95, properties 0.97"},
+    "more": [{"id": "CHEBI:46195", "label": "paracetamol", "score": 0.0161, "retrievers": {"dense-qwen3": 2},
+              "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:46195"}]},
    {"id": "e2", "text": "fever", "start": 16, "end": 21, "type": "other", "ontology": null,
-    "matches": [], "notes": ["no ontology for type 'other'"], "pick": null}],
+    "matches": [], "notes": ["no ontology for type 'other'"], "pick": null,
+    "more": []}],
  "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "ok"}},
  "warnings": ["entity 'feverr' dropped: not found in text"],
  "usage": {"llm_calls": 1, "prompt_tokens": 412, "completion_tokens": 88, "embedding_requests": 2,
@@ -588,6 +591,7 @@ Retrieval ranks; a selector decides. Each request names one (`selector`, default
 | 13.5 | Each routed entity with candidates gets `pick`: `selector`, `status` (`match`, `review`, `no_match`, `failed`), `id`, `label`, `url`, `confidence`, `explanation`. `matches` (the retrieval ranking) is unchanged. A provider error, a timeout or the request deadline is a `failed` pick with its reason, never a 5xx. | The visitor sees both the ranking and the decision. |
 | 13.6 | Time: the selection gets what is left of the 100 s request deadline, at least 5 s; usage adds `selector_calls`, `selector_prompt_tokens`, `selector_completion_tokens` and `selector_cost_usd` (Jev reports cost; an LLM selector's cost is null, unknown). `timing_ms` adds `select` when a selector ran. | Same accounting rules as the extraction call: unknown is null, not 0. |
 | 13.7 | Offline (`NER_SITE_OFFLINE=1`): `retrieval` and `jev`, where Jev is the library's token-overlap stand-in. | Demonstrates the flow without a key. |
+| 13.8 | `matches` stays the visitor's top_k; `more` continues the same fused ranking down to 30 (`mapping.MAX_LISTED`), the depth the selector chooses from. The page lists `matches` under "Retrieved candidates" and expands to `more`, so a pick is always on the page with its rank. | A pick ranked below the visible rows looked like it came from nowhere (Jev picked rank 20 for "eggs"). |
 
 Tests: `tests/test_site_select.py` (FakeDecider with a scripted Jev, FakeLLM), and the
 selection cases in `tests/test_site_service.py`.

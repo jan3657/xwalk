@@ -32,9 +32,11 @@ Binding: docs/ner-site/PLAN.md section 3. Every response model serialises with
         "notes": [],
         "pick": {"selector": "jev", "status": "match", "id": "CHEBI:15365",
                  "label": "acetylsalicylic acid", "url": "https://www.ebi.ac.uk/...",
-                 "confidence": 0.93, "explanation": "rubric 0.95, properties 0.97"}},
+                 "confidence": 0.93, "explanation": "rubric 0.95, properties 0.97"},
+        "more": [{"id": "CHEBI:46195", "label": "paracetamol", "score": 0.0161, ...}]},
        {"id": "e2", "text": "fever", "start": 16, "end": 21, "type": "other", "ontology": null,
-        "matches": [], "notes": ["no ontology for type 'other'"], "pick": null}],
+        "matches": [], "notes": ["no ontology for type 'other'"], "pick": null,
+        "more": []}],
      "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "ok"}},
      "warnings": ["entity 'feverr' dropped: not found in text"],
      "usage": {"llm_calls": 1, "prompt_tokens": 412, "completion_tokens": 88,
@@ -105,10 +107,14 @@ class Pick(BaseModel):
 
 
 class EntityResult(Entity):
+    """``matches`` is the visitor's top_k of the fused retrieval ranking; ``more`` the
+    rest of it down to ``mapping.MAX_LISTED`` (30), the depth a selector chooses from."""
+
     ontology: str | None
     matches: list[Match]
     notes: list[str]
     pick: Pick | None = None
+    more: list[Match] = []
 
 
 class RetrieverStatus(BaseModel):

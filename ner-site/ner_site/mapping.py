@@ -41,6 +41,10 @@ OTHER_NOTE = "no ontology for type 'other'"
 ALL_FAILED_NOTE = "every retriever failed; no matches"
 DEADLINE_NOTE = "cut off by the request deadline"
 LOCAL_GRACE_S = 5.0  # what local (BM25) searches may run past the deadline
+# How deep the fused ranking is listed: `matches` (the visitor's top_k) plus `more`, up to
+# here. A selector (ner_site.select) chooses among the same depth, so its pick is always
+# one of the listed candidates.
+MAX_LISTED = 30
 # `retrieve`'s own timeout is a backstop only: `_Bounded` always fires first.
 _BACKSTOP_S = 1.0
 # The retrievers that embed the query (one embeddings request per search): the bundled
@@ -202,7 +206,7 @@ async def map_entities(
         entity_notes = list(notes)
         if all_failed:
             entity_notes.append(ALL_FAILED_NOTE)
-        matches = [
+        listed = [
             Match(
                 id=c.id,
                 label=str(c.record.fields.get("label", "")),
@@ -210,9 +214,10 @@ async def map_entities(
                 retrievers={h.retriever: h.rank for h in c.evidence},
                 url=term_url(c.id),
             )
-            for c in candidates[:top_k]
+            for c in candidates[: max(top_k, MAX_LISTED)]
         ]
-        return _result(entity, slug, matches, entity_notes)
+        result = _result(entity, slug, listed[:top_k], entity_notes)
+        return result.model_copy(update={"more": listed[top_k:]})
 
     results = list(await asyncio.gather(*(one(e) for e in entities)))
     order = {e.id: i for i, e in enumerate(entities)}

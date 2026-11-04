@@ -543,3 +543,16 @@ def test_build_indexes_rejects_an_unknown_slug(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exc:
         tool.main(["--out", str(tmp_path), "--only", "nope"], env={"OPENROUTER_API_KEY": "k"})
     assert exc.value.code == 2
+
+
+def test_the_rest_of_the_retrieved_candidates_come_back_as_more(fused: Any) -> None:
+    """`matches` is the visible top_k; `more` continues the same fused ranking up to
+    the depth a selector chooses from, so a pick below the fold is still listed."""
+    from ner_site.mapping import MAX_LISTED
+
+    stats = MapStats()
+    (result,) = _map([_entity("e1", "acid", "chemical")], fused, top_k=2, stats=stats)
+    ranked = [c.id for c in stats.candidates["e1"]][:MAX_LISTED]
+    assert len(ranked) > 2
+    assert [m.id for m in result.matches] + [m.id for m in result.more] == ranked
+    assert all(m.retrievers for m in result.more)

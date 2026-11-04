@@ -431,37 +431,72 @@
     if (e.pick) card.append(renderPick(e.pick));
 
     const matches = Array.isArray(e.matches) ? e.matches : [];
+    const more = Array.isArray(e.more) ? e.more : [];
     if (matches.length) {
+      const all = matches.concat(more);
       const tbody = h("tbody");
-      matches.forEach((m, i) => {
+      const hiddenRows = [];
+      all.forEach((m, i) => {
         const href = safeHref(m.url);
         const idCell = href
           ? h("a", { href, target: "_blank", rel: "noopener noreferrer", text: m.id })
           : h("span", { text: m.id });
-        tbody.append(
-          h(
-            "tr",
-            { class: [i === 0 ? "top" : "", m.id === picked ? "picked" : ""].join(" ").trim() || null },
-            h("td", { "data-label": "ID", class: "c-id" }, idCell),
-            h("td", { "data-label": "Label", class: "c-label", text: m.label || "—" }),
-            h("td", { "data-label": "Score", class: "c-score num", text: typeof m.score === "number" ? m.score.toFixed(4) : "—" }),
-            h("td", { "data-label": "Ranks", class: "c-ranks", text: retrieverText(m.retrievers) }),
-          ),
+        const row = h(
+          "tr",
+          { class: [i === 0 ? "top" : "", m.id === picked ? "picked" : ""].join(" ").trim() || null },
+          h("td", { "data-label": "Rank", class: "c-rank num", text: String(i + 1) }),
+          h("td", { "data-label": "ID", class: "c-id" }, idCell),
+          h("td", { "data-label": "Label", class: "c-label", text: m.label || "—" }),
+          h("td", { "data-label": "Score", class: "c-score num", text: typeof m.score === "number" ? m.score.toFixed(4) : "—" }),
+          h("td", { "data-label": "Ranks", class: "c-ranks", text: retrieverText(m.retrievers) }),
         );
+        if (i >= matches.length) {
+          row.hidden = true;
+          hiddenRows.push(row);
+        }
+        tbody.append(row);
       });
+      const pickedRank = picked ? all.findIndex((m) => m.id === picked) + 1 : 0;
+      const shown = h("span", { class: "cands-count", text: `showing ${matches.length} of ${all.length}` });
+      card.append(
+        h(
+          "div",
+          { class: "cands-head" },
+          h("h4", { class: "cands-title", text: "Retrieved candidates" }),
+          h(
+            "p",
+            { class: "cands-note" },
+            "From retrieval (BM25 keyword search plus dense embeddings, fused by rank), before any selection",
+            pickedRank ? ` · the pick is #${pickedRank}` : "",
+            " · ",
+            shown,
+          ),
+        ),
+      );
       card.append(
         h(
           "table",
           { class: "matches" },
-          h("caption", { class: "visually-hidden", text: `Candidate terms for ${e.text}` }),
+          h("caption", { class: "visually-hidden", text: `Retrieved candidate terms for ${e.text}, ranked` }),
           h(
             "thead",
             null,
-            h("tr", null, h("th", { scope: "col", text: "ID" }), h("th", { scope: "col", text: "Label" }), h("th", { scope: "col", class: "num", text: "Score" }), h("th", { scope: "col", text: "Retriever ranks" })),
+            h("tr", null, h("th", { scope: "col", class: "num", text: "#" }), h("th", { scope: "col", text: "ID" }), h("th", { scope: "col", text: "Label" }), h("th", { scope: "col", class: "num", text: "Fused score" }), h("th", { scope: "col", text: "Retriever ranks" })),
           ),
           tbody,
         ),
       );
+      if (hiddenRows.length) {
+        const toggle = h("button", { type: "button", class: "ghost small cands-toggle", "aria-expanded": "false", text: `Show all ${all.length} retrieved candidates` });
+        toggle.addEventListener("click", () => {
+          const open = toggle.getAttribute("aria-expanded") !== "true";
+          for (const r of hiddenRows) r.hidden = !open;
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+          toggle.textContent = open ? `Show the top ${matches.length} only` : `Show all ${all.length} retrieved candidates`;
+          shown.textContent = `showing ${open ? all.length : matches.length} of ${all.length}`;
+        });
+        card.append(toggle);
+      }
     } else if (e.ontology) {
       const full = state.health && state.health.neon && state.health.neon.catalog === "full";
       card.append(h("p", { class: "empty", text: full ? "No term matched." : "No term in this 200-term sample matched. The real ontology may well contain it." }));
