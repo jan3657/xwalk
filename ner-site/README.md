@@ -174,7 +174,18 @@ pass; two runs of the example text gave 10 entities, all with candidates, one LL
 OpenRouter were measured at 0.2 to 3.3 s each at that time, so the spread is provider
 latency, not the fixes. Expect a few seconds to about 15 s per request.
 
-Still not run: a Vercel build or deployment.
+### `vercel build`, 4 November 2026 (the orchestrating session)
+
+Vercel CLI 65.11.0, `vercel build --yes` on a copy of `ner-site/` with a placeholder
+local project link (no token, no deployment): `Build completed successfully`. It used
+Python 3.12 from `.python-version`, installed `requirements.txt` with uv (xwalk from
+GitHub at the pinned commit), and produced `api/ner.func` and `api/health.func`
+(runtime `python3.12`, `maxDuration` 120) whose file maps hold `ner_site/`, all four
+`indexes/<slug>/dense/` directories, xwalk with its four ontology samples, tantivy
+0.27.0 and numpy; `public/` is served as static files, and the `vercel.json` headers
+appear in the route config. So the `includeFiles` glob is accepted.
+
+Still not run: a Vercel deployment.
 
 ### Review fixes, 3 November 2026 (Python 3.13, the repository venv)
 
