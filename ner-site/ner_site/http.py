@@ -34,7 +34,7 @@ from pydantic import ValidationError
 
 from ner_site import fake
 from ner_site.indexes import get_indexes
-from ner_site.ontologies import catalog
+from ner_site.ontologies import catalog, full_catalog
 from ner_site.schema import (
     HealthResponse,
     NerRequest,
@@ -188,6 +188,16 @@ def run_request(coro: Coroutine[Any, Any, T]) -> T:
             loop.close()
 
 
+def _catalog(settings: Settings, indexes: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The bundled samples' catalog, or for the full catalogs the counts the database
+    holds (0 for an ontology that is not loaded)."""
+    if settings.catalog != "full":
+        return catalog()
+    return full_catalog(
+        {slug: getattr(index.store, "record_count", None) for slug, index in indexes.items()}
+    )
+
+
 def _health(settings: Settings) -> dict[str, Any]:
     indexes = get_indexes(settings.index_settings())
     health = HealthResponse(
@@ -197,7 +207,7 @@ def _health(settings: Settings) -> dict[str, Any]:
         limits=settings.limits.public(),
         passcode_required=settings.passcode is not None,
         default_prompt=settings.default_prompt,
-        ontologies=[OntologySummary.model_validate(o) for o in catalog()],
+        ontologies=[OntologySummary.model_validate(o) for o in _catalog(settings, indexes)],
         retrieval=retrieval_status(indexes, settings),
     )
     data: dict[str, Any] = health.model_dump(mode="json")
@@ -212,6 +222,10 @@ def _health(settings: Settings) -> dict[str, Any]:
     else:
         llm = RetrieverStatus(status="ok")
     data["llm"] = llm.model_dump(mode="json")
+    # Not in HealthResponse either: where the terms and indexes come from.
+    data["backend"] = settings.backend
+    if settings.backend == "neon":
+        data["neon"] = {"schema": settings.neon_schema, "catalog": settings.catalog}
     return data
 
 

@@ -536,3 +536,29 @@ smoke and all four gates, review the diff against sections 3 and 7, update
 4. Run the example text; confirm entities, spans and matches; check the function log for
    cold-start time; confirm a 401 without the passcode if set.
 5. Set a spend limit on the OpenRouter key. Record what was verified in `ner-site/README.md`.
+
+## 12. Scaling with Neon **[amendment, 2026-11-04]**
+
+The bundled backend (sections 5 and 7: BM25 in `/tmp`, dense vectors committed) holds the
+four 200-term samples and cannot hold the full catalogs (629,558 records, 1,934,527
+per-name vectors). Decision: keep records, BM25 and vectors in Neon Postgres, behind a
+backend switch, with the bundled backend unchanged as the default. Details, measurements
+and the full-load command: [NEON.md](NEON.md).
+
+| # | Decision | Why |
+|---|---|---|
+| 12.1 | `NER_SITE_BACKEND=bundled\|neon` (default `bundled`); `neon` needs `DATABASE_URL`. `NER_SITE_NEON_SCHEMA` (`xwalk`), `NER_SITE_NEON_DIMENSIONS` (1024), `NER_SITE_NEON_CATALOG=samples\|full`. | The current deployment is untouched; a misconfigured Neon backend reports why instead of failing. |
+| 12.2 | Library code in `xwalk.retrieval.postgres` (`PostgresBM25Retriever`, `PgVectorRetriever`, `PostgresStore`, `PostgresIndexWriter`), not in the site. | Reusable by any xwalk job; the site stays thin. |
+| 12.3 | All SQL through an executor protocol; `NeonHTTPExecutor` over HTTPS with httpx. | Works where TCP 5432 is blocked and on Vercel; no new base dependency. |
+| 12.4 | BM25 is Neon's `lakebase_text` (`lakebase_bm25` index, `<@>`), not `pg_search`. | Neon refuses new `pg_search` installs (deprecated). |
+| 12.5 | Vectors are `halfvec(1024)` under HNSW (inner product), one row per doc and per name, max-pooled per record. | Same quality as the committed float32 index (NEON.md, "Vector format"). |
+| 12.6 | One partial BM25 and one partial HNSW index per ontology. | Per-ontology statistics and graphs, as the per-ontology Tantivy indexes. |
+| 12.7 | Identity in `index_meta`, written by `ner-site/tools/load_neon.py` (`loading` before, `ready` after); the site opens with `expected` and reports missing, incomplete, stale or unreachable as the status reason. | No silent substitution; an interrupted load is never served. |
+| 12.8 | The full catalogs are not loaded: they need about 12.5 GB at 1024 dimensions (6.6 GB at 512), the free plan has 0.5 GB. The loader refuses a full load over `--max-bytes` (400 MB). | Measured: 5.7 KB a stored 1024-d vector (TOAST plus HNSW). |
+
+Response shapes are unchanged; `/api/health` gains `"backend"` and, with Neon, a `"neon"`
+block. Tests: `tests/test_postgres_retrieval.py`, `tests/test_site_neon.py` (offline), and
+`tests/test_postgres_integration.py` plus one site test (`-m integration`, need
+`DATABASE_URL`). The Vercel build needs `requirements.txt` re-pinned to a commit that
+contains `xwalk.retrieval.postgres` before `NER_SITE_BACKEND=neon` can work there.
+

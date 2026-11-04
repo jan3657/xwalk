@@ -34,6 +34,7 @@ from ner_site.schema import Entity, EntityResult, Match
 from xwalk.records import Record, RetrievalHit
 from xwalk.retrieval.base import Retriever, SearchRequest
 from xwalk.retrieval.dense import DenseRetriever
+from xwalk.retrieval.postgres import PgVectorRetriever
 from xwalk.retrieve import retrieve
 
 OTHER_NOTE = "no ontology for type 'other'"
@@ -42,6 +43,9 @@ DEADLINE_NOTE = "cut off by the request deadline"
 LOCAL_GRACE_S = 5.0  # what local (BM25) searches may run past the deadline
 # `retrieve`'s own timeout is a backstop only: `_Bounded` always fires first.
 _BACKSTOP_S = 1.0
+# The retrievers that embed the query (one embeddings request per search): the bundled
+# index and the Neon one. They are the ones cut off at the deadline and counted.
+DENSE_TYPES = (DenseRetriever, PgVectorRetriever)
 
 
 @dataclass
@@ -129,12 +133,15 @@ async def map_entities(
     deadline: float | None = None,
     stats: MapStats | None = None,
     clean: Callable[[str], str] | None = None,
+    routes: Mapping[str, str] | None = None,
 ) -> list[EntityResult]:
     """One `EntityResult` per entity, in the order given. `timeout` bounds each
     retriever call; `deadline` (seconds from now) bounds the whole call (see the module
     docstring); at most `concurrency` entities are retrieved at once. `clean` is applied
     to every retriever note before it reaches an entity, a warning or `stats` (the
-    service scrubs secrets and caps the length there)."""
+    service scrubs secrets and caps the length there). `routes` maps entity types to
+    ontology slugs (``ontologies.ROUTES`` by default; the full catalogs use
+    ``FULL_ROUTES``)."""
     if top_k < 1:
         raise ValueError(f"top_k must be at least 1, got {top_k}")
     stats = stats if stats is not None else MapStats()
@@ -145,7 +152,7 @@ async def map_entities(
     dense_seen: set[str] = set()
 
     async def one(entity: Entity) -> EntityResult:
-        slug = route(entity.type)
+        slug = route(entity.type, routes)
         if slug is None:
             return _result(entity, None, [], [f"no ontology for type '{entity.type}'"])
         index = indexes.get(slug)
@@ -163,16 +170,14 @@ async def map_entities(
                 timeout=timeout,
                 deadline_at=(
                     deadline_at
-                    if deadline_at is None or isinstance(r, DenseRetriever)
+                    if deadline_at is None or isinstance(r, DENSE_TYPES)
                     else deadline_at + LOCAL_GRACE_S
                 ),
             )
             for r in index.retrievers
         ]
         dense = [
-            b
-            for b, r in zip(bounded, index.retrievers, strict=True)
-            if isinstance(r, DenseRetriever)
+            b for b, r in zip(bounded, index.retrievers, strict=True) if isinstance(r, DENSE_TYPES)
         ]
         async with semaphore:
             try:
@@ -217,6 +222,7 @@ async def map_entities(
 __all__ = [
     "ALL_FAILED_NOTE",
     "DEADLINE_NOTE",
+    "DENSE_TYPES",
     "LOCAL_GRACE_S",
     "OTHER_NOTE",
     "MapStats",

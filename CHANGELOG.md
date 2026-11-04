@@ -16,6 +16,18 @@ offline only (FakeDecider, no paid calls).
 
 ### Added
 
+- Retrieval over Postgres (`xwalk.retrieval.postgres`): `PostgresBM25Retriever` (Neon's
+  `lakebase_text` BM25 with the exact label/synonym rule of `BM25Retriever`),
+  `PgVectorRetriever` (pgvector `halfvec`, HNSW, inner product, per-name vectors
+  max-pooled per record) and `PostgresStore`, over a small `SQLExecutor` protocol with
+  `NeonHTTPExecutor` (Neon's HTTPS SQL endpoint, httpx only; no new dependency).
+  `PostgresIndexWriter` creates and fills the schema idempotently and stores each
+  index's components; `open(..., expected=...)` refuses a mismatch with
+  `IndexMismatchError` and an unfinished load with `IndexNotReadyError`. Tested offline
+  with a fake executor and `httpx.MockTransport`, and live against a Neon branch over
+  HTTPS (`tests/test_postgres_integration.py`, `-m integration`, needs `DATABASE_URL`).
+  The NER demo site uses it with `NER_SITE_BACKEND=neon` (`docs/ner-site/NEON.md`).
+
 - Dense retrieval through any OpenAI-compatible `/embeddings` endpoint (OpenRouter,
   OpenAI, Voyage, DeepInfra, vLLM, Ollama) with `encoder: openai_embeddings` on a dense
   retriever, or `xwalk.retrieval.embeddings_api.OpenAIEmbeddingsEncoder` in code. It

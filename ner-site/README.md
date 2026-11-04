@@ -93,6 +93,32 @@ colour scheme.
 | `NER_SITE_OFFLINE` | unset | `1` replaces the LLM with the stand-in extractor; `/api/health` reports `"mode": "offline"`. |
 | `NER_SITE_DENSE_DIR` | `<project root>/indexes` | Where the committed dense indexes live. |
 | `NER_SITE_CACHE_DIR` | `/tmp/xwalk-ner-site` | Where BM25 indexes are built at cold start. |
+| `NER_SITE_BACKEND` | `bundled` | `neon` reads the records, BM25 and vectors from Neon Postgres instead of building BM25 in `/tmp` and opening the committed dense indexes (see "Neon backend" below). |
+| `DATABASE_URL` | unset | The Neon connection string; read only with `NER_SITE_BACKEND=neon` (mark it sensitive; scrubbed from every response and log line). Without it every ontology reports "DATABASE_URL is not set (NER_SITE_BACKEND=neon)". |
+| `NER_SITE_NEON_SCHEMA` | `xwalk` | The schema `tools/load_neon.py` wrote. |
+| `NER_SITE_NEON_DIMENSIONS` | 1024 | The loaded vector dimension (`load_neon.py --dimensions`); a different value makes dense stale. |
+| `NER_SITE_NEON_CATALOG` | `samples` | `full` serves the full catalogs (`chebi`, `ctd-disease`, `ncbi-gene`, `foodon`) once they are loaded; needs `NER_SITE_BACKEND=neon`. |
+
+### Neon backend
+
+The four samples (or, on a large enough plan, the full catalogs) can be served from Neon
+Postgres: records, BM25 (`lakebase_text`) and `halfvec` vectors (pgvector HNSW), queried
+over Neon's HTTPS SQL endpoint. Full details, sizes and costs:
+[docs/ner-site/NEON.md](../docs/ner-site/NEON.md).
+
+```bash
+set -a; . ./.env.local; set +a            # DATABASE_URL and OPENROUTER_API_KEY
+python ner-site/tools/load_neon.py --dry-run      # counts, size, tokens, cost; writes nothing
+python ner-site/tools/load_neon.py                # loads the four samples (about $0.0007)
+NER_SITE_BACKEND=neon python ner-site/tools/serve_local.py
+```
+
+`/api/health` then shows `"backend": "neon"`; a missing, incomplete or stale load is
+reported per ontology with the command that fixes it. The loader is resumable (rerun it
+after an interruption; it embeds only what is missing). On Vercel, set
+`NER_SITE_BACKEND=neon` and `DATABASE_URL` (the Neon integration provides it), after
+re-pinning `requirements.txt` to an xwalk commit that contains
+`xwalk.retrieval.postgres`.
 
 ### Security notes for the operator
 

@@ -15,13 +15,21 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import httpx
 
 from ner_site.extract import MAX_TOKENS, TEMPERATURE, extract, render_default_prompt
-from ner_site.indexes import OntologyIndex, summarise_status
+from ner_site.indexes import (
+    NEON_DIMENSIONS,
+    NEON_SCHEMA,
+    Backend,
+    Catalog,
+    OntologyIndex,
+    summarise_status,
+)
 from ner_site.mapping import MapStats, map_entities
+from ner_site.ontologies import FULL_ROUTES, ROUTES
 from ner_site.schema import (
     Limits,
     Mode,
@@ -84,6 +92,11 @@ ENV_NAMES = (
     "NER_SITE_OFFLINE",
     "NER_SITE_DENSE_DIR",
     "NER_SITE_CACHE_DIR",
+    "NER_SITE_BACKEND",
+    "DATABASE_URL",
+    "NER_SITE_NEON_SCHEMA",
+    "NER_SITE_NEON_DIMENSIONS",
+    "NER_SITE_NEON_CATALOG",
     *(name for name, _, _, _ in _LIMIT_ENV),
 )
 
@@ -99,6 +112,11 @@ class IndexView:
     cache_dir: Path
     dense_dir: Path | None
     api_key: str | None = field(default=None, repr=False)
+    backend: Backend = "bundled"
+    database_url: str | None = field(default=None, repr=False)
+    neon_schema: str = NEON_SCHEMA
+    neon_dimensions: int = NEON_DIMENSIONS
+    catalog: Catalog = "samples"
 
 
 @dataclass(frozen=True)
@@ -113,6 +131,11 @@ class Settings:
     offline: bool = False
     dense_dir: Path | None = PROJECT_ROOT / "indexes"
     cache_dir: Path = DEFAULT_CACHE_DIR
+    backend: Backend = "bundled"
+    database_url: str | None = field(default=None, repr=False)
+    neon_schema: str = NEON_SCHEMA
+    neon_dimensions: int = NEON_DIMENSIONS
+    catalog: Catalog = "samples"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
@@ -155,6 +178,33 @@ class Settings:
                 raise SettingsError(f"{name} must be a whole number from {low} to {high}")
             numbers[attr] = int(raw)
 
+        backend = get("NER_SITE_BACKEND").lower() or "bundled"
+        if backend not in {"bundled", "neon"}:
+            raise SettingsError("NER_SITE_BACKEND must be bundled or neon")
+        schema = get("NER_SITE_NEON_SCHEMA") or NEON_SCHEMA
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,40}", schema):
+            raise SettingsError(
+                "NER_SITE_NEON_SCHEMA must be a lower-case identifier (letters, digits, _)"
+            )
+        raw_dims = get("NER_SITE_NEON_DIMENSIONS")
+        if raw_dims and (
+            not re.fullmatch(r"[0-9]{1,4}", raw_dims) or not 1 <= int(raw_dims) <= 4000
+        ):
+            raise SettingsError("NER_SITE_NEON_DIMENSIONS must be a whole number from 1 to 4000")
+        catalog = get("NER_SITE_NEON_CATALOG").lower() or "samples"
+        if catalog not in {"samples", "full"}:
+            raise SettingsError("NER_SITE_NEON_CATALOG must be samples or full")
+        if catalog == "full" and backend != "neon":
+            raise SettingsError("NER_SITE_NEON_CATALOG=full needs NER_SITE_BACKEND=neon")
+        # Read only for the Neon backend: a bundled deployment ignores whatever a
+        # platform integration may have put in DATABASE_URL.
+        database_url = (get("DATABASE_URL") or None) if backend == "neon" else None
+        if database_url is not None and urlsplit(database_url).scheme not in {
+            "postgres",
+            "postgresql",
+        }:
+            raise SettingsError("DATABASE_URL must be a postgres:// or postgresql:// URL")
+
         dense = get("NER_SITE_DENSE_DIR")
         cache = get("NER_SITE_CACHE_DIR")
         return cls(
@@ -166,6 +216,11 @@ class Settings:
             offline=offline_raw in _TRUE,
             dense_dir=Path(dense) if dense else PROJECT_ROOT / "indexes",
             cache_dir=Path(cache) if cache else DEFAULT_CACHE_DIR,
+            backend="neon" if backend == "neon" else "bundled",
+            database_url=database_url,
+            neon_schema=schema,
+            neon_dimensions=int(raw_dims) if raw_dims else NEON_DIMENSIONS,
+            catalog="full" if catalog == "full" else "samples",
         )
 
     @property
@@ -188,6 +243,11 @@ class Settings:
         return render_default_prompt(self.limits.max_entities)
 
     @property
+    def routes(self) -> dict[str, str]:
+        """Entity type -> ontology slug for this deployment's catalog."""
+        return FULL_ROUTES if self.catalog == "full" else ROUTES
+
+    @property
     def configured(self) -> bool:
         """Whether ``/api/ner`` can run: offline, or a key to call the provider with."""
         return self.offline or self.api_key is not None
@@ -199,6 +259,11 @@ class Settings:
             cache_dir=self.cache_dir,
             dense_dir=self.dense_dir,
             api_key=None if self.offline else self.api_key,
+            backend=self.backend,
+            database_url=self.database_url,
+            neon_schema=self.neon_schema,
+            neon_dimensions=self.neon_dimensions,
+            catalog=self.catalog,
         )
 
     def secrets(self) -> tuple[str, ...]:
@@ -206,7 +271,12 @@ class Settings:
         (nothing echoes them in the first place). Values shorter than
         ``MIN_SCRUBBED_CHARS`` are left alone: replacing a passcode like ``ok`` would
         corrupt ordinary JSON, and so short a value cannot be hidden anyway."""
-        return tuple(s for s in (self.api_key, self.passcode) if s and len(s) >= MIN_SCRUBBED_CHARS)
+        values: list[str | None] = [self.api_key, self.passcode, self.database_url]
+        if self.database_url:
+            password = urlsplit(self.database_url).password
+            if password:
+                values += [password, unquote(password)]
+        return tuple(dict.fromkeys(s for s in values if s and len(s) >= MIN_SCRUBBED_CHARS))
 
 
 def scrub(message: str, settings: Settings) -> str:
@@ -415,6 +485,7 @@ async def run(
         deadline=budget,
         stats=stats,
         clean=lambda note: _clean(note, settings),
+        routes=settings.routes,
     )
     mapped = time.monotonic()
 

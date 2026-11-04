@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from functools import cache, lru_cache
 from importlib import resources
 from pathlib import Path
@@ -23,6 +24,21 @@ ROUTES: dict[str, str] = {
     "disease": "ctd-disease-sample",
     "gene": "ncbi-gene-sample",
     "food": "foodon-sample",
+}
+
+# The full catalogs, loaded into Postgres by ner-site/tools/load_neon.py --source full and
+# served with NER_SITE_BACKEND=neon NER_SITE_NEON_CATALOG=full (docs/ner-site/NEON.md).
+FULL_ROUTES: dict[str, str] = {
+    "chemical": "chebi",
+    "disease": "ctd-disease",
+    "gene": "ncbi-gene",
+    "food": "foodon",
+}
+FULL_NAMES: dict[str, str] = {
+    "chebi": "ChEBI",
+    "ctd-disease": "CTD diseases / MeSH",
+    "ncbi-gene": "NCBI Gene (human, mouse, rat)",
+    "foodon": "FoodOn",
 }
 
 # Every sample record has `label`, `synonyms` (a list), `definition` (often ""), and the
@@ -90,9 +106,24 @@ def load_terms(slug: str) -> list[Record]:
     return list(_terms(slug))
 
 
-def route(entity_type: str) -> str | None:
-    """The ontology slug an entity type maps onto; None for "other" or anything unknown."""
-    return ROUTES.get(entity_type)
+def full_catalog(counts: Mapping[str, int | None]) -> list[dict[str, Any]]:
+    """The full catalogs in ``FULL_ROUTES`` order; ``count`` is what the database holds
+    (0 when an ontology is not loaded)."""
+    return [
+        {
+            "slug": slug,
+            "name": FULL_NAMES[slug],
+            "type": entity_type,
+            "count": int(counts.get(slug) or 0),
+        }
+        for entity_type, slug in FULL_ROUTES.items()
+    ]
+
+
+def route(entity_type: str, routes: Mapping[str, str] | None = None) -> str | None:
+    """The ontology slug an entity type maps onto (``ROUTES`` unless `routes` is given);
+    None for "other" or anything unknown."""
+    return (ROUTES if routes is None else routes).get(entity_type)
 
 
 def term_url(record_id: str) -> str | None:

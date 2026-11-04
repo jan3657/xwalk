@@ -8,7 +8,8 @@ actually work: the retriever never has to hold your target collection in memory,
 the store never has to know how ranking happened.
 
 Two retrievers ship with xwalk — BM25 over Tantivy and dense retrieval behind an
-`Encoder` protocol — plus reciprocal rank fusion to combine them. Anything that speaks
+`Encoder` protocol — plus reciprocal rank fusion to combine them, and the same pair over
+Postgres for collections too large to hold in memory ([Postgres retrieval](#postgres-retrieval)). Anything that speaks
 the `Retriever` protocol slots in beside or instead of them.
 
 ## The Retriever protocol
@@ -443,6 +444,136 @@ store = MemoryStore.from_source(records)
 would make every downstream decision ambiguous. The fingerprint is the hash of the
 **sorted** per-record digests, so it depends only on content, never on source order.
 `MemoryStore` also supports `len(store)`, iteration over records, and `id in store`.
+
+## Postgres retrieval
+
+`xwalk.retrieval.postgres` keeps the records, a BM25 index and the vectors in one
+Postgres database, for target collections too large to ship with an application. It
+needs no optional extra: SQL travels through a small executor protocol, and the one
+executor xwalk ships speaks Neon's HTTPS SQL endpoint with httpx. The engines are Neon's
+own: `lakebase_text` for BM25 (Neon blocks new installs of ParadeDB's `pg_search`; it is
+listed in `neon.deprecated_extensions`) and pgvector `halfvec` with HNSW. A worked
+deployment, with sizes, throughput and costs measured on Neon, is
+[docs/ner-site/NEON.md](../ner-site/NEON.md).
+
+### The executor protocol
+
+```python
+class SQLExecutor(Protocol):
+    def execute(self, sql: str, params: Sequence[Any] = ()) -> list[dict[str, Any]]: ...
+    def transaction(
+        self, statements: Sequence[tuple[str, Sequence[Any]]], *, read_only: bool = False
+    ) -> list[list[dict[str, Any]]]: ...
+```
+
+Placeholders are Postgres's own `$1, $2, ...`. Values are JSON-shaped (text, numbers,
+booleans, `None`, lists for arrays, dicts for jsonb); every statement xwalk sends casts
+where the type matters, because over HTTP a bigint or numeric arrives as a string.
+`transaction` runs its statements in one transaction, all or nothing. Implementations
+must be thread-safe (searches run in threads). Every statement xwalk sends starts with
+a tag comment, `/* xwalk:bm25_search */`; `tag_of(sql)` reads it, which is what a fake
+executor in tests dispatches on.
+
+```python
+NeonHTTPExecutor(
+    connection_string: str,
+    *,
+    timeout: float = 30.0,
+    max_retries: int = 2,
+    backoff_base: float = 0.5,
+    transport: httpx.BaseTransport | None = None,
+    trust_env: bool = True,
+    endpoint: str | None = None,
+)
+```
+
+`POST https://<host>/sql` with the connection string in the `Neon-Connection-String`
+header, `{"query", "params"}` for a statement or `{"queries": [...]}` for a
+transaction, and `Neon-Array-Mode: true` (rows as arrays beside `fields`, so duplicate
+column names cannot collide). A SQL error is `PostgresError` (a `RetrieverError`) with
+the SQLSTATE in `code`; transport errors, HTTP 429/5xx and errors the server marks
+`neon:retryable` are retried with jittered backoff, so writes sent through it should be
+idempotent (the writer's are). Messages and `repr` never carry the connection string or
+its password, and URLs in them are redacted. `from_env(name="DATABASE_URL")` reads the
+variable; `stats` counts requests, statements and bytes.
+
+### Retrievers and store
+
+```python
+@classmethod
+def open(
+    cls,
+    executor: SQLExecutor,
+    ontology: str,
+    *,
+    schema: str = "xwalk",
+    name: str | None = None,
+    expected: Mapping[str, Any] | None = None,
+    verify_records: bool = True,
+    default_limit: int | None = None,
+    meta: Mapping[tuple[str, str], IndexMeta] | None = None,
+    store: PostgresStore | None = None,
+) -> PostgresBM25Retriever
+```
+
+`PgVectorRetriever.open(executor, ontology, encoder, ...)` takes the same keywords plus
+`overfetch` (default 5) and `ef_search`, and `PostgresStore.open(executor, ontology, ...)`
+the identity keywords. One schema holds any number of collections, each named by
+`ontology`.
+
+- **`PostgresBM25Retriever`** ranks with `tsv <@> to_bm25query(...)` over a partial
+  `lakebase_bm25` index per ontology, so BM25 statistics are per collection, as with one
+  Tantivy index each. The query text is tokenised by `to_tsvector('simple', text)` (the
+  stored identity's `text_config`); it is never parsed as query syntax, so no
+  sanitising is needed. With `exact_fields` (stored by the writer) records whose
+  `exact_form` of a label or synonym equals `exact_form(query)` come first, ordered by
+  their BM25 score, then the text matches: the same "an exact name outranks any text
+  match" rule as `BM25Retriever(exact_fields=...)`, without a numeric boost. `raw_score`
+  is the BM25 score (the negation of `<@>`); rows scoring 0 are dropped.
+- **`PgVectorRetriever`** embeds the query with any `Encoder`, fetches the
+  `limit * overfetch` nearest rows by inner product (`<#>`) from a partial HNSW index
+  (`halfvec_ip_ops`), keeps each record's best row and cuts to `limit` records, so each
+  record appears once even with per-name vectors, as `DenseRetriever(name_fields=...)`.
+  The search is one read-only transaction that first raises `hnsw.ef_search` to at
+  least the rows fetched. HNSW is approximate, unlike `DenseRetriever`'s exact scan;
+  on small collections Postgres's planner picks an exact scan by itself.
+- **`PostgresStore`** is a `TargetStore` over the stored records. A retriever opened
+  with `store=` hands it the records its search returned, so fusion's `get_many` after
+  a search usually needs no extra round trip.
+
+Ranks are 1-based and contiguous; an empty or whitespace query makes no call.
+
+### Identity
+
+The writer stores each index's components in `<schema>.index_meta`, one row per
+(ontology, kind) with kind `terms`, `bm25` or `dense`, and the retriever's `fingerprint`
+is `hash_value` of its stored components. `bm25_components(records, templates,
+exact_fields=..., text_config=...)` names the engine (`postgres-lakebase-bm25`), format
+and normalisation versions, the doc template, the exact fields and the record digest;
+`pgvector_components(records, templates, encoder, name_fields=...)` names the engine
+(`pgvector`), vector type, metric, doc template, record digest, the encoder identity
+(name, dimension and settings) and the name fields; `terms_components(records)` gives
+the store's fingerprint, the same digest as `MemoryStore.from_source(records)`.
+`open(..., expected=...)` refuses any difference with `IndexMismatchError`; an absent
+index, or one whose load has not finished (status `loading`), raises
+`IndexNotReadyError` (`state` is `missing` or `loading`); a stored fingerprint that
+does not hash its own components is refused too. A caller that does not hold the
+records passes `verify_records=False`: then everything but the record digest and count
+is compared, and the identity still contains the stored digest. `read_index_meta(executor,
+schema)` reads every identity in one query, for opening many collections at once.
+
+### Writing
+
+`PostgresIndexWriter(executor, schema="xwalk", dimension=1024)` creates the schema
+(`create_schema`: the two extensions, the `terms`, `term_vectors` and `index_meta`
+tables) and writes it: `upsert_terms` (rendered doc, `tsvector`, exact forms, digest),
+`vector_rows` (each record's doc as `ord` 0, then each distinct name),
+`present_vectors` (what is stored already, for resuming), `upsert_vectors` (one batch
+per statement, vectors sent as text rounded to float16), `prune`, `create_indexes`
+(the partial BM25 and HNSW indexes, after the bulk load), `write_meta` (status
+`loading` before changing a collection, `ready` after), `drop_ontology`, `vacuum` and
+`sizes`. Every write is an upsert, so a load can be rerun or resumed. A table already
+holding vectors of another dimension is refused with a message naming both.
 
 ## Gotchas
 
