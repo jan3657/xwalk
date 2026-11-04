@@ -17,12 +17,12 @@
     <header class="intro">
       <p class="eyebrow">xwalk demo</p>
       <h1>Text to ontology terms</h1>
-      <p class="lede">
+      <p class="lede" id="lede">
         Paste some text. A language model extracts chemicals, diseases, genes and foods,
         then xwalk retrieval (BM25 keyword search plus dense embeddings, fused by rank)
         looks each one up in a matching ontology: ChEBI, CTD diseases, NCBI Gene or FoodOn.
       </p>
-      <p class="caveat">
+      <p class="caveat" id="caveat">
         Each ontology here is a <strong>200-term sample</strong>, not the full vocabulary,
         so many real-world terms will not be found. Candidate IDs always come from the
         sample; the model never writes them.

@@ -54,7 +54,7 @@ from ner_site.indexes import (  # noqa: E402
     NAME_FIELDS,
     NEON_SCHEMA,
 )
-from ner_site.ontologies import FULL_ROUTES, ROUTES, TEMPLATES, load_terms  # noqa: E402
+from ner_site.ontologies import FULL_CATALOGS, ROUTES, TEMPLATES, load_terms  # noqa: E402
 
 from xwalk.records import Record  # noqa: E402
 from xwalk.retrieval.dense import Encoder  # noqa: E402
@@ -83,7 +83,7 @@ DEFAULT_DIMENSIONS = 1024
 DEFAULT_MAX_BYTES = 400_000_000
 DATABASE_ENV = "DATABASE_URL"
 KINDS = ("chebi", "ctd-disease", "ncbi-gene", "foodon")
-# Entity type of each kind (ROUTES / FULL_ROUTES are keyed by type).
+# Entity type of each kind (ROUTES / FULL_CATALOGS are keyed by type).
 TYPES = {"chebi": "chemical", "ctd-disease": "disease", "ncbi-gene": "gene", "foodon": "food"}
 
 # Size model, measured on Neon on 2026-11-04 (docs/ner-site/NEON.md, "Sizes"). A halfvec
@@ -125,7 +125,7 @@ ORGANISMS = {"9606": "Homo sapiens", "10090": "Mus musculus", "10116": "Rattus n
 
 
 def slug_for(kind: str, source: str) -> str:
-    return (ROUTES if source == "samples" else FULL_ROUTES)[TYPES[kind]]
+    return (ROUTES if source == "samples" else FULL_CATALOGS)[TYPES[kind]]
 
 
 # --- sources -----------------------------------------------------------------------

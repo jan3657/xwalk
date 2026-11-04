@@ -240,7 +240,7 @@ class Settings:
     def default_prompt(self) -> str:
         """The extraction prompt used when a request sends none, stating this
         deployment's entity limit; ``/api/health`` serves it."""
-        return render_default_prompt(self.limits.max_entities)
+        return render_default_prompt(self.limits.max_entities, types=tuple(self.routes))
 
     @property
     def routes(self) -> dict[str, str]:

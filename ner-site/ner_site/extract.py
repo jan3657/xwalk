@@ -74,19 +74,26 @@ TEXT[start:end] is exactly "text". Offset 0 is the first character after the lin
 - If there is nothing to extract, output {"entities": []}."""
 
 
-def render_default_prompt(max_entities: int) -> str:
-    """The default extraction prompt for a deployment that keeps `max_entities`."""
+_TYPE_LINES: dict[str, str] = {
+    "chemical": 'a chemical compound, element or drug (e.g. "aspirin", "glucose", '
+    '"sodium chloride").',
+    "disease": 'a disease or disorder (e.g. "rheumatoid arthritis", "type 2 diabetes", "asthma").',
+    "gene": 'a gene or protein, by name or symbol (e.g. "BRCA1", "tumor necrosis factor", '
+    '"insulin receptor").',
+    "food": 'a food, dish or ingredient (e.g. "apple", "whole milk", "olive oil").',
+    "other": "any other notable named entity, such as an organism, person, place or "
+    'organisation (e.g. "Escherichia coli").',
+}
+
+
+def render_default_prompt(max_entities: int, types: Collection[str] = ENTITY_TYPES) -> str:
+    """The default extraction prompt for a deployment that keeps `max_entities` and
+    maps `types` (in ``ENTITY_TYPES`` order; "other" is always listed)."""
+    wanted = [t for t in ENTITY_TYPES if t in types or t == "other"]
+    listed = "\n".join(f"- {t}: {_TYPE_LINES[t]}" for t in wanted)
     return f"""\
 Extract every mention of these entity types:
-- chemical: a chemical compound, element or drug (e.g. "aspirin", "glucose", \
-"sodium chloride").
-- disease: a disease or disorder (e.g. "rheumatoid arthritis", "type 2 diabetes", \
-"asthma").
-- gene: a gene or protein, by name or symbol (e.g. "BRCA1", "tumor necrosis factor", \
-"insulin receptor").
-- food: a food, dish or ingredient (e.g. "apple", "whole milk", "olive oil").
-- other: any other notable named entity, such as an organism, person, place or \
-organisation (e.g. "Escherichia coli").
+{listed}
 
 Rules:
 - Copy each mention exactly as written in the text, with its spelling, case and \

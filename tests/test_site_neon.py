@@ -592,6 +592,23 @@ def test_the_full_catalog_routes_to_the_full_slugs_and_counts_from_the_database(
     assert result.ontology == "chebi" and result.matches[0].id == "CHEBI:3"
 
 
+def test_the_full_catalog_does_not_extract_genes() -> None:
+    """NCBI Gene is not loaded in full: genes are neither routed nor asked for."""
+    full = Settings.from_env(
+        {"NER_SITE_BACKEND": "neon", "NER_SITE_NEON_CATALOG": "full", "DATABASE_URL": FAKE_URL}
+    )
+    assert "gene" not in full.routes
+    assert sorted(full.routes) == ["chemical", "disease", "food"]
+    assert "- gene:" not in full.default_prompt
+    for kept in ("- chemical:", "- disease:", "- food:", "- other:"):
+        assert kept in full.default_prompt
+    samples = Settings.from_env({"NER_SITE_BACKEND": "neon", "DATABASE_URL": FAKE_URL})
+    assert "- gene:" in samples.default_prompt and samples.routes["gene"] == "ncbi-gene-sample"
+    # The loader can still load the full gene catalog under its own slug.
+    assert _tool().slug_for("ncbi-gene", "full") == "ncbi-gene"
+    assert set(FULL_ROUTES.values()) == {"chebi", "ctd-disease", "foodon"}
+
+
 # --- live --------------------------------------------------------------------------
 
 

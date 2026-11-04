@@ -42,6 +42,8 @@
     summary: $("results-summary"),
     highlighted: $("highlighted"),
     legend: $("legend"),
+    lede: $("lede"),
+    caveat: $("caveat"),
     warnings: $("warnings"),
     cards: $("cards"),
   };
@@ -276,9 +278,29 @@
     for (const o of health.ontologies || []) {
       state.ontologyNames[o.slug] = o.name;
     }
+    renderIntro(health);
     renderLegend();
     renderBanner(health.mode, health.retrieval);
     updateCounter();
+  }
+
+  // The page's text describes the samples; a full-catalog deployment says what it maps.
+  function renderIntro(health) {
+    if (!(health.neon && health.neon.catalog === "full")) return;
+    const ontologies = health.ontologies || [];
+    const plural = { chemical: "chemicals", disease: "diseases", gene: "genes", food: "foods" };
+    const list = (items, last) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${last} ${items[items.length - 1]}`);
+    el.lede.textContent =
+      `Paste some text. A language model extracts ${list(ontologies.map((o) => plural[o.type] || o.type), "and")}, ` +
+      "then xwalk retrieval (BM25 keyword search plus dense embeddings, fused by rank) looks each one up in " +
+      `a matching ontology: ${list(ontologies.map((o) => o.name), "or")}.`;
+    clear(el.caveat);
+    el.caveat.append(
+      "Each ontology is its ",
+      h("strong", { text: "full vocabulary" }),
+      `: ${ontologies.map((o) => `${o.name} (${Number(o.count).toLocaleString("en")} terms)`).join(", ")}. ` +
+        "Genes are not mapped. Candidate IDs always come from the ontology; the model never writes them.",
+    );
   }
 
   function renderLegend() {
@@ -287,6 +309,7 @@
     for (const o of (state.health && state.health.ontologies) || []) byType[o.type] = o;
     for (const t of TYPES) {
       const o = byType[t];
+      if (!o && t !== "other" && state.health && state.health.neon && state.health.neon.catalog === "full") continue;
       const target = o ? `${o.name}, ${o.count} terms` : t === "other" ? "not mapped" : "no ontology";
       el.legend.append(
         h("li", null, h("span", { class: `swatch type-${t}`, "aria-hidden": "true" }), h("span", { class: "legend-type", text: t }), h("span", { class: "legend-target", text: target })),
