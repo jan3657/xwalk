@@ -402,7 +402,7 @@
       "div",
       { class: "pick pick-" + status },
       h("span", { class: "pick-who", text: selectorName(p.selector) + ": " }),
-      h("strong", { class: "pick-status", text: PICK_TEXT[status] }),
+      h("strong", { class: "pick-status", text: status === "review" && !p.id ? "Unsure, needs review (no clear candidate)" : PICK_TEXT[status] }),
       term ? h("span", { text: " " }) : null,
       term,
       confidence ? h("span", { text: " · " }) : null,

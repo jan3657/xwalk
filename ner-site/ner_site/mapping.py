@@ -28,7 +28,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from ner_site.indexes import OntologyIndex
+from ner_site.indexes import OntologyIndex, PrefetchEncoder
 from ner_site.ontologies import TEMPLATES, route, term_url
 from ner_site.schema import Entity, EntityResult, Match
 from xwalk.records import Candidate, Record, RetrievalHit
@@ -130,6 +130,42 @@ def _result(
     return EntityResult(**entity.model_dump(), ontology=ontology, matches=matches, notes=notes)
 
 
+async def _prefetch(
+    entities: Sequence[Entity],
+    indexes: Mapping[str, OntologyIndex],
+    routes: Mapping[str, str] | None,
+    timeout: float,
+    deadline_at: float | None,
+    stats: MapStats,
+) -> None:
+    """Embed every routed entity's query in one request per query encoder (in practice
+    one: every ontology shares it), before the searches; each dense search then finds
+    its vector in memory. A failed or slow batch is not an error: the searches embed
+    their own queries as before, bounded as before."""
+    batches: dict[int, tuple[PrefetchEncoder, list[str]]] = {}
+    for entity in entities:
+        slug = route(entity.type, routes)
+        index = indexes.get(slug) if slug is not None else None
+        if index is None or index.encoder is None:
+            continue
+        query = TEMPLATES.render_query(Record(entity.id, {"mention": entity.text}))
+        if query:
+            batches.setdefault(id(index.encoder), (index.encoder, []))[1].append(query)
+    for encoder, queries in batches.values():
+        limit = timeout
+        if deadline_at is not None:
+            limit = min(limit, deadline_at - time.monotonic())
+        if limit <= 0:
+            return
+        sending = any(not encoder.cached(q) for q in queries)
+        try:
+            stats.embedding_requests += await asyncio.wait_for(
+                asyncio.to_thread(encoder.prefetch, queries), timeout=limit
+            )
+        except Exception:  # noqa: BLE001 - the searches embed one by one instead
+            stats.embedding_requests += int(sending)  # sent, then failed or timed out
+
+
 async def map_entities(
     entities: Sequence[Entity],
     indexes: Mapping[str, OntologyIndex],
@@ -193,7 +229,10 @@ async def map_entities(
                 )
             except Exception as exc:  # noqa: BLE001 - a note, never a 5xx
                 candidates, notes, all_failed = [], [f"retrieval failed: {exc}"], True
-        stats.embedding_requests += sum(b.dispatched for b in dense)
+        # A query the batch already embedded costs no request of its own.
+        prefetched = index.encoder is not None and index.encoder.cached(query)
+        if not prefetched:
+            stats.embedding_requests += sum(b.dispatched for b in dense)
         if dense:
             dense_seen.add(entity.id)
             failed = next((b for b in dense if b.failure is not None), None)
@@ -219,6 +258,7 @@ async def map_entities(
         result = _result(entity, slug, listed[:top_k], entity_notes)
         return result.model_copy(update={"more": listed[top_k:]})
 
+    await _prefetch(entities, indexes, routes, timeout, deadline_at, stats)
     results = list(await asyncio.gather(*(one(e) for e in entities)))
     order = {e.id: i for i, e in enumerate(entities)}
     stats.dense_entities = [e.id for e in entities if e.id in dense_seen]

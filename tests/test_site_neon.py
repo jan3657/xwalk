@@ -465,7 +465,7 @@ def test_neon_mapping_matches_through_both_retrievers(loaded: FakeNeon) -> None:
     assert results[0].matches[0].label == "NAT2"
     assert set(results[0].matches[0].retrievers) == {BM25_NAME, DENSE_NAME}
     assert results[1].matches[0].id == "MESH:D000474"
-    assert stats.embedding_requests == 2 and stats.dense_entities == ["e1", "e2"]
+    assert stats.embedding_requests == 1 and stats.dense_entities == ["e1", "e2"]
 
 
 def test_neon_without_a_key_runs_bm25_only(loaded: FakeNeon) -> None:

@@ -198,7 +198,9 @@ def _pick(
         return Pick(selector=selector, status="failed", explanation="chose an unknown term")
     return Pick(
         selector=selector,
-        status=status if record is not None or status in ("no_match", "failed") else "failed",
+        # A match names a term. A review may not: Jev leaning to "none of these" below
+        # the policy's none_at is needs_review with no id, an honest "unsure".
+        status=status if record is not None or status != "match" else "failed",
         id=None if record is None else record.id,
         label=None if record is None else str(record.fields.get("label", "")),
         url=None if record is None else term_url(record.id),
@@ -237,13 +239,19 @@ async def _with_jev(
     )
     result = await matcher.match(_source(entity, text))
     stats.add(result.usage)
+    status = _JEV_STATUS[result.status]
+    explanation = result.explanation
+    error = result.attempts[0].error if result.attempts else None
+    if status == "failed" and error:
+        # A Jev call failed (after the screen, say): say which, not the partial signals.
+        explanation = f"{error} (signals so far: {explanation})" if explanation else error
     return _pick(
         JEV,
-        _JEV_STATUS[result.status],
+        status,
         candidates,
         result.matched_id,
         confidence=result.confidence,
-        explanation=result.explanation,
+        explanation=explanation,
     )
 
 

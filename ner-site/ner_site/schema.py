@@ -93,7 +93,8 @@ PickStatus = Literal["match", "review", "no_match", "failed"]
 class Pick(BaseModel):
     """The selector's verdict on one entity's retrieved candidates.
 
-    ``id`` is None unless ``status`` is "match" or "review", and is always one of the
+    ``id`` is set for "match", may be set for "review" (None: unsure whether any
+    candidate fits), and is never set otherwise; when set it is always one of the
     candidates retrieved for the entity (an issued key resolved by exact lookup, or
     Jev's choice among them); a model's raw text never becomes an id."""
 

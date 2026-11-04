@@ -51,7 +51,7 @@ MAX_MENTION_CHARS = 200
 TEMPERATURE = 0.0
 MAX_TOKENS = 2048
 
-SYSTEM_PROMPT = """\
+_SYSTEM_TEMPLATE = """\
 You extract entity mentions from a text for a named-entity recognition service.
 
 The user message has two sections: INSTRUCTIONS, written by the user, and TEXT, the \
@@ -66,12 +66,21 @@ fences):
 {"entities": [{"text": "...", "type": "...", "start": 0, "end": 0}]}
 
 - "text": the mention copied exactly from TEXT, character for character.
-- "type": one of "chemical", "disease", "gene", "food", "other".
+- "type": one of {types}.
 - "start", "end": 0-based character offsets into TEXT, end exclusive, so that \
 TEXT[start:end] is exactly "text". Offset 0 is the first character after the line \
 "TEXT:".
 - List the entities in the order they appear in TEXT.
 - If there is nothing to extract, output {"entities": []}."""
+
+
+def render_system_prompt(types: Collection[str] = ENTITY_TYPES) -> str:
+    """The system prompt for a deployment that maps `types` ("other" always included)."""
+    wanted = [t for t in ENTITY_TYPES if t in types or t == "other"]
+    return _SYSTEM_TEMPLATE.replace("{types}", ", ".join(f'"{t}"' for t in wanted))
+
+
+SYSTEM_PROMPT = render_system_prompt()
 
 
 _TYPE_LINES: dict[str, str] = {
@@ -106,27 +115,34 @@ punctuation; do not correct, expand or normalise it.
 
 DEFAULT_PROMPT = render_default_prompt(Limits().max_entities)
 
-ENTITY_SCHEMA: Mapping[str, Any] = {
-    "type": "object",
-    "properties": {
-        "entities": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "text": {"type": "string"},
-                    "type": {"type": "string", "enum": list(ENTITY_TYPES)},
-                    "start": {"type": "integer"},
-                    "end": {"type": "integer"},
+
+def entity_schema(types: Collection[str] = ENTITY_TYPES) -> dict[str, Any]:
+    """The answer's JSON schema; ``type`` is one of `types` ("other" always included)."""
+    wanted = [t for t in ENTITY_TYPES if t in types or t == "other"]
+    return {
+        "type": "object",
+        "properties": {
+            "entities": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "type": {"type": "string", "enum": wanted},
+                        "start": {"type": "integer"},
+                        "end": {"type": "integer"},
+                    },
+                    "required": ["text", "type", "start", "end"],
+                    "additionalProperties": False,
                 },
-                "required": ["text", "type", "start", "end"],
-                "additionalProperties": False,
-            },
-        }
-    },
-    "required": ["entities"],
-    "additionalProperties": False,
-}
+            }
+        },
+        "required": ["entities"],
+        "additionalProperties": False,
+    }
+
+
+ENTITY_SCHEMA: Mapping[str, Any] = entity_schema()
 
 
 class ExtractionError(ServiceError):
@@ -143,11 +159,11 @@ class ExtractionError(ServiceError):
         self.usage = usage
 
 
-def build_request(text: str, prompt: str) -> LLMRequest:
+def build_request(text: str, prompt: str, *, types: Collection[str] = ENTITY_TYPES) -> LLMRequest:
     return LLMRequest(
-        system=SYSTEM_PROMPT,
+        system=render_system_prompt(types),
         user=f"INSTRUCTIONS:\n{prompt}\n\nTEXT:\n{text}",
-        schema=ENTITY_SCHEMA,
+        schema=entity_schema(types),
         schema_name="entities",
         temperature=TEMPERATURE,
         max_tokens=MAX_TOKENS,
@@ -197,7 +213,9 @@ def _entity_type(value: object) -> EntityType | None:
     return None
 
 
-def parse_entities(raw: str, text: str, *, max_entities: int) -> tuple[list[Entity], list[str]]:
+def parse_entities(
+    raw: str, text: str, *, max_entities: int, types: Collection[str] = ENTITY_TYPES
+) -> tuple[list[Entity], list[str]]:
     """Validate the model's answer against the schema and the text (module docstring).
 
     Raises :class:`ExtractionError` ``extraction_unparseable`` when ``raw`` holds no JSON
@@ -230,6 +248,8 @@ def parse_entities(raw: str, text: str, *, max_entities: int) -> tuple[list[Enti
             )
             continue
         entity_type = _entity_type(item.get("type"))
+        if entity_type is not None and entity_type not in types:
+            entity_type = "other"  # a type this deployment does not map (genes, with full)
         if entity_type is None:
             warnings.append(f"entity '{mention}': unknown type {item.get('type')!r}, using 'other'")
             entity_type = "other"
@@ -276,16 +296,23 @@ def parse_entities(raw: str, text: str, *, max_entities: int) -> tuple[list[Enti
 
 
 async def extract(
-    llm: LLMClient, text: str, prompt: str, *, max_entities: int
+    llm: LLMClient,
+    text: str,
+    prompt: str,
+    *,
+    max_entities: int,
+    types: Collection[str] = ENTITY_TYPES,
 ) -> tuple[list[Entity], list[str], Usage]:
     """One call through ``llm``; returns entities, warnings and the call's usage.
 
     Provider errors (``LLMError`` and subclasses, a ``CallBudget`` refusal) propagate
     unchanged. An :class:`ExtractionError` carries the usage of the call it came from.
     """
-    response = await llm.complete(build_request(text, prompt))
+    response = await llm.complete(build_request(text, prompt, types=types))
     try:
-        entities, warnings = parse_entities(response.text, text, max_entities=max_entities)
+        entities, warnings = parse_entities(
+            response.text, text, max_entities=max_entities, types=types
+        )
     except ExtractionError as exc:
         message = exc.message
         if response.finish_reason == "length":

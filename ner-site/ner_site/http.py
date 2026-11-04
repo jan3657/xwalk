@@ -47,6 +47,7 @@ from ner_site.service import (
     ENV_NAMES,
     Settings,
     SettingsError,
+    check_key,
     make_decider,
     make_llm,
     make_select_llm,
@@ -225,7 +226,7 @@ def _health(settings: Settings) -> dict[str, Any]:
             reason="OPENROUTER_API_KEY is not set; POST /api/ner answers 503 not_configured",
         )
     else:
-        llm = RetrieverStatus(status="ok")
+        llm = check_key(settings) or RetrieverStatus(status="ok")
     data["llm"] = llm.model_dump(mode="json")
     # Not in HealthResponse either: where the terms and indexes come from.
     data["backend"] = settings.backend

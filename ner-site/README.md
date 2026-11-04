@@ -322,6 +322,20 @@ https://www.xwalk.si:
   properties above each table, the picked row ticked, the usage line with the selector
   calls and cost.
 
+### Real-world texts, 4 November 2026 (evening)
+
+Visitors hit "not a JSON object" with GPT-6 Luna and Claude Haiku 5.5 on paper
+abstracts. Reproduced with 8 PubMed abstracts and 4 Wikipedia food summaries (one in
+Slovenian) against production, then fixed and rerun locally with the production
+configuration; details and numbers in
+`benchmarks/results/site-realworld-2026-11-04/FINDINGS.md`. In short: reasoning models
+spent the whole output budget reasoning (now switched off on OpenRouter), Claude Haiku
+5.5 is unreliable for extraction (now a selector only), genes were still extracted in
+full mode (no longer), an unsure Jev showed as "failed" (now "unsure, needs review"),
+mapping made one embeddings request per entity (now one batch: map 0.5 to 8.5 s instead
+of up to 76 s), and `/api/health` now reports a key OpenRouter refuses. Production
+`NER_SITE_MODELS` is `google/gemini-3.1-flash-lite,openai/gpt-6-luna`.
+
 ### For the operator after deploying
 
 1. `GET /api/health`: `mode: live`, `llm: {"status": "ok"}`, `dense: ok`. Without

@@ -187,3 +187,43 @@ def test_a_failing_decider_is_a_failed_pick_not_an_exception() -> None:
     decider = FakeDecider(handler=lambda state, questions: RuntimeError("boom"))
     (result,), _ = _run(JEV, decider=decider)
     assert result.pick is not None and result.pick.status == "failed" and result.pick.id is None
+
+
+def test_a_failed_jev_pick_names_the_error_not_the_signals() -> None:
+    """A gate call that failed after the screen and choice showed "same 0.43; NONE
+    0.69" on the page, hiding why the pick failed."""
+    from xwalk.decide.base import DecisionRetryableError
+
+    calls: list[int] = []
+
+    def flaky(state: Any, questions: Mapping[str, Question]) -> Any:
+        calls.append(1)
+        if len(calls) >= 3:  # screen and choose answer; the gate fails
+            return DecisionRetryableError("HTTP 503 from the decisions endpoint")
+        return _knows_aspirin(state, questions)
+
+    (result,), _ = _run(JEV, decider=FakeDecider(handler=flaky))
+    assert result.pick is not None and result.pick.status == "failed"
+    assert "HTTP 503" in result.pick.explanation
+
+
+def test_an_unsure_none_is_a_review_without_a_term_not_a_failure() -> None:
+    """Jev leaning to "none of these" below the none_at threshold (p_none 0.68 against
+    0.70) is the policy's needs_review with no id; the page showed "Selection failed"."""
+
+    def unsure(state: Any, questions: Mapping[str, Question]) -> dict[str, Answer]:
+        answers: dict[str, Answer] = {}
+        for name, question in questions.items():
+            if isinstance(question, Noul):
+                answers[name] = NoulAnswer(noul=0.5)
+            elif isinstance(question, Choice):
+                probabilities = {k: 0.0 for k in question.criteria}
+                probabilities["NONE"] = 0.6
+                first = next(k for k in question.criteria if k != "NONE")
+                probabilities[first] = 0.4
+                answers[name] = ChoiceAnswer("NONE", probabilities, 0.6)
+        return answers
+
+    (result,), _ = _run(JEV, decider=FakeDecider(handler=unsure))
+    assert result.pick is not None
+    assert result.pick.status == "review" and result.pick.id is None

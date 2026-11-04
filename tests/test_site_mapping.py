@@ -394,7 +394,7 @@ def test_fused_matches_name_both_retrievers_and_keep_store_ids(fused: Any) -> No
     assert top.url == f"https://www.ebi.ac.uk/chebi/searchId.do?chebiId={top.id}"
     assert top.id in fused["chebi-sample"].store
     assert results[2].matches[0].id == "NCBIGene:1"
-    assert stats.embedding_requests == 2
+    assert stats.embedding_requests == 1  # one batch
     assert stats.warnings == []
 
 
@@ -556,3 +556,29 @@ def test_the_rest_of_the_retrieved_candidates_come_back_as_more(fused: Any) -> N
     assert len(ranked) > 2
     assert [m.id for m in result.matches] + [m.id for m in result.more] == ranked
     assert all(m.retrievers for m in result.more)
+
+
+def test_query_embeddings_go_out_in_one_batched_request(tmp_path: Path, dense_dir: Path) -> None:
+    """25 entities meant 25 embeddings requests, 4 at a time: 52 to 67 s through
+    OpenRouter on 4 November 2026, against 3 to 10 s for one batch of 25."""
+    toy = ToyEncoder()
+    idx = open_indexes(
+        cache_dir=tmp_path, dense_dir=dense_dir, api_key=None, encoder_factory=lambda: toy
+    )
+    texts = [
+        ("acetic acid", "chemical"),
+        ("fever", "disease"),
+        ("cheese", "food"),
+        ("citric acid", "chemical"),
+    ]
+    entities = [_entity(f"e{i}", t, ty) for i, (t, ty) in enumerate(texts, start=1)]
+    stats = MapStats()
+    results = _map(entities, idx, top_k=3, stats=stats)
+    queries = [call for call in toy.calls if call[0]]
+    assert len(queries) == 1 and sorted(queries[0][1]) == sorted(t for t, _ in texts)
+    assert stats.embedding_requests == 1
+    assert all(any("dense-qwen3" in m.retrievers for m in r.matches) for r in results)
+    # A second request for a query already embedded sends nothing.
+    again = MapStats()
+    _map(entities[:1], idx, top_k=3, stats=again)
+    assert len([call for call in toy.calls if call[0]]) == 1 and again.embedding_requests == 0

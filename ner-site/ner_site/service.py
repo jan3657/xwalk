@@ -10,11 +10,14 @@ responses.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
+import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import httpx
@@ -54,7 +57,7 @@ from xwalk.decide.budget import BudgetedDecider
 from xwalk.decide.fake import FakeDecider
 from xwalk.decide.jev import JevClient
 from xwalk.fingerprint import redact_url
-from xwalk.llm.base import LLMClient, LLMError
+from xwalk.llm.base import LLMClient, LLMError, LLMRequest
 from xwalk.llm.budget import BudgetedLLM, CallBudget, CallLimitExceeded
 from xwalk.llm.openai_compat import OpenAICompatClient
 from xwalk.records import Usage as XwalkUsage
@@ -347,6 +350,42 @@ def scrub(message: str, settings: Settings) -> str:
     return re.sub(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s'\"<>]+", lambda m: redact_url(m[0]), message)
 
 
+class OpenRouterClient(OpenAICompatClient):
+    """`OpenAICompatClient` that switches off OpenRouter's reasoning on every request.
+
+    On real abstracts (4 November 2026) GPT-6 Luna and Claude Haiku 5.5 spent the whole
+    2048-token output budget on hidden reasoning and returned no answer at all
+    (``finish_reason: length``, ``reasoning_tokens: 2048``); with ``reasoning:
+    {enabled: false}`` they answer in a few hundred tokens. Only sent to OpenRouter:
+    other OpenAI-compatible endpoints do not know the field."""
+
+    def _body(self, request: LLMRequest, *, structured: bool) -> dict[str, Any]:
+        body = super()._body(request, structured=structured)
+        body.setdefault("reasoning", {"enabled": False})
+        return body
+
+
+def provider_profile(model: str) -> str:
+    """The capability profile for `model`. Anthropic models are asked for JSON in the
+    prompt, not with a strict json_schema: with reasoning off, Claude Haiku 5.5 under
+    the schema returned one entity with zero offsets; in the prompt, all of them."""
+    return "anthropic-compat" if model.startswith("anthropic/") else "openai"
+
+
+def _client(settings: Settings, model: str, **kw: Any) -> OpenAICompatClient:
+    host = urlsplit(settings.base_url).hostname or ""
+    openrouter = host == "openrouter.ai" or host.endswith(".openrouter.ai")
+    kind = OpenRouterClient if openrouter else OpenAICompatClient
+    return kind(
+        settings.base_url,
+        model,
+        api_key=settings.api_key,
+        profile=provider_profile(model),
+        extra_headers={"HTTP-Referer": SITE_URL, "X-Title": SITE_TITLE},
+        **kw,
+    )
+
+
 def make_llm(
     settings: Settings,
     model: str,
@@ -358,18 +397,15 @@ def make_llm(
 
     ``transport`` and ``backoff_base`` exist for tests (MockTransport, no sleeping).
     The caller closes it (``await llm.aclose()``)."""
-    client = OpenAICompatClient(
-        settings.base_url,
+    client = _client(
+        settings,
         model,
-        api_key=settings.api_key,
-        profile="openai",
         temperature=TEMPERATURE,
         max_tokens=MAX_TOKENS,
         timeout=LLM_TIMEOUT_S,
         max_retries=LLM_MAX_RETRIES,
         backoff_base=backoff_base,
         transport=transport,
-        extra_headers={"HTTP-Referer": SITE_URL, "X-Title": SITE_TITLE},
     )
     return BudgetedLLM(client, CallBudget(limit=settings.limits.llm_call_cap))
 
@@ -379,17 +415,14 @@ def make_select_llm(
 ) -> BudgetedLLM:
     """The LLM selector's client: one call per routed entity, capped at one per entity
     allowed (no retries beyond the client's own). The caller closes it."""
-    client = OpenAICompatClient(
-        settings.base_url,
+    client = _client(
+        settings,
         model,
-        api_key=settings.api_key,
-        profile="openai",
         temperature=0.0,
         max_tokens=600,
         timeout=LLM_TIMEOUT_S,
         max_retries=1,
         transport=transport,
-        extra_headers={"HTTP-Referer": SITE_URL, "X-Title": SITE_TITLE},
     )
     return BudgetedLLM(client, CallBudget(limit=settings.limits.max_entities * 2))
 
@@ -411,6 +444,81 @@ def make_decider(
     )
     budget = CallBudget(limit=settings.limits.max_entities * SELECTOR_CALLS_PER_ENTITY)
     return BudgetedDecider(client, budget)
+
+
+# /api/health asks OpenRouter whether the key still works (GET /api/v1/key: free, no
+# model call), remembering the answer; an expired key otherwise shows "llm ok" while every
+# POST /api/ner fails with 502 (4 November 2026).
+KEY_CHECK_URL = "https://openrouter.ai/api/v1/key"
+KEY_CHECK_TIMEOUT_S = 5.0
+KEY_OK_TTL_S = 300.0
+KEY_REFUSED_TTL_S = 60.0
+_KEY_CACHE: dict[str, tuple[float, RetrieverStatus]] = {}
+_KEY_LOCK = threading.Lock()
+
+
+def reset_key_check() -> None:
+    with _KEY_LOCK:
+        _KEY_CACHE.clear()
+
+
+def _key_status(settings: Settings, transport: httpx.BaseTransport | None) -> RetrieverStatus:
+    try:
+        with httpx.Client(timeout=KEY_CHECK_TIMEOUT_S, transport=transport) as client:
+            response = client.get(
+                KEY_CHECK_URL, headers={"Authorization": f"Bearer {settings.api_key}"}
+            )
+    except httpx.HTTPError as exc:
+        return RetrieverStatus(
+            status="ok", reason=f"key not checked (OpenRouter unreachable: {type(exc).__name__})"
+        )
+    try:
+        payload: Any = response.json()
+    except ValueError:
+        payload = None
+    if response.status_code in (401, 403):
+        error = payload.get("error") if isinstance(payload, dict) else None
+        detail = error.get("message") if isinstance(error, dict) else None
+        reason = (
+            f"OPENROUTER_API_KEY was refused by OpenRouter (HTTP {response.status_code}"
+            + (f": {str(detail)[:120]}" if detail else "")
+            + "); POST /api/ner answers 502 until the key is replaced"
+        )
+        return RetrieverStatus(status="unavailable", reason=scrub(reason, settings))
+    if response.status_code != 200:
+        return RetrieverStatus(
+            status="ok", reason=f"key not checked (OpenRouter answered HTTP {response.status_code})"
+        )
+    data = payload.get("data") if isinstance(payload, dict) else None
+    remaining = data.get("limit_remaining") if isinstance(data, dict) else None
+    if isinstance(remaining, (int, float)) and remaining <= 0:
+        return RetrieverStatus(
+            status="unavailable",
+            reason="the OpenRouter key's spending limit is used up; raise it or replace the key",
+        )
+    return RetrieverStatus(status="ok")
+
+
+def check_key(
+    settings: Settings, *, transport: httpx.BaseTransport | None = None
+) -> RetrieverStatus | None:
+    """Whether OpenRouter accepts ``OPENROUTER_API_KEY`` (None without a key). A refused
+    or spent key is ``unavailable`` with OpenRouter's reason; a check that could not reach
+    OpenRouter is ``ok`` with a "not checked" reason, never an outage. Remembered for
+    ``KEY_OK_TTL_S`` (``KEY_REFUSED_TTL_S`` when refused), per key."""
+    if not settings.api_key:
+        return None
+    slot = hashlib.sha256(settings.api_key.encode()).hexdigest()
+    now = time.monotonic()
+    with _KEY_LOCK:
+        cached = _KEY_CACHE.get(slot)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+    status = _key_status(settings, transport)
+    ttl = KEY_OK_TTL_S if status.status == "ok" else KEY_REFUSED_TTL_S
+    with _KEY_LOCK:
+        _KEY_CACHE[slot] = (now + ttl, status)
+    return status
 
 
 def _bad(code: str, message: str) -> ServiceError:
@@ -572,7 +680,13 @@ async def run(
     started = time.monotonic()
     try:
         entities, warnings, usage = await asyncio.wait_for(
-            extract(llm, req.text, req.prompt, max_entities=settings.limits.max_entities),
+            extract(
+                llm,
+                req.text,
+                req.prompt,
+                max_entities=settings.limits.max_entities,
+                types=(*settings.routes, "other"),
+            ),
             timeout=EXTRACT_TIMEOUT_S,
         )
     except ServiceError:
@@ -676,9 +790,11 @@ __all__ = [
     "IndexView",
     "Settings",
     "SettingsError",
+    "check_key",
     "make_decider",
     "make_llm",
     "make_select_llm",
+    "reset_key_check",
     "retrieval_status",
     "run",
     "scrub",
