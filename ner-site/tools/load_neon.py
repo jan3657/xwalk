@@ -336,9 +336,11 @@ def load_one(
     concurrency: int,
     progress: Progress,
     out: Callable[[str], None],
+    index_writer: PostgresIndexWriter | None = None,
 ) -> None:
     """Load one ontology: meta `loading`, terms, missing vectors, prune, indexes, meta
-    `ready`. Safe to rerun at any point."""
+    `ready`. Safe to rerun at any point. `index_writer` builds the indexes (one long
+    request; `writer` when not given)."""
     terms = terms_components(records)
     bm25 = bm25_components(records, TEMPLATES, exact_fields=EXACT_FIELDS)
     dense = pgvector_components(records, TEMPLATES, encoder, name_fields=NAME_FIELDS)
@@ -399,7 +401,7 @@ def load_one(
     )
     if deleted_terms or deleted_vectors:
         out(f"{slug}: pruned {deleted_terms} stale terms, {deleted_vectors} stale vectors")
-    writer.create_indexes(slug)
+    (index_writer or writer).create_indexes(slug)
     writer.analyze()
     count = len(records)
     writer.write_meta(slug, "terms", terms, name="terms", status="ready", record_count=count)
@@ -547,6 +549,16 @@ def _executor(env: Mapping[str, str]) -> SQLExecutor:
     return NeonHTTPExecutor.from_env(env, name=DATABASE_ENV, timeout=120.0, max_retries=3)
 
 
+# An index build is one long statement: give it an hour and never retry it, because a
+# retried CREATE INDEX starts over and the abandoned request cancels the build (ChEBI's
+# HNSW index outlived the 120 s request four times on 4 November 2026).
+INDEX_TIMEOUT_S = 3600.0
+
+
+def _index_executor(env: Mapping[str, str]) -> SQLExecutor:
+    return NeonHTTPExecutor.from_env(env, name=DATABASE_ENV, timeout=INDEX_TIMEOUT_S, max_retries=0)
+
+
 def _encoder(api_key: str, dimensions: int) -> Encoder:
     return default_embeddings_encoder(api_key=api_key, dimensions=dimensions)
 
@@ -632,6 +644,14 @@ def main(
 
     executor = (executor_factory or _executor)(env)
     writer = PostgresIndexWriter(executor, schema=args.schema, dimension=args.dimensions)
+    # Tests inject one executor for everything; a real load builds indexes on its own.
+    index_writer = (
+        None
+        if executor_factory is not None
+        else PostgresIndexWriter(
+            _index_executor(env), schema=args.schema, dimension=args.dimensions
+        )
+    )
     try:
         current = writer.sizes().get("database", 0)
     except PostgresError as exc:
@@ -661,6 +681,7 @@ def main(
                 concurrency=args.concurrency,
                 progress=progress,
                 out=say,
+                index_writer=index_writer,
             )
     except (EmbeddingAPIError, PostgresError, ValueError) as exc:
         say(f"error: {type(exc).__name__}: {exc} (rerun to resume)")

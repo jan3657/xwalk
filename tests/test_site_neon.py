@@ -639,3 +639,13 @@ def test_drop_removes_the_selected_ontologies() -> None:
     assert any("foodon-sample: dropped" in line for line in lines)
     assert "terms_drop" in fake.tags and "meta_drop" in fake.tags and "vacuum" in fake.tags
     assert not any(k[0] == "foodon-sample" for k in [*fake.terms, *fake.meta, *fake.vectors])
+
+
+def test_the_loader_builds_indexes_in_one_long_request_without_retries() -> None:
+    """A retried CREATE INDEX restarts the build and cancels the last one: ChEBI's HNSW
+    build outlived the 120 s request four times on 4 November 2026."""
+    tool = _tool()
+    build = tool._index_executor({"DATABASE_URL": FAKE_URL})
+    assert build._max_retries == 0 and build._client.timeout.read >= 3600
+    rows = tool._executor({"DATABASE_URL": FAKE_URL})
+    assert rows._client.timeout.read == 120.0
