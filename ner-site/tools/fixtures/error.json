@@ -1,7 +1,0 @@
-{
-  "ok": false,
-  "error": {
-    "code": "text_too_long",
-    "message": "text is 7000 characters; the limit is 5000"
-  }
-}

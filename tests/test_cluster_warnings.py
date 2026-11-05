@@ -22,6 +22,7 @@ import itertools
 import json
 from pathlib import Path
 
+from benchmarks.lexical_cluster_fixture import lexical_cluster_model
 from tests.cluster_helpers import (
     CHOCOLATE,
     TEMPLATES,
@@ -41,7 +42,6 @@ from xwalk.cluster.prompts import ClusterPrompts, cluster_block
 from xwalk.llm.base import LLMRequest
 from xwalk.llm.fake import FakeLLM
 from xwalk.records import Record
-from xwalk.ui.offline import lexical_cluster_model
 
 FACTUAL = ("retrieval_bounded", "evidence_bounded", "resume_determinism")
 # Four concepts that share no word: every record mints its own cluster.

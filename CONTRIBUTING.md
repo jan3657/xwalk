@@ -25,13 +25,12 @@ commit, because a commit that fails a gate is a commit nobody can bisect through
 
 ```bash
 python -m pytest -q -m "not integration"
-python -m ruff check src tests examples scripts benchmarks ner-site
-python -m ruff format --check src tests examples scripts benchmarks ner-site
+python -m ruff check src tests examples scripts benchmarks
+python -m ruff format --check src tests examples scripts benchmarks
 python -m mypy
 ```
 
-`mypy` runs `--strict` over `src/xwalk`, `scripts`, `examples` and `ner-site/ner_site`
-(the Vercel NER demo; see [its plan](docs/ner-site/PLAN.md)). Optional extras are
+`mypy` runs `--strict` over `src/xwalk`, `scripts` and `examples`. Optional extras are
 in an `ignore_missing_imports` override: typing the call sites is what matters, and
 chasing stubs for a package the base install must not pull would make the gate depend on
 which extras happen to be installed.

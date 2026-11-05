@@ -454,7 +454,7 @@ executor xwalk ships speaks Neon's HTTPS SQL endpoint with httpx. The engines ar
 own: `lakebase_text` for BM25 (Neon blocks new installs of ParadeDB's `pg_search`; it is
 listed in `neon.deprecated_extensions`) and pgvector `halfvec` with HNSW. A worked
 deployment, with sizes, throughput and costs measured on Neon, is
-[docs/ner-site/NEON.md](../ner-site/NEON.md).
+the Neon deployment guide in the separate `xwalk-ui` repository.
 
 ### The executor protocol
 

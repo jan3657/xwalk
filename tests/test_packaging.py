@@ -263,7 +263,6 @@ def test_the_sdist_leaves_out_process_notes_research_scripts_and_web_sources(
         "docs/architecture.md",
         "scripts/check_readme_quickstart.py",
         "src/xwalk/ops.py",
-        "src/xwalk/ui/static/app/index.html",
         "tests/test_packaging.py",
         "README.md",
         "LICENSE",
@@ -315,13 +314,5 @@ def test_the_wheel_ships_the_bundled_example_and_prompt_skeletons(tmp_path):
     for name in ("select.j2", "score.j2", "verify.j2", "rewrite.j2"):
         assert any(n.endswith(f"/{name}") for n in names), name
     assert "xwalk/ops.py" in names and "xwalk/py.typed" in names
-    for name in ("index.html", "app.js", "workbench.js", "app.css", "favicon.svg"):
-        assert f"xwalk/ui/static/{name}" in names, name
-    # The React workbench at /app: built from web/ and committed, so no Node at install.
-    assert "xwalk/ui/static/app/index.html" in names
-    app_assets = [n for n in names if n.startswith("xwalk/ui/static/app/assets/")]
-    for suffix in (".js", ".css", ".woff2"):
-        assert any(n.endswith(suffix) for n in app_assets), suffix
+    assert not any(n.startswith("xwalk/ui/") for n in names)
     assert not any("node_modules" in n or n.startswith("web/") for n in names)
-    for name in ("index.json", "chebi-sample.jsonl", "foodon-sample.jsonl"):
-        assert f"xwalk/ui/ontologies/{name}" in names, name

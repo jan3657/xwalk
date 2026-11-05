@@ -19,8 +19,8 @@ from xwalk.llm.base import (
     LLMRetryableError,
 )
 from xwalk.llm.budget import CallBudget
+from xwalk.llm.chatgpt_protocol import RESOURCE, ChatGPTError
 from xwalk.records import Usage
-from xwalk.ui.chatgpt import RESOURCE, ChatGPTError
 
 
 def _diagnostic(payload: Any, request_id: str | None) -> str:

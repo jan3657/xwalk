@@ -14,8 +14,6 @@ Task-oriented, in the order you will need them.
 | Guide | Read it when |
 |---|---|
 | [Getting started](guide/getting-started.md) | You have two CSV files and want a mapping table. |
-| [Exploring in the browser](guide/ui.md) | You want to click through validate, search, run, explain, review and evaluate (`xwalk ui`). |
-| [Hosting the explorer](guide/hosting.md) | You want the explorer online for others, with full ontologies parsed in advance (`xwalk ui --public`, Docker, free hosting options). |
 | [The Python SDK, component by component](guide/python-sdk.md) | A job file cannot express what you need and you want to build every component by hand. |
 | [Concepts](concepts.md) | You want to know why the loop is shaped this way before you trust it. |
 | [Architecture](architecture.md) | You are changing xwalk: layers, invariants, and which modules and tests a change touches. |
@@ -27,8 +25,6 @@ Task-oriented, in the order you will need them.
 | [Drafting and optimising prompts](guide/prompt-optimisation.md) | Your failures are *misjudged* rather than *never retrieved*. |
 | [Extending xwalk](guide/extending.md) | You need your own retriever, source, store, or model client. |
 | [Troubleshooting](guide/troubleshooting.md) | Something is behaving oddly. |
-| [NER-to-ontology demo site plan](ner-site/PLAN.md) | You are building or deploying the Vercel demo in `ner-site/`: paste text, extract entities with an LLM, map each onto a bundled sample ontology. |
-| [NER site on Neon Postgres](ner-site/NEON.md) | You are loading the demo's ontologies (samples or the full catalogs) into Neon and serving them with `NER_SITE_BACKEND=neon`: schema, identity, loader, sizes, throughput, costs. |
 | [Ref_zivila food crosswalk plan](ref-zivila-mapping-plan.md) | The worked plan for mapping the Slovenian food-composition table onto FoodOn. |
 
 ## Reference
@@ -93,3 +89,7 @@ If you read nothing else:
    works with no credentials.
 5. **Everything fails toward review.** Unparseable output, an unrecognised verdict, an
    invented key — none of them can produce an automatic match.
+
+Browser applications and their deployment guides live in the separate `xwalk-ui` repository.
+
+See the [repository audit](repository-audit.md) for extraction checks and follow-up work.

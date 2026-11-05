@@ -2,10 +2,9 @@
 
 - Contributor rules live in `CONTRIBUTING.md`; follow its four gates before every commit:
   `python -m pytest -q -m "not integration"`,
-  `ruff check src tests examples scripts benchmarks ner-site`,
-  `ruff format --check src tests examples scripts benchmarks ner-site`, `mypy`.
-- The Vercel NER demo lives in `ner-site/` (plan: `docs/ner-site/PLAN.md`). Its tests are
-  `tests/test_site_*.py`, which import `ner_site` through pytest's `pythonpath`.
+  `ruff check src tests examples scripts benchmarks`,
+  `ruff format --check src tests examples scripts benchmarks`, `mypy`.
+- Browser applications and their tests live in the separate `xwalk-ui` repository.
 - The 0.2 upgrade is planned in `docs/claude-upgrade/`. Read `START_HERE.md`, your task
   file, and `CONTRACTS.md` (the binding decisions). Do not load `docs/superpowers/plans/`
   wholesale; they are historical and partly contradicted by `CONTRACTS.md`.
