@@ -261,11 +261,10 @@ def test_bundled_job_templates_render_as_before(job):
     assert rendered
 
 
-def test_the_workbench_and_chemistry_templates_render_as_before():
-    from xwalk.ui import projects
+def test_the_chemistry_templates_render_as_before():
 
     chemistry = yaml.safe_load((ROOT / "examples" / "chemistry" / "templates.yaml").read_text())
-    for templates in (projects._TEMPLATES, chemistry):
+    for templates in (chemistry,):
         ts = TemplateSet(**{k: templates[k] for k in ("query", "context", "doc", "candidate")})
         for record in _SYNTHETIC:
             for name, source in _template_sources(ts).items():

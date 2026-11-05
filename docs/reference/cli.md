@@ -557,37 +557,6 @@ and exits `2`, as it does for a `--root` that is not a directory. See the
 | `--offline-model` | no | — | answer every model call with a fixed scripted reply (demos and tests; the results are meaningless) |
 | `--root DIR` | no | the working directory | a directory tool paths, and the files a job refers to, must resolve into (symlinks followed); repeatable. Anything else is refused with `path_outside_roots`. See [path confinement](../guide/mcp.md#path-confinement) |
 
-## `ui`
-
-Serves a local web app to explore jobs and runs: validate, preview records, search, run
-(offline stand-in or the job's endpoint), explain, review, evaluate and export. Standard
-library only; runs until Ctrl-C (exit `0`). See the [UI guide](../guide/ui.md).
-
-| Flag | Required | Default | Meaning |
-|---|---|---|---|
-| `--root` | no | `.` | the workspace directory the app may read and write |
-| `--host` | no | `127.0.0.1` | address to listen on |
-| `--port` | no | `8765` | port (`0`: any free port) |
-| `--no-browser` | no | — | do not open a browser tab |
-| `--max-calls-cap` | no | `500` | the largest call limit a run against the job's endpoint may request |
-| `--offline-only` | no | — | refuse runs against the job's endpoint |
-| `--max-upload-mb` | no | `512` | the largest file the page may upload |
-| `--public` | no | — | run as a website: private workspace per visitor, visitors' own keys, no URL downloads ([hosting](../guide/hosting.md)) |
-| `--library DIR` | no | — | pre-parsed ontologies to offer read-only (repeatable) |
-| `--lookup-cache DIR` | no | `<root>/cache` | public mode: shared search-index cache |
-| `--session-hours` | no | `24` | public mode: delete idle visitor workspaces after |
-| `--max-tasks` | no | `4` | public mode: runs at once across visitors |
-| `--frame-ancestors` | no | — | origins allowed to embed the page in a frame |
-| `--sessions-per-ip` | no | `20` | public mode: new visitor sessions one address may open per 10 minutes (`0`: no limit) |
-| `--allow-local-downloads` | no | — | let ontology downloads use `http` and private addresses; not with `--public` |
-| `--trust-proxy` | no | — | public mode: believe `X-Forwarded-Proto` and `X-Forwarded-For` from the HTTPS proxy in front ([hosting](../guide/hosting.md)) |
-| `--verbose` | no | — | log every request to stderr |
-| `--chatgpt-login` | no | — | enable local Sign in with ChatGPT (needs `xwalk[chatgpt]` and `--host 127.0.0.1`) |
-| `--dense [local\|api]` | no | `off` | dense retrieval alongside BM25. `--dense` or `--dense local`: general and biomedical sentence-transformers models (needs `xwalk[dense]`). `--dense api`: Qwen3-Embedding 8B through OpenRouter with per-name vectors (needs `OPENROUTER_API_KEY`, set in the environment or on the Settings page; with `--public` it must be in the environment, since the shared library indexes are embedded with the operator's key; refused with `--offline-only`) |
-| `--dense-device` | no | automatic | local dense encoder device, e.g. `cpu` or `mps` |
-
-A root that is not a directory or a cap below 1 exits `2`.
-
 ## `upgrade`
 
 Migrates a run's ledger to the current schema in place. A 0.1.1 ledger is first copied

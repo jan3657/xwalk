@@ -17,8 +17,8 @@ jobs:
       - run: pip install -e ".[dev,mcp]"
       # Same paths as the local gate. CI that lints a narrower tree than the developer
       # does is CI that passes while the local gate fails.
-      - run: ruff check src tests examples scripts benchmarks ner-site
-      - run: ruff format --check src tests examples scripts benchmarks ner-site
+      - run: ruff check src tests examples scripts benchmarks
+      - run: ruff format --check src tests examples scripts benchmarks
       - run: mypy
 
   test:
@@ -50,34 +50,6 @@ jobs:
               echo "::error::${pkg} leaked into the base install"; exit 1
             fi
           done
-
-  # The workbench at /app is built from web/ and committed under src/xwalk/ui/static/app,
-  # so installing xwalk never needs Node. This job keeps the two in step: a source change
-  # without a rebuild (or a hand edit of the build) fails here.
-  web:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-      - name: Assert the committed build matches web/
-        working-directory: .
-        run: |
-          if [ -n "$(git status --porcelain -- src/xwalk/ui/static/app)" ]; then
-            git status --short -- src/xwalk/ui/static/app
-            echo "::error::src/xwalk/ui/static/app is out of date; run 'npm run build' in web/ and commit it"
-            exit 1
-          fi
 
   aarch64:
     runs-on: ubuntu-24.04-arm

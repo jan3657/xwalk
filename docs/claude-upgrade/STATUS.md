@@ -1,5 +1,10 @@
 # Execution status
 
+**UI extraction (5 November 2026).** Browser applications, web server, deployment
+assets and UI tests moved to the sibling `xwalk-ui` repository. Core retains CLI,
+engine and provider protocol definitions. Review: [repository audit](../repository-audit.md).
+Balances: unreported.
+
 Task 00 completed 5 October 2026. Baseline: `BASELINE.md`. Contracts: `CONTRACTS.md`.
 
 **NER site (4 November 2026).** Production (https://www.xwalk.si) serves the full ChEBI, CTD diseases and FoodOn vocabularies from Neon (Launch plan; NCBI Gene not loaded), with Jev as the default selector. See the first NER rows below.

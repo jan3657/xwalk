@@ -223,16 +223,17 @@ def greedy_leader(
 
 
 CLUSTER_JUDGE_SMOKE = (
-    "xwalk.ui.offline.lexical_cluster_model (SYNTHETIC: word-overlap stand-in, not a model)"
+    "benchmarks.lexical_cluster_fixture.lexical_cluster_model "
+    "(SYNTHETIC: word-overlap stand-in, not a model)"
 )
 
 
 def cluster_llm_factory(mode: str, make_llm: Callable[[], LLMClient]) -> Callable[[], LLMClient]:
     """The judge for `xwalk cluster`. The synthetic matching judge does not read the
-    clustering prompts, so smoke mode uses the UI's offline lexical stand-in."""
+    clustering prompts, so smoke mode uses the offline lexical stand-in."""
     if mode == "smoke":
+        from benchmarks.lexical_cluster_fixture import lexical_cluster_model
         from xwalk.llm.fake import FakeLLM
-        from xwalk.ui.offline import lexical_cluster_model
 
         return lambda: FakeLLM(handler=lexical_cluster_model)
     return make_llm

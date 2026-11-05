@@ -26,7 +26,7 @@ offline only (FakeDecider, no paid calls).
   `IndexMismatchError` and an unfinished load with `IndexNotReadyError`. Tested offline
   with a fake executor and `httpx.MockTransport`, and live against a Neon branch over
   HTTPS (`tests/test_postgres_integration.py`, `-m integration`, needs `DATABASE_URL`).
-  The NER demo site uses it with `NER_SITE_BACKEND=neon` (`docs/ner-site/NEON.md`).
+  The NER demo site uses it with `NER_SITE_BACKEND=neon` ([docs/ner-site/NEON.md](https://github.com/jan3657/xwalk-ui/blob/main/docs/ner-site/NEON.md)).
 
 - Dense retrieval through any OpenAI-compatible `/embeddings` endpoint (OpenRouter,
   OpenAI, Voyage, DeepInfra, vLLM, Ollama) with `encoder: openai_embeddings` on a dense
@@ -191,7 +191,7 @@ offline only (FakeDecider, no paid calls).
   New read route `GET /api/reviews` (`review.review_history` and `review.adjudicated`);
   `/api/workspace` runs carry `usage`, `run_fingerprint` and `answered_by`;
   `/api/mapping` rows carry `source_context`; `/api/run` passes the manifest's
-  `duplicate_targets` through. See `docs/guide/ui.md` and `web/README.md`. Redesigned
+  `duplicate_targets` through. See [docs/guide/ui.md](https://github.com/jan3657/xwalk-ui/blob/main/docs/guide/ui.md) and [web/README.md](https://github.com/jan3657/xwalk-ui/blob/main/web/README.md). Redesigned
   after review: a top bar and status line instead of the sidebar, Results as a
   source ⟶ target lineage with an inspector drawer, squares for model status and diamonds
   for human decisions, a decision strand in Review that redraws as you decide, and the
@@ -203,7 +203,7 @@ offline only (FakeDecider, no paid calls).
   model keys kept per session and never in the process environment, model endpoints
   limited to public `https` hosts, no server-side URL downloads, run limits, hidden
   server paths and `/healthz`. Free hosting options are compared in
-  `docs/guide/hosting.md`.
+  [docs/guide/hosting.md](https://github.com/jan3657/xwalk-ui/blob/main/docs/guide/hosting.md).
 - `xwalk ui` for people who bring data rather than job files: upload CSV/TSV/JSONL/TXT/
   OBO/OWL files (streamed, `--max-upload-mb`), inspect them with suggested column roles,
   and build projects (ordinary job directories under `projects/`) that map a file onto
@@ -214,7 +214,7 @@ offline only (FakeDecider, no paid calls).
   Foundry ontologies or any URL as a background task. Also: results with source texts
   and target labels (and as CSV), job file and review worksheet downloads, applying a
   filled-in worksheet, session-only API keys, and a label on runs the offline stand-in
-  answered. See `docs/guide/ui.md`.
+  answered. See [docs/guide/ui.md](https://github.com/jan3657/xwalk-ui/blob/main/docs/guide/ui.md).
 - `xwalk ui`: a local web app over `xwalk.ops` (`xwalk.ui`), standard library only, for
   exploring jobs and runs: workspace discovery, validation, record previews through the
   templates, index search, background match and cluster runs with live progress and
@@ -224,7 +224,7 @@ offline only (FakeDecider, no paid calls).
   quickstart reply, `FakeDecider`, and a word-overlap clustering judge), labelled
   `offline_model`; the job's endpoint requires a call limit and can be disabled with
   `--offline-only`. Local by default, with a per-process API token, a Host check and
-  workspace path confinement. See `docs/guide/ui.md`.
+  workspace path confinement. See [docs/guide/ui.md](https://github.com/jan3657/xwalk-ui/blob/main/docs/guide/ui.md).
 - A decider path: a `decider:` block on a job routes matching through a decision model
   (TypeSafe's Jev, `JevClient`) that answers typed questions with probabilities instead
   of writing prose -- screen every retrieved candidate, choose among the survivors, then

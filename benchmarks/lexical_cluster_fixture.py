@@ -1,14 +1,4 @@
-"""Offline stand-ins for a model, so the UI can be explored with no endpoint and no spend.
-
-None of these is a judgement about the data. The UI labels every run made with them.
-
-- Matching (LLM path): `scripted_match_model`, the fixed reply of `examples/quickstart.py`
-  and `xwalk mcp --offline-model` -- pick the first candidate with confidence 0.9.
-- Matching (decider path): `xwalk.decide.fake.FakeDecider`, deterministic token overlap.
-- Clustering: `lexical_cluster_model`, which reads the built-in clustering prompts
-  (`xwalk.cluster.prompts`) and decides by word overlap between labels, so a demo run
-  produces clusters of near-identical spellings instead of one cluster or all singletons.
-"""
+"""Frozen lexical model fixture for the clustering evidence-bound regression."""
 
 from __future__ import annotations
 
@@ -16,10 +6,7 @@ import json
 import re
 from collections.abc import Sequence
 
-from xwalk.llm.base import LLMClient, LLMRequest
-from xwalk.llm.fake import FakeLLM
-
-OFFLINE_MODEL_NAME = "xwalk-offline"
+from xwalk.llm.base import LLMRequest
 
 _SECTION = re.compile(r"^## (.+)$", re.M)
 _KEYED = re.compile(r"^\[(C\d+)\] cluster with \d+ members?:$")
@@ -29,13 +16,6 @@ _TOKEN = re.compile(r"[a-z0-9]+")
 # least this much (Jaccard). A demo setting, not a calibrated threshold.
 SAME_AT = 0.6
 SURE_MARGIN = 0.2
-
-
-def scripted_match_model(request: LLMRequest) -> str:
-    """One fixed answer every matching stage understands: first candidate, score 0.9."""
-    return json.dumps(
-        {"chosen_key": "C01", "confidence_score": 0.9, "decision": "support", "queries": []}
-    )
 
 
 def _tokens(text: str) -> set[str]:
@@ -138,22 +118,3 @@ def lexical_cluster_model(request: LLMRequest) -> str:
         preferred = "alternative" if alternative > current + 0.1 else "current"
         return _reply(0.8, note, preferred=preferred)
     return _reply(0.0, f"{note}; unknown task {task!r}")
-
-
-def match_llm() -> LLMClient:
-    return FakeLLM(handler=scripted_match_model, model=OFFLINE_MODEL_NAME)
-
-
-def cluster_llm() -> LLMClient:
-    return FakeLLM(handler=lexical_cluster_model, model=OFFLINE_MODEL_NAME)
-
-
-__all__ = [
-    "OFFLINE_MODEL_NAME",
-    "SAME_AT",
-    "cluster_llm",
-    "lexical_cluster_model",
-    "match_llm",
-    "overlap",
-    "scripted_match_model",
-]
