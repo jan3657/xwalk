@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-04",
+  "dataset": "ncbi_disease",
+  "ontology": "ctd-disease",
+  "vectors": 104630,
+  "mentions": 50,
+  "depth": 20,
+  "embedding_usage": "EmbeddingUsage(requests=1, texts=50, prompt_tokens=999, cost=9.99e-06)",
+  "dims": {
+    "1024": {
+      "recall@1": 0.58,
+      "recall@5": 0.7,
+      "recall@10": 0.7,
+      "recall@20": 0.7,
+      "mrr": 0.6333333333333333,
+      "seconds": 70.7
+    },
+    "768": {
+      "recall@1": 0.58,
+      "recall@5": 0.7,
+      "recall@10": 0.7,
+      "recall@20": 0.7,
+      "mrr": 0.6333333333333333,
+      "seconds": 39.1
+    },
+    "512": {
+      "recall@1": 0.44,
+      "recall@5": 0.68,
+      "recall@10": 0.7,
+      "recall@20": 0.7,
+      "mrr": 0.56,
+      "seconds": 34.8
+    }
+  }
+}

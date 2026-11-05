@@ -76,6 +76,16 @@ def test_the_default_prompt_renders_for_any_entity_limit() -> None:
     assert seven.replace("at most 7", f"at most {Limits().max_entities}") == DEFAULT_PROMPT
 
 
+def test_the_default_prompt_lists_only_the_given_types() -> None:
+    from ner_site.extract import render_default_prompt
+
+    three = render_default_prompt(25, types=("chemical", "disease", "food"))
+    assert "- gene:" not in three
+    for kept in ("- chemical:", "- disease:", "- food:", "- other:"):
+        assert kept in three
+    assert render_default_prompt(25, types=ENTITY_TYPES) == render_default_prompt(25)
+
+
 def test_entity_schema_requires_the_four_fields_and_the_enum() -> None:
     assert ENTITY_SCHEMA["required"] == ["entities"]
     items = ENTITY_SCHEMA["properties"]["entities"]["items"]

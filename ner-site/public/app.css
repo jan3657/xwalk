@@ -709,15 +709,15 @@ button[aria-busy="true"] .spinner {
   font-size: 0.9rem;
 }
 
-.matches th:nth-child(1) {
+.matches th:nth-child(2) {
   width: 11rem;
 }
 
-.matches th:nth-child(3) {
+.matches th:nth-child(4) {
   width: 5.5rem;
 }
 
-.matches th:nth-child(4) {
+.matches th:nth-child(5) {
   width: 15rem;
   padding-left: 16px;
 }
@@ -862,4 +862,56 @@ button[aria-busy="true"] .spinner {
   .matches td.c-ranks {
     padding-left: 0;
   }
+}
+
+/* The selector's pick (Jev or an LLM) above the retrieval table. */
+.pick {
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #7a7f87;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.07);
+  font-size: 0.95rem;
+}
+.pick-match { border-left-color: #2f8f4e; }
+.pick-review { border-left-color: #b7791f; }
+.pick-no_match { border-left-color: #7a7f87; }
+.pick-failed { border-left-color: #c0392b; }
+.pick-who,
+.pick-conf { opacity: 0.75; }
+.pick-why {
+  margin: 0.25rem 0 0;
+  opacity: 0.75;
+  font-size: 0.875rem;
+}
+.matches tr.picked td { font-weight: 600; }
+.matches tr.picked td.c-id::before {
+  content: "\2713 ";
+  color: #2f8f4e;
+}
+
+/* "Retrieved candidates": the fused ranking, expandable to the depth a selector sees. */
+.cands-head {
+  margin: 0.5rem 0 0.25rem;
+}
+.cands-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.cands-note {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+.matches td.c-rank,
+.matches th:first-child {
+  width: 2.5rem;
+  opacity: 0.7;
+}
+.cands-toggle {
+  margin-top: 0.5rem;
 }

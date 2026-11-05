@@ -1,0 +1,361 @@
+{
+  "date": "2026-11-04",
+  "catalog": "samples",
+  "ks": [
+    1,
+    5,
+    10,
+    20
+  ],
+  "depth": 20,
+  "backends": {
+    "bundled": {
+      "chebi": {
+        "ontology": "chebi-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.6,
+            "recall@5": 0.6,
+            "recall@10": 0.6,
+            "recall@20": 0.6,
+            "mrr": 0.6
+          },
+          "dense": {
+            "recall@1": 1.0,
+            "recall@5": 1.0,
+            "recall@10": 1.0,
+            "recall@20": 1.0,
+            "mrr": 1.0
+          },
+          "fused": {
+            "recall@1": 1.0,
+            "recall@5": 1.0,
+            "recall@10": 1.0,
+            "recall@20": 1.0,
+            "mrr": 1.0
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.0005377709999834224,
+          "dense": 0.1998471700000266
+        }
+      },
+      "ncbi_disease": {
+        "ontology": "ctd-disease-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.56,
+            "recall@5": 0.58,
+            "recall@10": 0.58,
+            "recall@20": 0.58,
+            "mrr": 0.5666666666666667
+          },
+          "dense": {
+            "recall@1": 0.7,
+            "recall@5": 0.7,
+            "recall@10": 0.74,
+            "recall@20": 0.76,
+            "mrr": 0.7077192982456141
+          },
+          "fused": {
+            "recall@1": 0.7,
+            "recall@5": 0.7,
+            "recall@10": 0.74,
+            "recall@20": 0.76,
+            "mrr": 0.7050526315789475
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.0007860915000037494,
+          "dense": 0.1802436494999995
+        }
+      },
+      "nlm_gene": {
+        "ontology": "ncbi-gene-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.66,
+            "recall@5": 0.68,
+            "recall@10": 0.68,
+            "recall@20": 0.68,
+            "mrr": 0.664
+          },
+          "dense": {
+            "recall@1": 0.9,
+            "recall@5": 0.92,
+            "recall@10": 0.92,
+            "recall@20": 0.92,
+            "mrr": 0.91
+          },
+          "fused": {
+            "recall@1": 0.7,
+            "recall@5": 0.7,
+            "recall@10": 0.92,
+            "recall@20": 0.92,
+            "mrr": 0.7366666666666666
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.0005429619999972601,
+          "dense": 0.16667305799998644
+        }
+      },
+      "cafeteria_fcd": {
+        "ontology": "foodon-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.94,
+            "recall@5": 0.94,
+            "recall@10": 0.94,
+            "recall@20": 0.94,
+            "mrr": 0.94
+          },
+          "dense": {
+            "recall@1": 0.84,
+            "recall@5": 0.94,
+            "recall@10": 0.96,
+            "recall@20": 0.98,
+            "mrr": 0.8915384615384616
+          },
+          "fused": {
+            "recall@1": 0.88,
+            "recall@5": 0.94,
+            "recall@10": 0.96,
+            "recall@20": 0.98,
+            "mrr": 0.9141904761904763
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.0006132470000181911,
+          "dense": 0.1733944670000085
+        }
+      }
+    },
+    "neon": {
+      "chebi": {
+        "ontology": "chebi-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.6,
+            "recall@5": 0.6,
+            "recall@10": 0.6,
+            "recall@20": 0.6,
+            "mrr": 0.6
+          },
+          "dense": {
+            "recall@1": 1.0,
+            "recall@5": 1.0,
+            "recall@10": 1.0,
+            "recall@20": 1.0,
+            "mrr": 1.0
+          },
+          "fused": {
+            "recall@1": 1.0,
+            "recall@5": 1.0,
+            "recall@10": 1.0,
+            "recall@20": 1.0,
+            "mrr": 1.0
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.12798468549999598,
+          "dense": 0.3234693395000079
+        }
+      },
+      "ncbi_disease": {
+        "ontology": "ctd-disease-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.56,
+            "recall@5": 0.58,
+            "recall@10": 0.58,
+            "recall@20": 0.58,
+            "mrr": 0.5666666666666667
+          },
+          "dense": {
+            "recall@1": 0.7,
+            "recall@5": 0.74,
+            "recall@10": 0.74,
+            "recall@20": 0.74,
+            "mrr": 0.708
+          },
+          "fused": {
+            "recall@1": 0.7,
+            "recall@5": 0.7,
+            "recall@10": 0.74,
+            "recall@20": 0.74,
+            "mrr": 0.7044444444444444
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.1248548705000303,
+          "dense": 0.3330689384999914
+        }
+      },
+      "nlm_gene": {
+        "ontology": "ncbi-gene-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.66,
+            "recall@5": 0.66,
+            "recall@10": 0.66,
+            "recall@20": 0.66,
+            "mrr": 0.66
+          },
+          "dense": {
+            "recall@1": 0.9,
+            "recall@5": 0.92,
+            "recall@10": 0.92,
+            "recall@20": 0.92,
+            "mrr": 0.91
+          },
+          "fused": {
+            "recall@1": 0.68,
+            "recall@5": 0.92,
+            "recall@10": 0.92,
+            "recall@20": 0.92,
+            "mrr": 0.745
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.12826521299999172,
+          "dense": 0.46588862449999624
+        }
+      },
+      "cafeteria_fcd": {
+        "ontology": "foodon-sample",
+        "mentions": 50,
+        "status": {
+          "bm25": {
+            "status": "ok"
+          },
+          "dense": {
+            "status": "ok"
+          }
+        },
+        "metrics": {
+          "bm25": {
+            "recall@1": 0.94,
+            "recall@5": 0.94,
+            "recall@10": 0.94,
+            "recall@20": 0.94,
+            "mrr": 0.94
+          },
+          "dense": {
+            "recall@1": 0.84,
+            "recall@5": 0.94,
+            "recall@10": 0.96,
+            "recall@20": 0.98,
+            "mrr": 0.8890384615384616
+          },
+          "fused": {
+            "recall@1": 0.88,
+            "recall@5": 0.94,
+            "recall@10": 0.96,
+            "recall@20": 0.98,
+            "mrr": 0.9135555555555557
+          }
+        },
+        "errors": {
+          "bm25": 0,
+          "dense": 0
+        },
+        "median_search_s": {
+          "bm25": 0.1253122425000015,
+          "dense": 0.7801924245000009
+        }
+      }
+    }
+  }
+}

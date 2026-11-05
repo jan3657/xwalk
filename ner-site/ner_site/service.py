@@ -10,11 +10,14 @@ responses.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
+import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import httpx
@@ -39,8 +42,22 @@ from ner_site.schema import (
     ServiceError,
     Usage,
 )
+from ner_site.select import (
+    JEV,
+    JEV_MODEL,
+    JEV_RETRIES,
+    JEV_TIMEOUT_S,
+    JEV_URL,
+    RETRIEVAL_ONLY,
+    SelectStats,
+    select_entities,
+)
+from xwalk.decide.base import DecisionClient
+from xwalk.decide.budget import BudgetedDecider
+from xwalk.decide.fake import FakeDecider
+from xwalk.decide.jev import JevClient
 from xwalk.fingerprint import redact_url
-from xwalk.llm.base import LLMClient, LLMError
+from xwalk.llm.base import LLMClient, LLMError, LLMRequest
 from xwalk.llm.budget import BudgetedLLM, CallBudget, CallLimitExceeded
 from xwalk.llm.openai_compat import OpenAICompatClient
 from xwalk.records import Usage as XwalkUsage
@@ -52,6 +69,18 @@ DEFAULT_MODELS = (
     "google/gemini-2.5-flash-lite",
     "qwen/qwen3-next-80b-a3b-instruct",
 )
+# What may pick the match among an entity's retrieved candidates (ner_site.select), after
+# "retrieval" (the fused ranking alone), which is always offered. Each one answered live
+# requests on 4 November 2026 (cheap, recent, structured output); DeepSeek V4.1 Flash
+# returned non-JSON once and Qwen3.7 Flash had no endpoint under the account's data
+# policy, so they are left out.
+DEFAULT_SELECTORS = (
+    JEV,
+    "openai/gpt-6-luna",
+    "anthropic/claude-haiku-5.5",
+    "google/gemini-3.1-flash-lite",
+)
+SELECTOR_CALLS_PER_ENTITY = 4  # Jev: one screen chunk, choose, gate, and one spare
 DEFAULT_CACHE_DIR = Path("/tmp/xwalk-ner-site")
 OFFLINE_MODEL = "offline"
 
@@ -70,6 +99,9 @@ EXTRACT_TIMEOUT_S = 90.0
 MAP_RETRIEVER_TIMEOUT_S = 30.0
 REQUEST_DEADLINE_S = 100.0
 MIN_MAP_BUDGET_S = 5.0
+# The selection step after mapping gets what is left of REQUEST_DEADLINE_S, at least
+# MIN_SELECT_BUDGET_S; worst case the request then ends by about 110 s.
+MIN_SELECT_BUDGET_S = 5.0
 
 MAX_ERROR_DETAIL = 300
 MIN_SCRUBBED_CHARS = 8
@@ -97,6 +129,8 @@ ENV_NAMES = (
     "NER_SITE_NEON_SCHEMA",
     "NER_SITE_NEON_DIMENSIONS",
     "NER_SITE_NEON_CATALOG",
+    "NER_SITE_SELECTORS",
+    "NER_SITE_SELECTOR",
     *(name for name, _, _, _ in _LIMIT_ENV),
 )
 
@@ -136,6 +170,8 @@ class Settings:
     neon_schema: str = NEON_SCHEMA
     neon_dimensions: int = NEON_DIMENSIONS
     catalog: Catalog = "samples"
+    selectors: tuple[str, ...] = DEFAULT_SELECTORS
+    selector: str = RETRIEVAL_ONLY
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
@@ -205,6 +241,20 @@ class Settings:
         }:
             raise SettingsError("DATABASE_URL must be a postgres:// or postgresql:// URL")
 
+        raw_selectors = get("NER_SITE_SELECTORS")
+        selectors = (
+            tuple(dict.fromkeys(m.strip() for m in raw_selectors.split(",") if m.strip()))
+            if raw_selectors
+            else DEFAULT_SELECTORS
+        )
+        selectors = tuple(m for m in selectors if m != RETRIEVAL_ONLY)
+        selector = get("NER_SITE_SELECTOR") or RETRIEVAL_ONLY
+        offered = (RETRIEVAL_ONLY, JEV) if offline_raw in _TRUE else (RETRIEVAL_ONLY, *selectors)
+        if selector not in offered:
+            raise SettingsError(
+                f"NER_SITE_SELECTOR must be one of {', '.join(offered)} (NER_SITE_SELECTORS)"
+            )
+
         dense = get("NER_SITE_DENSE_DIR")
         cache = get("NER_SITE_CACHE_DIR")
         return cls(
@@ -221,6 +271,8 @@ class Settings:
             neon_schema=schema,
             neon_dimensions=int(raw_dims) if raw_dims else NEON_DIMENSIONS,
             catalog="full" if catalog == "full" else "samples",
+            selectors=selectors,
+            selector=selector,
         )
 
     @property
@@ -237,10 +289,22 @@ class Settings:
         return self.offered_models[0]
 
     @property
+    def offered_selectors(self) -> tuple[str, ...]:
+        """What may pick the match: ``retrieval`` (no selector) first, then Jev and the
+        LLMs. Offline, Jev is a token-overlap stand-in and no LLM is offered."""
+        if self.offline:
+            return (RETRIEVAL_ONLY, JEV)
+        return (RETRIEVAL_ONLY, *self.selectors)
+
+    @property
+    def default_selector(self) -> str:
+        return self.selector
+
+    @property
     def default_prompt(self) -> str:
         """The extraction prompt used when a request sends none, stating this
         deployment's entity limit; ``/api/health`` serves it."""
-        return render_default_prompt(self.limits.max_entities)
+        return render_default_prompt(self.limits.max_entities, types=tuple(self.routes))
 
     @property
     def routes(self) -> dict[str, str]:
@@ -286,6 +350,42 @@ def scrub(message: str, settings: Settings) -> str:
     return re.sub(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s'\"<>]+", lambda m: redact_url(m[0]), message)
 
 
+class OpenRouterClient(OpenAICompatClient):
+    """`OpenAICompatClient` that switches off OpenRouter's reasoning on every request.
+
+    On real abstracts (4 November 2026) GPT-6 Luna and Claude Haiku 5.5 spent the whole
+    2048-token output budget on hidden reasoning and returned no answer at all
+    (``finish_reason: length``, ``reasoning_tokens: 2048``); with ``reasoning:
+    {enabled: false}`` they answer in a few hundred tokens. Only sent to OpenRouter:
+    other OpenAI-compatible endpoints do not know the field."""
+
+    def _body(self, request: LLMRequest, *, structured: bool) -> dict[str, Any]:
+        body = super()._body(request, structured=structured)
+        body.setdefault("reasoning", {"enabled": False})
+        return body
+
+
+def provider_profile(model: str) -> str:
+    """The capability profile for `model`. Anthropic models are asked for JSON in the
+    prompt, not with a strict json_schema: with reasoning off, Claude Haiku 5.5 under
+    the schema returned one entity with zero offsets; in the prompt, all of them."""
+    return "anthropic-compat" if model.startswith("anthropic/") else "openai"
+
+
+def _client(settings: Settings, model: str, **kw: Any) -> OpenAICompatClient:
+    host = urlsplit(settings.base_url).hostname or ""
+    openrouter = host == "openrouter.ai" or host.endswith(".openrouter.ai")
+    kind = OpenRouterClient if openrouter else OpenAICompatClient
+    return kind(
+        settings.base_url,
+        model,
+        api_key=settings.api_key,
+        profile=provider_profile(model),
+        extra_headers={"HTTP-Referer": SITE_URL, "X-Title": SITE_TITLE},
+        **kw,
+    )
+
+
 def make_llm(
     settings: Settings,
     model: str,
@@ -297,20 +397,128 @@ def make_llm(
 
     ``transport`` and ``backoff_base`` exist for tests (MockTransport, no sleeping).
     The caller closes it (``await llm.aclose()``)."""
-    client = OpenAICompatClient(
-        settings.base_url,
+    client = _client(
+        settings,
         model,
-        api_key=settings.api_key,
-        profile="openai",
         temperature=TEMPERATURE,
         max_tokens=MAX_TOKENS,
         timeout=LLM_TIMEOUT_S,
         max_retries=LLM_MAX_RETRIES,
         backoff_base=backoff_base,
         transport=transport,
-        extra_headers={"HTTP-Referer": SITE_URL, "X-Title": SITE_TITLE},
     )
     return BudgetedLLM(client, CallBudget(limit=settings.limits.llm_call_cap))
+
+
+def make_select_llm(
+    settings: Settings, model: str, *, transport: httpx.AsyncBaseTransport | None = None
+) -> BudgetedLLM:
+    """The LLM selector's client: one call per routed entity, capped at one per entity
+    allowed (no retries beyond the client's own). The caller closes it."""
+    client = _client(
+        settings,
+        model,
+        temperature=0.0,
+        max_tokens=600,
+        timeout=LLM_TIMEOUT_S,
+        max_retries=1,
+        transport=transport,
+    )
+    return BudgetedLLM(client, CallBudget(limit=settings.limits.max_entities * 2))
+
+
+def make_decider(
+    settings: Settings, *, transport: httpx.AsyncBaseTransport | None = None
+) -> DecisionClient:
+    """Jev through OpenRouter with the site's key, capped per request; offline, the
+    token-overlap stand-in. The caller closes it when it has ``aclose``."""
+    if settings.offline:
+        return FakeDecider(model="offline-jev")
+    client = JevClient(
+        JEV_URL,
+        JEV_MODEL,
+        api_key=settings.api_key,
+        timeout=JEV_TIMEOUT_S,
+        max_retries=JEV_RETRIES,
+        transport=transport,
+    )
+    budget = CallBudget(limit=settings.limits.max_entities * SELECTOR_CALLS_PER_ENTITY)
+    return BudgetedDecider(client, budget)
+
+
+# /api/health asks OpenRouter whether the key still works (GET /api/v1/key: free, no
+# model call), remembering the answer; an expired key otherwise shows "llm ok" while every
+# POST /api/ner fails with 502 (4 November 2026).
+KEY_CHECK_URL = "https://openrouter.ai/api/v1/key"
+KEY_CHECK_TIMEOUT_S = 5.0
+KEY_OK_TTL_S = 300.0
+KEY_REFUSED_TTL_S = 60.0
+_KEY_CACHE: dict[str, tuple[float, RetrieverStatus]] = {}
+_KEY_LOCK = threading.Lock()
+
+
+def reset_key_check() -> None:
+    with _KEY_LOCK:
+        _KEY_CACHE.clear()
+
+
+def _key_status(settings: Settings, transport: httpx.BaseTransport | None) -> RetrieverStatus:
+    try:
+        with httpx.Client(timeout=KEY_CHECK_TIMEOUT_S, transport=transport) as client:
+            response = client.get(
+                KEY_CHECK_URL, headers={"Authorization": f"Bearer {settings.api_key}"}
+            )
+    except httpx.HTTPError as exc:
+        return RetrieverStatus(
+            status="ok", reason=f"key not checked (OpenRouter unreachable: {type(exc).__name__})"
+        )
+    try:
+        payload: Any = response.json()
+    except ValueError:
+        payload = None
+    if response.status_code in (401, 403):
+        error = payload.get("error") if isinstance(payload, dict) else None
+        detail = error.get("message") if isinstance(error, dict) else None
+        reason = (
+            f"OPENROUTER_API_KEY was refused by OpenRouter (HTTP {response.status_code}"
+            + (f": {str(detail)[:120]}" if detail else "")
+            + "); POST /api/ner answers 502 until the key is replaced"
+        )
+        return RetrieverStatus(status="unavailable", reason=scrub(reason, settings))
+    if response.status_code != 200:
+        return RetrieverStatus(
+            status="ok", reason=f"key not checked (OpenRouter answered HTTP {response.status_code})"
+        )
+    data = payload.get("data") if isinstance(payload, dict) else None
+    remaining = data.get("limit_remaining") if isinstance(data, dict) else None
+    if isinstance(remaining, (int, float)) and remaining <= 0:
+        return RetrieverStatus(
+            status="unavailable",
+            reason="the OpenRouter key's spending limit is used up; raise it or replace the key",
+        )
+    return RetrieverStatus(status="ok")
+
+
+def check_key(
+    settings: Settings, *, transport: httpx.BaseTransport | None = None
+) -> RetrieverStatus | None:
+    """Whether OpenRouter accepts ``OPENROUTER_API_KEY`` (None without a key). A refused
+    or spent key is ``unavailable`` with OpenRouter's reason; a check that could not reach
+    OpenRouter is ``ok`` with a "not checked" reason, never an outage. Remembered for
+    ``KEY_OK_TTL_S`` (``KEY_REFUSED_TTL_S`` when refused), per key."""
+    if not settings.api_key:
+        return None
+    slot = hashlib.sha256(settings.api_key.encode()).hexdigest()
+    now = time.monotonic()
+    with _KEY_LOCK:
+        cached = _KEY_CACHE.get(slot)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+    status = _key_status(settings, transport)
+    ttl = KEY_OK_TTL_S if status.status == "ok" else KEY_REFUSED_TTL_S
+    with _KEY_LOCK:
+        _KEY_CACHE[slot] = (now + ttl, status)
+    return status
 
 
 def _bad(code: str, message: str) -> ServiceError:
@@ -350,18 +558,35 @@ def validate_request(request: NerRequest, settings: Settings) -> NerRequest:
             f"model {_shown(model)} is not offered; choose one of "
             f"{', '.join(settings.offered_models)}",
         )
-    return NerRequest(text=request.text, prompt=prompt, model=model, top_k=request.top_k)
+    selector = request.selector if request.selector is not None else settings.default_selector
+    if selector not in settings.offered_selectors:
+        raise _bad(
+            "unknown_selector",
+            f"selector {_shown(selector)} is not offered; choose one of "
+            f"{', '.join(settings.offered_selectors)}",
+        )
+    return NerRequest(
+        text=request.text, prompt=prompt, model=model, top_k=request.top_k, selector=selector
+    )
 
 
-def wire_usage(usage: XwalkUsage, embedding_requests: int) -> Usage:
+def wire_usage(
+    usage: XwalkUsage, embedding_requests: int, selected: SelectStats | None = None
+) -> Usage:
     """Tokens are reported only when every call reported them; otherwise null, never 0.
-    No call at all (the offline stand-in) reports no tokens either."""
+    No call at all (the offline stand-in) reports no tokens either. The same holds for
+    the selector's tokens and the cost its provider reported."""
     known = usage.calls > 0 and usage.unknown_calls == 0
+    picked = selected if selected is not None and selected.calls > 0 else None
     return Usage(
         llm_calls=usage.calls,
         prompt_tokens=usage.prompt_tokens if known else None,
         completion_tokens=usage.completion_tokens if known else None,
         embedding_requests=embedding_requests,
+        selector_calls=0 if selected is None else selected.calls,
+        selector_prompt_tokens=None if picked is None else picked.prompt_tokens,
+        selector_completion_tokens=None if picked is None else picked.completion_tokens,
+        selector_cost_usd=None if picked is None else picked.reported_cost,
     )
 
 
@@ -436,8 +661,14 @@ async def run(
     llm: LLMClient,
     indexes: Mapping[str, OntologyIndex],
     started_at: float | None = None,
+    decider: DecisionClient | None = None,
+    select_llm: LLMClient | None = None,
 ) -> NerResponse:
-    """One request: validate, extract with ``llm`` (one call), map, report.
+    """One request: validate, extract with ``llm`` (one call), map, select, report.
+
+    The selection step runs when the request's selector is not ``retrieval``: Jev with
+    ``decider``, any other selector with ``select_llm`` (``ner_site.http`` builds them
+    with :func:`make_decider` and :func:`make_select_llm`).
 
     ``started_at`` (``time.monotonic()``) is when the request began, if earlier than
     this call (opening the indexes on a cold start); the mapping deadline counts from it.
@@ -449,7 +680,13 @@ async def run(
     started = time.monotonic()
     try:
         entities, warnings, usage = await asyncio.wait_for(
-            extract(llm, req.text, req.prompt, max_entities=settings.limits.max_entities),
+            extract(
+                llm,
+                req.text,
+                req.prompt,
+                max_entities=settings.limits.max_entities,
+                types=(*settings.routes, "other"),
+            ),
             timeout=EXTRACT_TIMEOUT_S,
         )
     except ServiceError:
@@ -489,6 +726,37 @@ async def run(
     )
     mapped = time.monotonic()
 
+    selector = req.selector or RETRIEVAL_ONLY
+    picked: SelectStats | None = None
+    if selector != RETRIEVAL_ONLY:
+        if (selector == JEV and decider is None) or (selector != JEV and select_llm is None):
+            raise ServiceError("not_configured", f"selector {selector!r} has no client", status=503)
+        picked = SelectStats()
+        results = await select_entities(
+            results,
+            stats.candidates,
+            indexes,
+            selector=selector,
+            text=req.text,
+            stats=picked,
+            decider=decider,
+            llm=select_llm,
+            deadline=max(MIN_SELECT_BUDGET_S, REQUEST_DEADLINE_S - (mapped - began)),
+        )
+        results = [
+            r.model_copy(
+                update={
+                    "pick": r.pick.model_copy(
+                        update={"explanation": _clean(r.pick.explanation, settings)}
+                    )
+                }
+            )
+            if r.pick is not None
+            else r
+            for r in results
+        ]
+    selected = time.monotonic()
+
     retrieval = retrieval_status(indexes, settings)
     notes: list[str] = list(warnings) + stats.warnings
     _dense_outcome(retrieval, stats, notes)
@@ -498,18 +766,19 @@ async def run(
         if routed and status is not None and status.status != "ok":
             fallback = "BM25 only" if kind == "dense" else "dense only"
             notes.append(f"{kind} retrieval unavailable; matches use {fallback}")
+    timing = {"extract": _ms(extracted - started), "map": _ms(mapped - extracted)}
+    if picked is not None:
+        timing["select"] = _ms(selected - mapped)
+    timing["total"] = _ms(selected - started)
     return NerResponse(
         model=req.model,
         mode=settings.mode,
+        selector=selector,
         entities=results,
         retrieval=retrieval,
         warnings=[scrub(n, settings) for n in notes],
-        usage=wire_usage(usage, stats.embedding_requests),
-        timing_ms={
-            "extract": _ms(extracted - started),
-            "map": _ms(mapped - extracted),
-            "total": _ms(mapped - started),
-        },
+        usage=wire_usage(usage, stats.embedding_requests, picked),
+        timing_ms=timing,
     )
 
 
@@ -521,7 +790,11 @@ __all__ = [
     "IndexView",
     "Settings",
     "SettingsError",
+    "check_key",
+    "make_decider",
     "make_llm",
+    "make_select_llm",
+    "reset_key_check",
     "retrieval_status",
     "run",
     "scrub",

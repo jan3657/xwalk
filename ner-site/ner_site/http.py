@@ -42,11 +42,15 @@ from ner_site.schema import (
     RetrieverStatus,
     ServiceError,
 )
+from ner_site.select import JEV, RETRIEVAL_ONLY
 from ner_site.service import (
     ENV_NAMES,
     Settings,
     SettingsError,
+    check_key,
+    make_decider,
     make_llm,
+    make_select_llm,
     retrieval_status,
     run,
     validate_request,
@@ -209,6 +213,8 @@ def _health(settings: Settings) -> dict[str, Any]:
         default_prompt=settings.default_prompt,
         ontologies=[OntologySummary.model_validate(o) for o in _catalog(settings, indexes)],
         retrieval=retrieval_status(indexes, settings),
+        selectors=list(settings.offered_selectors),
+        default_selector=settings.default_selector,
     )
     data: dict[str, Any] = health.model_dump(mode="json")
     # Not in HealthResponse: what an operator needs to see when /api/ner would be 503.
@@ -220,7 +226,7 @@ def _health(settings: Settings) -> dict[str, Any]:
             reason="OPENROUTER_API_KEY is not set; POST /api/ner answers 503 not_configured",
         )
     else:
-        llm = RetrieverStatus(status="ok")
+        llm = check_key(settings) or RetrieverStatus(status="ok")
     data["llm"] = llm.model_dump(mode="json")
     # Not in HealthResponse either: where the terms and indexes come from.
     data["backend"] = settings.backend
@@ -237,14 +243,30 @@ async def _ner(
     assert valid.model is not None
     log["model"] = valid.model
     log["top_k"] = valid.top_k
+    log["selector"] = valid.selector
     indexes = get_indexes(settings.index_settings())
     llm = factory(settings, valid.model)
+    decider = make_decider(settings) if valid.selector == JEV else None
+    select_llm = (
+        make_select_llm(settings, valid.selector)
+        if valid.selector not in (None, JEV, RETRIEVAL_ONLY)
+        else None
+    )
     try:
-        response = await run(valid, settings=settings, llm=llm, indexes=indexes, started_at=started)
+        response = await run(
+            valid,
+            settings=settings,
+            llm=llm,
+            indexes=indexes,
+            started_at=started,
+            decider=decider,
+            select_llm=select_llm,
+        )
     finally:
-        close = getattr(llm, "aclose", None)
-        if callable(close):
-            await close()
+        for client in (llm, decider, select_llm):
+            close = getattr(client, "aclose", None)
+            if callable(close):
+                await close()
     log.update(
         entities=len(response.entities),
         matches=sum(len(e.matches) for e in response.entities),
@@ -253,6 +275,9 @@ async def _ner(
         prompt_tokens=response.usage.prompt_tokens,
         completion_tokens=response.usage.completion_tokens,
         embedding_requests=response.usage.embedding_requests,
+        selector_calls=response.usage.selector_calls,
+        selector_cost_usd=response.usage.selector_cost_usd,
+        picks=sum(1 for e in response.entities if e.pick is not None and e.pick.id),
         dense=response.retrieval["dense"].status if "dense" in response.retrieval else None,
         timing_ms=response.timing_ms,
     )

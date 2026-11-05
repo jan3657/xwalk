@@ -28,10 +28,10 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from ner_site.indexes import OntologyIndex
+from ner_site.indexes import OntologyIndex, PrefetchEncoder
 from ner_site.ontologies import TEMPLATES, route, term_url
 from ner_site.schema import Entity, EntityResult, Match
-from xwalk.records import Record, RetrievalHit
+from xwalk.records import Candidate, Record, RetrievalHit
 from xwalk.retrieval.base import Retriever, SearchRequest
 from xwalk.retrieval.dense import DenseRetriever
 from xwalk.retrieval.postgres import PgVectorRetriever
@@ -41,6 +41,10 @@ OTHER_NOTE = "no ontology for type 'other'"
 ALL_FAILED_NOTE = "every retriever failed; no matches"
 DEADLINE_NOTE = "cut off by the request deadline"
 LOCAL_GRACE_S = 5.0  # what local (BM25) searches may run past the deadline
+# How deep the fused ranking is listed: `matches` (the visitor's top_k) plus `more`, up to
+# here. A selector (ner_site.select) chooses among the same depth, so its pick is always
+# one of the listed candidates.
+MAX_LISTED = 30
 # `retrieve`'s own timeout is a backstop only: `_Bounded` always fires first.
 _BACKSTOP_S = 1.0
 # The retrievers that embed the query (one embeddings request per search): the bundled
@@ -59,6 +63,9 @@ class MapStats:
 
     embedding_requests: int = 0
     warnings: list[str] = field(default_factory=list)
+    # Every routed entity's fused candidates, best first, before the top_k cut: what a
+    # selector (``ner_site.select``) chooses among.
+    candidates: dict[str, list[Candidate]] = field(default_factory=dict)
     dense_entities: list[str] = field(default_factory=list)
     dense_failed: dict[str, str] = field(default_factory=dict)
 
@@ -121,6 +128,42 @@ def _result(
     entity: Entity, ontology: str | None, matches: list[Match], notes: list[str]
 ) -> EntityResult:
     return EntityResult(**entity.model_dump(), ontology=ontology, matches=matches, notes=notes)
+
+
+async def _prefetch(
+    entities: Sequence[Entity],
+    indexes: Mapping[str, OntologyIndex],
+    routes: Mapping[str, str] | None,
+    timeout: float,
+    deadline_at: float | None,
+    stats: MapStats,
+) -> None:
+    """Embed every routed entity's query in one request per query encoder (in practice
+    one: every ontology shares it), before the searches; each dense search then finds
+    its vector in memory. A failed or slow batch is not an error: the searches embed
+    their own queries as before, bounded as before."""
+    batches: dict[int, tuple[PrefetchEncoder, list[str]]] = {}
+    for entity in entities:
+        slug = route(entity.type, routes)
+        index = indexes.get(slug) if slug is not None else None
+        if index is None or index.encoder is None:
+            continue
+        query = TEMPLATES.render_query(Record(entity.id, {"mention": entity.text}))
+        if query:
+            batches.setdefault(id(index.encoder), (index.encoder, []))[1].append(query)
+    for encoder, queries in batches.values():
+        limit = timeout
+        if deadline_at is not None:
+            limit = min(limit, deadline_at - time.monotonic())
+        if limit <= 0:
+            return
+        sending = any(not encoder.cached(q) for q in queries)
+        try:
+            stats.embedding_requests += await asyncio.wait_for(
+                asyncio.to_thread(encoder.prefetch, queries), timeout=limit
+            )
+        except Exception:  # noqa: BLE001 - the searches embed one by one instead
+            stats.embedding_requests += int(sending)  # sent, then failed or timed out
 
 
 async def map_entities(
@@ -186,19 +229,23 @@ async def map_entities(
                 )
             except Exception as exc:  # noqa: BLE001 - a note, never a 5xx
                 candidates, notes, all_failed = [], [f"retrieval failed: {exc}"], True
-        stats.embedding_requests += sum(b.dispatched for b in dense)
+        # A query the batch already embedded costs no request of its own.
+        prefetched = index.encoder is not None and index.encoder.cached(query)
+        if not prefetched:
+            stats.embedding_requests += sum(b.dispatched for b in dense)
         if dense:
             dense_seen.add(entity.id)
             failed = next((b for b in dense if b.failure is not None), None)
             if failed is not None:
                 stats.dense_failed[entity.id] = tidy(f"{failed.name}: {failed.failure}")
+        stats.candidates[entity.id] = list(candidates)
         notes = [tidy(note) for note in notes]
         for note in notes:
             degraded.setdefault(note, []).append(entity.id)
         entity_notes = list(notes)
         if all_failed:
             entity_notes.append(ALL_FAILED_NOTE)
-        matches = [
+        listed = [
             Match(
                 id=c.id,
                 label=str(c.record.fields.get("label", "")),
@@ -206,10 +253,12 @@ async def map_entities(
                 retrievers={h.retriever: h.rank for h in c.evidence},
                 url=term_url(c.id),
             )
-            for c in candidates[:top_k]
+            for c in candidates[: max(top_k, MAX_LISTED)]
         ]
-        return _result(entity, slug, matches, entity_notes)
+        result = _result(entity, slug, listed[:top_k], entity_notes)
+        return result.model_copy(update={"more": listed[top_k:]})
 
+    await _prefetch(entities, indexes, routes, timeout, deadline_at, stats)
     results = list(await asyncio.gather(*(one(e) for e in entities)))
     order = {e.id: i for i, e in enumerate(entities)}
     stats.dense_entities = [e.id for e in entities if e.id in dense_seen]

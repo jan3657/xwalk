@@ -301,7 +301,12 @@ def test_run_end_to_end_with_fake_llm(tmp_path: Path, bm25_only: Any) -> None:
         "prompt_tokens": 100,
         "completion_tokens": 20,
         "embedding_requests": 0,
+        "selector_calls": 0,
+        "selector_prompt_tokens": None,
+        "selector_completion_tokens": None,
+        "selector_cost_usd": None,
     }
+    assert out.selector == "retrieval" and all(e.pick is None for e in out.entities)
     assert set(out.timing_ms) == {"extract", "map", "total"}
     assert llm.requests[0].user.endswith(f"TEXT:\n{text}")
     assert DEFAULT_PROMPT in llm.requests[0].user
@@ -507,3 +512,192 @@ def test_run_scrubs_and_caps_entity_notes_and_warnings(tmp_path: Path, bm25_only
         assert SENTINEL_KEY not in text and "hunter2" not in text
         assert len(text) <= service.MAX_ERROR_DETAIL + 40
     assert "emb.example" in leaked[0] and "[redacted]" in leaked[0]
+
+
+# --- selection --------------------------------------------------------------------
+
+
+def test_selectors_are_offered_and_validated(tmp_path: Path) -> None:
+    from ner_site.select import JEV, RETRIEVAL_ONLY
+
+    plain = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    assert plain.offered_selectors[0] == RETRIEVAL_ONLY and JEV in plain.offered_selectors
+    assert plain.default_selector == RETRIEVAL_ONLY
+    assert validate_request(NerRequest(text="ok"), plain).selector == RETRIEVAL_ONLY
+    jev = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_SELECTOR="jev")
+    assert jev.default_selector == JEV
+    assert validate_request(NerRequest(text="ok"), jev).selector == JEV
+    chosen = validate_request(NerRequest(text="ok", selector=RETRIEVAL_ONLY), jev)
+    assert chosen.selector == RETRIEVAL_ONLY
+    with pytest.raises(ServiceError) as exc:
+        validate_request(NerRequest(text="ok", selector="openai/gpt-1"), jev)
+    assert exc.value.code == "unknown_selector" and exc.value.status == 400
+    own = _settings(tmp_path, NER_SITE_SELECTORS="jev, qwen/qwen3.7-flash")
+    assert own.offered_selectors == (RETRIEVAL_ONLY, JEV, "qwen/qwen3.7-flash")
+    with pytest.raises(SettingsError):
+        _settings(tmp_path, NER_SITE_SELECTOR="nobody")
+    offline = _settings(tmp_path, NER_SITE_OFFLINE="1")
+    assert offline.offered_selectors == (RETRIEVAL_ONLY, JEV)
+
+
+def test_run_with_jev_picks_among_the_retrieved_terms(tmp_path: Path, bm25_only: Any) -> None:
+    from xwalk.decide.fake import FakeDecider
+
+    text = "She took haloperidol for a fever."
+    llm = FakeLLM([_answer(("haloperidol", "chemical", 9, 20))])
+    decider = FakeDecider()
+    s = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_SELECTOR="jev")
+    out = asyncio.run(
+        run(NerRequest(text=text), settings=s, llm=llm, indexes=bm25_only, decider=decider)
+    )
+    (entity,) = out.entities
+    assert out.selector == "jev"
+    assert entity.pick is not None and entity.pick.selector == "jev"
+    assert entity.pick.status in {"match", "review", "no_match"}
+    assert entity.pick.id is None or entity.pick.id.startswith("CHEBI:")
+    assert out.usage.selector_calls == len(decider.calls) > 0
+    assert out.usage.selector_prompt_tokens == 100 * len(decider.calls)
+    assert "select" in out.timing_ms
+    # Jev saw the mention in its sentence.
+    assert any("took" in json.dumps(state) for state, _ in decider.calls)
+
+
+def test_run_with_an_llm_selector_needs_its_client(tmp_path: Path, bm25_only: Any) -> None:
+    text = "She took haloperidol for a fever."
+    s = _settings(
+        tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, NER_SITE_SELECTORS="qwen/qwen3.7-flash"
+    )
+    picker = FakeLLM(['{"chosen_key": "C01", "confidence_score": 0.7, "explanation": "first"}'])
+    out = asyncio.run(
+        run(
+            NerRequest(text=text, selector="qwen/qwen3.7-flash"),
+            settings=s,
+            llm=FakeLLM([_answer(("haloperidol", "chemical", 9, 20))]),
+            indexes=bm25_only,
+            select_llm=picker,
+        )
+    )
+    (entity,) = out.entities
+    assert entity.pick is not None and entity.pick.status == "match"
+    assert entity.pick.id == entity.matches[0].id == "CHEBI:5613"
+    assert out.usage.selector_calls == 1 and out.usage.selector_cost_usd is None
+
+
+# --- real-world fixes (4 November 2026) -------------------------------------------
+
+
+def _capture(tmp_path: Path, model: str, maker: Any, **env: str) -> dict[str, Any]:
+    """The JSON body the client posts for one extraction call to `model`."""
+    seen: list[httpx.Request] = []
+
+    def chat(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "model": model,
+                "choices": [{"message": {"content": '{"entities": []}'}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 5},
+            },
+        )
+
+    s = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY, **env)
+    llm = maker(s, model, transport=httpx.MockTransport(chat))
+
+    async def go() -> None:
+        try:
+            await extract(llm, "nothing here", DEFAULT_PROMPT, max_entities=25)
+        finally:
+            await llm.aclose()
+
+    asyncio.run(go())
+    (request,) = seen
+    body: dict[str, Any] = json.loads(request.content)
+    return body
+
+
+@pytest.mark.parametrize("maker", [make_llm, service.make_select_llm])
+def test_reasoning_is_switched_off_on_openrouter(tmp_path: Path, maker: Any) -> None:
+    """GPT-6 Luna and Claude Haiku 5.5 spent all 2048 output tokens on hidden reasoning
+    and returned nothing on real abstracts; with reasoning off they answer."""
+    for model in (
+        "openai/gpt-6-luna",
+        "anthropic/claude-haiku-5.5",
+        "google/gemini-3.1-flash-lite",
+    ):
+        assert _capture(tmp_path, model, maker)["reasoning"] == {"enabled": False}
+    other = _capture(tmp_path, "gpt-x", maker, NER_SITE_BASE_URL="https://llm.example/v1")
+    assert "reasoning" not in other  # an unknown field for other OpenAI-compatible APIs
+
+
+@pytest.mark.parametrize("maker", [make_llm, service.make_select_llm])
+def test_anthropic_models_are_asked_for_json_in_the_prompt_not_a_schema(
+    tmp_path: Path, maker: Any
+) -> None:
+    """With reasoning off, Claude Haiku 5.5 under a strict json_schema returned one
+    entity with zero offsets; asked in the prompt it returned them all."""
+    assert "response_format" not in _capture(tmp_path, "anthropic/claude-haiku-5.5", maker)
+    assert "response_format" in _capture(tmp_path, "openai/gpt-6-luna", maker)
+    assert "response_format" in _capture(tmp_path, "google/gemini-3.1-flash-lite", maker)
+
+
+def test_the_full_catalog_neither_asks_for_nor_keeps_genes(tmp_path: Path) -> None:
+    from ner_site.extract import build_request, parse_entities
+
+    full = ("chemical", "disease", "food", "other")
+    request = build_request("x", "find things", types=full)
+    assert '"gene"' not in request.system
+    assert request.schema is not None
+    items = request.schema["properties"]["entities"]["items"]
+    assert items["properties"]["type"]["enum"] == list(full)
+    raw = json.dumps({"entities": [{"text": "BRCA1", "type": "gene", "start": 0, "end": 5}]})
+    (entity,), _ = parse_entities(raw, "BRCA1 is a gene.", max_entities=5, types=full)
+    assert entity.type == "other"
+    every = build_request("x", "find things")
+    assert '"gene"' in every.system
+
+
+def _key_answer(status: int, payload: dict[str, Any]) -> httpx.MockTransport:
+    def answer(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://openrouter.ai/api/v1/key"
+        assert request.headers["authorization"] == f"Bearer {SENTINEL_KEY}"
+        return httpx.Response(status, json=payload)
+
+    return httpx.MockTransport(answer)
+
+
+def test_health_reports_a_key_openrouter_refuses(tmp_path: Path) -> None:
+    """An expired key left /api/health at llm ok while every POST failed with 502."""
+    service.reset_key_check()
+    s = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    expired = _key_answer(401, {"error": {"message": "API key expired.", "code": 401}})
+    status = service.check_key(s, transport=expired)
+    assert status is not None and status.status == "unavailable"
+    assert status.reason is not None and "API key expired." in status.reason
+    assert SENTINEL_KEY not in status.reason
+    # Remembered for a while: no second request.
+    assert service.check_key(s, transport=_key_answer(500, {})) == status
+
+
+def test_health_reports_a_spent_key_and_passes_a_good_one(tmp_path: Path) -> None:
+    s = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    service.reset_key_check()
+    spent = _key_answer(200, {"data": {"limit": 5.0, "limit_remaining": 0.0, "usage": 5.0}})
+    status = service.check_key(s, transport=spent)
+    assert status is not None and status.status == "unavailable"
+    assert status.reason is not None and "limit" in status.reason
+    service.reset_key_check()
+    good = _key_answer(200, {"data": {"limit": 5.0, "limit_remaining": 4.2, "usage": 0.8}})
+    assert service.check_key(s, transport=good) == service.RetrieverStatus(status="ok")
+
+
+def test_a_key_check_that_cannot_reach_openrouter_is_not_an_outage(tmp_path: Path) -> None:
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route")
+
+    service.reset_key_check()
+    s = _settings(tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    status = service.check_key(s, transport=httpx.MockTransport(down))
+    assert status is not None and status.status == "ok"
+    assert status.reason is not None and "not checked" in status.reason
+    assert service.check_key(_settings(tmp_path), transport=httpx.MockTransport(down)) is None

@@ -259,6 +259,83 @@ still pointed at Dynadot parking when this was written (apex A records
 216.198.79.1 and 64.29.17.1, www CNAME to the project's `*.vercel-dns-017.com`
 target, per Vercel's domain config for the project).
 
+### Switched to Neon, 4 November 2026
+
+Production variables added (production target): `DATABASE_URL` (Neon's pooled connection
+string, sensitive), `NER_SITE_BACKEND=neon`, `NER_SITE_NEON_CATALOG=samples` (the full
+catalogs are not loaded: the Neon org is on the free plan). Deployed with the Vercel CLI
+from `git archive` of `ner-site/` at `c20ed3d`, functions in `fra1`. Checked at
+https://www.xwalk.si and https://xwalk-ner.vercel.app:
+
+- DNS: Vercel's domain config reports `misconfigured: false` for `www.xwalk.si` (CNAME)
+  and `xwalk.si` (A 216.198.79.1, 64.29.17.1); `https://www.xwalk.si` answers 200 with a
+  Let's Encrypt certificate, `https://xwalk.si` 308 to `https://www.xwalk.si/`.
+- `/api/health` 200: `backend: neon`, `neon: {schema: xwalk, catalog: samples}`, BM25 ok,
+  dense ok, llm ok, `passcode_required: true`.
+- `POST /api/ner` without the passcode 401 `passcode_required`, with a wrong one 401
+  `passcode_invalid`.
+- With it, a six-entity text of sample terms: 200, every sample term at rank 1 in both
+  `bm25` and `dense-qwen3`, one gpt-4o-mini call (622 + 117 tokens), 6 embedding
+  requests; extract 2.2 to 2.7 s, **map 19 to 23 s**. The map time is the query
+  embeddings, not Neon: run locally against the same database with httpx logging, every
+  Neon SQL request took 120 to 170 ms while OpenRouter's embeddings requests (Qwen3 8B,
+  provider DeepInfra) took 0.5 to 12 s that hour (median 6.4 s, four in flight). One
+  single-entity run hit the encoder's 15 s timeout; the site answered with BM25 matches
+  and the warning "dense retrieval unavailable; matches use BM25 only", as designed.
+- Retrieval quality is unchanged by the switch: on the pilot gold sets the fused mean MRR
+  is 0.841 on Neon and 0.839 bundled (`benchmarks/results/site-retrieval-2026-11-04/`).
+
+Fallback: the committed dense indexes are still deployed, so setting
+`NER_SITE_BACKEND=bundled` (or removing it) and redeploying restores the bundled backend
+without a rebuild.
+
+### Full catalogs and selectors, 4 November 2026 (later the same day)
+
+Production now serves the full ChEBI, CTD diseases and FoodOn vocabularies from Neon
+(schema `xwalk_full`, `halfvec(768)`; NCBI Gene not loaded, genes not extracted) and lets
+the visitor choose what picks each entity's term (docs/ner-site/PLAN.md section 13).
+Production variables added or changed: `NER_SITE_NEON_CATALOG=full`,
+`NER_SITE_NEON_SCHEMA=xwalk_full`, `NER_SITE_NEON_DIMENSIONS=768`,
+`NER_SITE_SELECTOR=jev`, `NER_SITE_MODELS=google/gemini-3.1-flash-lite,openai/gpt-6-luna,anthropic/claude-haiku-5.5`.
+Deployed with the Vercel CLI from `git archive` of `ner-site/`. Checked at
+https://www.xwalk.si:
+
+- `/api/health` 200: `backend: neon`, `neon: {schema: xwalk_full, catalog: full}`,
+  ontologies ChEBI 219,011, CTD diseases 13,323, FoodOn 28,684 terms; BM25, dense and llm
+  ok; selectors `retrieval`, `jev`, `openai/gpt-6-luna`, `anthropic/claude-haiku-5.5`,
+  `google/gemini-3.1-flash-lite`, default `jev`; the default prompt asks for no genes.
+- `POST /api/ner` 401 without the passcode and with a wrong one.
+- With it, "Patients with Wilson disease and type 2 diabetes took aspirin and metformin;
+  the diet included whole milk yogurt and an apple." (Gemini 3.1 Flash Lite, Jev): 200 in
+  7.3 to 9.6 s round trip (extract 1.9 to 3.2 s, map 2.8 to 5.9 s, select 0.8 to 1.0 s),
+  695 + 170 tokens, 18 Jev calls reporting $0.0022; every pick looked right to me (this
+  text has no gold labels). Jev picked
+  "metformin" (CHEBI:6801) where retrieval ranked "metformin(2+)" first; the whole-milk
+  yogurt went to "review" on one run and "match" on the other.
+- Selectors compared live on the same text: GPT-6 Luna made the same picks in 6.1 s
+  (6 calls; its cost is not reported, so "unknown"), Claude Haiku 5.5 and Gemini 3.1 Flash
+  Lite answered too. DeepSeek V4.1 Flash returned non-JSON once and Qwen3.7 Flash had no
+  endpoint under the account's data policy, so neither is offered.
+- Extraction: GPT-6 Luna took 6 to 9 s and 500 to 840 output tokens on that text,
+  Gemini 3.1 Flash Lite 1.8 to 3.2 s and about 170, so Gemini is the default.
+- The page (headless Chromium, 1280 px): the selector dropdown, Jev's pick with its
+  properties above each table, the picked row ticked, the usage line with the selector
+  calls and cost.
+
+### Real-world texts, 4 November 2026 (evening)
+
+Visitors hit "not a JSON object" with GPT-6 Luna and Claude Haiku 5.5 on paper
+abstracts. Reproduced with 8 PubMed abstracts and 4 Wikipedia food summaries (one in
+Slovenian) against production, then fixed and rerun locally with the production
+configuration; details and numbers in
+`benchmarks/results/site-realworld-2026-11-04/FINDINGS.md`. In short: reasoning models
+spent the whole output budget reasoning (now switched off on OpenRouter), Claude Haiku
+5.5 is unreliable for extraction (now a selector only), genes were still extracted in
+full mode (no longer), an unsure Jev showed as "failed" (now "unsure, needs review"),
+mapping made one embeddings request per entity (now one batch: map 0.5 to 8.5 s instead
+of up to 76 s), and `/api/health` now reports a key OpenRouter refuses. Production
+`NER_SITE_MODELS` is `google/gemini-3.1-flash-lite,openai/gpt-6-luna`.
+
 ### For the operator after deploying
 
 1. `GET /api/health`: `mode: live`, `llm: {"status": "ok"}`, `dense: ok`. Without

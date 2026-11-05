@@ -465,7 +465,7 @@ def test_neon_mapping_matches_through_both_retrievers(loaded: FakeNeon) -> None:
     assert results[0].matches[0].label == "NAT2"
     assert set(results[0].matches[0].retrievers) == {BM25_NAME, DENSE_NAME}
     assert results[1].matches[0].id == "MESH:D000474"
-    assert stats.embedding_requests == 2 and stats.dense_entities == ["e1", "e2"]
+    assert stats.embedding_requests == 1 and stats.dense_entities == ["e1", "e2"]
 
 
 def test_neon_without_a_key_runs_bm25_only(loaded: FakeNeon) -> None:
@@ -592,6 +592,23 @@ def test_the_full_catalog_routes_to_the_full_slugs_and_counts_from_the_database(
     assert result.ontology == "chebi" and result.matches[0].id == "CHEBI:3"
 
 
+def test_the_full_catalog_does_not_extract_genes() -> None:
+    """NCBI Gene is not loaded in full: genes are neither routed nor asked for."""
+    full = Settings.from_env(
+        {"NER_SITE_BACKEND": "neon", "NER_SITE_NEON_CATALOG": "full", "DATABASE_URL": FAKE_URL}
+    )
+    assert "gene" not in full.routes
+    assert sorted(full.routes) == ["chemical", "disease", "food"]
+    assert "- gene:" not in full.default_prompt
+    for kept in ("- chemical:", "- disease:", "- food:", "- other:"):
+        assert kept in full.default_prompt
+    samples = Settings.from_env({"NER_SITE_BACKEND": "neon", "DATABASE_URL": FAKE_URL})
+    assert "- gene:" in samples.default_prompt and samples.routes["gene"] == "ncbi-gene-sample"
+    # The loader can still load the full gene catalog under its own slug.
+    assert _tool().slug_for("ncbi-gene", "full") == "ncbi-gene"
+    assert set(FULL_ROUTES.values()) == {"chebi", "ctd-disease", "foodon"}
+
+
 # --- live --------------------------------------------------------------------------
 
 
@@ -622,3 +639,13 @@ def test_drop_removes_the_selected_ontologies() -> None:
     assert any("foodon-sample: dropped" in line for line in lines)
     assert "terms_drop" in fake.tags and "meta_drop" in fake.tags and "vacuum" in fake.tags
     assert not any(k[0] == "foodon-sample" for k in [*fake.terms, *fake.meta, *fake.vectors])
+
+
+def test_the_loader_builds_indexes_in_one_long_request_without_retries() -> None:
+    """A retried CREATE INDEX restarts the build and cancels the last one: ChEBI's HNSW
+    build outlived the 120 s request four times on 4 November 2026."""
+    tool = _tool()
+    build = tool._index_executor({"DATABASE_URL": FAKE_URL})
+    assert build._max_retries == 0 and build._client.timeout.read >= 3600
+    rows = tool._executor({"DATABASE_URL": FAKE_URL})
+    assert rows._client.timeout.read == 120.0

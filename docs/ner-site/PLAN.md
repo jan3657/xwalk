@@ -82,32 +82,43 @@ comes from the installed package via `importlib.resources.files("xwalk.ui") / "o
  "limits": {"max_chars": 5000, "max_prompt_chars": 4000, "max_entities": 25, "top_k_max": 10},
  "passcode_required": false, "default_prompt": "...",
  "ontologies": [{"slug": "chebi-sample", "name": "ChEBI (sample)", "type": "chemical", "count": 200}],
- "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "unavailable", "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"}}}
+ "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "unavailable", "reason": "no index at indexes/chebi-sample/dense; run ner-site/tools/build_indexes.py"}},
+ "selectors": ["retrieval", "jev", "openai/gpt-6-luna"], "default_selector": "jev"}
 ```
 
 `POST /api/ner` with `Content-Type: application/json` and `X-Requested-With: xwalk-ner`
 (and `X-Passcode` when required):
 
 ```json
-{"text": "Aspirin reduced fever in rheumatoid arthritis.", "prompt": null, "model": null, "top_k": 5}
+{"text": "Aspirin reduced fever in rheumatoid arthritis.", "prompt": null, "model": null, "top_k": 5,
+ "selector": null}
 ```
 
-`prompt`/`model` null mean the defaults from `/api/health`. 200 response:
+`prompt`/`model`/`selector` null mean the defaults from `/api/health` (section 13 for
+`selector`, `pick` and the `selector_*` usage fields). 200 response:
 
 ```json
-{"ok": true, "model": "openai/gpt-4o-mini", "mode": "live",
+{"ok": true, "model": "openai/gpt-4o-mini", "mode": "live", "selector": "jev",
  "entities": [
    {"id": "e1", "text": "Aspirin", "start": 0, "end": 7, "type": "chemical", "ontology": "chebi-sample",
     "matches": [{"id": "CHEBI:15365", "label": "acetylsalicylic acid", "score": 0.0325,
                  "retrievers": {"bm25": 1, "dense-qwen3": 2},
                  "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:15365"}],
-    "notes": []},
+    "notes": [],
+    "pick": {"selector": "jev", "status": "match", "id": "CHEBI:15365", "label": "acetylsalicylic acid",
+             "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:15365", "confidence": 0.93,
+             "explanation": "rubric 0.95, properties 0.97"},
+    "more": [{"id": "CHEBI:46195", "label": "paracetamol", "score": 0.0161, "retrievers": {"dense-qwen3": 2},
+              "url": "https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:46195"}]},
    {"id": "e2", "text": "fever", "start": 16, "end": 21, "type": "other", "ontology": null,
-    "matches": [], "notes": ["no ontology for type 'other'"]}],
+    "matches": [], "notes": ["no ontology for type 'other'"], "pick": null,
+    "more": []}],
  "retrieval": {"bm25": {"status": "ok"}, "dense": {"status": "ok"}},
  "warnings": ["entity 'feverr' dropped: not found in text"],
- "usage": {"llm_calls": 1, "prompt_tokens": 412, "completion_tokens": 88, "embedding_requests": 2},
- "timing_ms": {"extract": 1800, "map": 900, "total": 2800}}
+ "usage": {"llm_calls": 1, "prompt_tokens": 412, "completion_tokens": 88, "embedding_requests": 2,
+           "selector_calls": 3, "selector_prompt_tokens": 2900, "selector_completion_tokens": 0,
+           "selector_cost_usd": 0.0001},
+ "timing_ms": {"extract": 1800, "map": 900, "select": 1400, "total": 4200}}
 ```
 
 Token counts are `null` when the provider did not report them, never 0. Errors:
@@ -555,6 +566,7 @@ and the full-load command: [NEON.md](NEON.md).
 | 12.6 | One partial BM25 and one partial HNSW index per ontology. | Per-ontology statistics and graphs, as the per-ontology Tantivy indexes. |
 | 12.7 | Identity in `index_meta`, written by `ner-site/tools/load_neon.py` (`loading` before, `ready` after); the site opens with `expected` and reports missing, incomplete, stale or unreachable as the status reason. | No silent substitution; an interrupted load is never served. |
 | 12.8 | The full catalogs are not loaded: they need about 12.5 GB at 1024 dimensions (6.6 GB at 512), the free plan has 0.5 GB. The loader refuses a full load over `--max-bytes` (400 MB). | Measured: 5.7 KB a stored 1024-d vector (TOAST plus HNSW). |
+| 12.9 | **Amended 2026-11-04 (Launch plan).** The full catalogs are loaded into schema `xwalk_full` at `halfvec(768)`, NCBI Gene excepted; the samples stay at 1024 in `xwalk`. Production: `NER_SITE_NEON_SCHEMA=xwalk_full`, `NER_SITE_NEON_DIMENSIONS=768`, `NER_SITE_NEON_CATALOG=full`. | 768 matched 1024 on the full CTD vocabulary and 512 lost 0.07 MRR; 1000 or 1016 saves nothing (`benchmarks/results/neon-truncation-2026-11-04/FINDINGS.md`). Genes were skipped by the operator, so `FULL_ROUTES` leaves them out and the default prompt does not ask for them. |
 
 Response shapes are unchanged; `/api/health` gains `"backend"` and, with Neon, a `"neon"`
 block. Tests: `tests/test_postgres_retrieval.py`, `tests/test_site_neon.py` (offline), and
@@ -562,3 +574,25 @@ block. Tests: `tests/test_postgres_retrieval.py`, `tests/test_site_neon.py` (off
 `DATABASE_URL`). The Vercel build needs `requirements.txt` re-pinned to a commit that
 contains `xwalk.retrieval.postgres` before `NER_SITE_BACKEND=neon` can work there.
 
+
+
+## 13. Selection: Jev or an LLM picks the match **[amendment, 2026-11-04]**
+
+Retrieval ranks; a selector decides. Each request names one (`selector`, default
+`NER_SITE_SELECTOR`, `retrieval` unless set), from the list `/api/health` serves
+(`selectors`, `default_selector`):
+
+| # | Decision | Why |
+|---|---|---|
+| 13.1 | `retrieval`: no selector; the fused ranking is the answer, as before. Always offered, first. | The selector is optional and costs calls. |
+| 13.2 | `jev`: TypeSafe's Jev through `xwalk.decide.DecisionMatcher` (screen, choose or none, gate on the slots' properties) over the entity's first 30 fused candidates, with the thresholds the examples' `job_jev.yaml` fitted on the pilots, per entity type. Jev through OpenRouter's decisions endpoint with the site's key; at most 4 calls per entity (`BudgetedDecider`). | Probabilities, not text: Jev chooses among keys, so nothing it returns can become an id outside the candidates. Measured: 3 calls an entity, about $0.0004 an entity as reported, under a second for five entities. |
+| 13.3 | Any other selector is an LLM (`xwalk.stages.select.Selector`): one call an entity, an opaque key or null, exact-only resolution. `NER_SITE_SELECTORS` lists them; the default is Jev, `openai/gpt-6-luna`, `anthropic/claude-haiku-5.5`, `google/gemini-3.1-flash-lite` (each answered live requests on 4 November 2026). | The library's own selection stage and invariants; a malformed answer is a failed pick, never an id. |
+| 13.4 | The question sets are `ner_site/slots/<type>.yaml`, copied from the examples (`chebi/slots.yaml`, `ncbi_disease/slots_jev.yaml`, `cafeteria_fcd/slots_jev.yaml`, `nlm_gene/slots.yaml`). The selector sees 150 characters either side of the mention. | Reviewed slots with properties already exist; context disambiguates acronyms. |
+| 13.5 | Each routed entity with candidates gets `pick`: `selector`, `status` (`match`, `review`, `no_match`, `failed`), `id`, `label`, `url`, `confidence`, `explanation`. `matches` (the retrieval ranking) is unchanged. A provider error, a timeout or the request deadline is a `failed` pick with its reason, never a 5xx. | The visitor sees both the ranking and the decision. |
+| 13.6 | Time: the selection gets what is left of the 100 s request deadline, at least 5 s; usage adds `selector_calls`, `selector_prompt_tokens`, `selector_completion_tokens` and `selector_cost_usd` (Jev reports cost; an LLM selector's cost is null, unknown). `timing_ms` adds `select` when a selector ran. | Same accounting rules as the extraction call: unknown is null, not 0. |
+| 13.7 | Offline (`NER_SITE_OFFLINE=1`): `retrieval` and `jev`, where Jev is the library's token-overlap stand-in. | Demonstrates the flow without a key. |
+| 13.8 | `matches` stays the visitor's top_k; `more` continues the same fused ranking down to 30 (`mapping.MAX_LISTED`), the depth the selector chooses from. The page lists `matches` under "Retrieved candidates" and expands to `more`, so a pick is always on the page with its rank. | A pick ranked below the visible rows looked like it came from nowhere (Jev picked rank 20 for "eggs"). |
+| 13.9 | **Real-world fixes (4 November 2026).** Every site LLM request to OpenRouter carries `reasoning: {enabled: false}`; `anthropic/` models use the `anthropic-compat` profile (JSON in the prompt); the extraction prompt and schema list only the routed types plus "other"; mapping embeds all entities' queries in one request (`PrefetchEncoder`); `/api/health` checks the key with OpenRouter. Claude Haiku 5.5 is a selector only. | Reproduced on PubMed abstracts and Wikipedia food texts: `benchmarks/results/site-realworld-2026-11-04/FINDINGS.md`. |
+
+Tests: `tests/test_site_select.py` (FakeDecider with a scripted Jev, FakeLLM), and the
+selection cases in `tests/test_site_service.py`.

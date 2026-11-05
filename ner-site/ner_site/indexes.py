@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import shutil
 import threading
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,12 +77,80 @@ _MEMO_LOCK = threading.Lock()
 _MEMO: dict[tuple[str | int | None, ...], Mapping[str, OntologyIndex]] = {}
 
 
+class PrefetchEncoder:
+    """The shared query encoder, able to embed many queries in one request.
+
+    ``prefetch`` sends every query not yet embedded in one ``encode`` call; a later
+    ``encode(..., is_query=True)`` of those texts (each dense search embeds its own query)
+    is served from memory. One request of 25 queries took 3 to 10 s through OpenRouter on
+    4 November 2026, where 25 single requests, 4 at a time, took 52 to 67 s. Name,
+    dimension and settings are the wrapped encoder's, so index identities are unchanged.
+    Thread-safe; keeps at most ``MAX_CACHED`` query vectors."""
+
+    MAX_CACHED = 4096
+
+    def __init__(self, inner: Encoder) -> None:
+        self._inner = inner
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    @property
+    def inner(self) -> Encoder:
+        return self._inner
+
+    @property
+    def name(self) -> str:
+        return self._inner.name
+
+    @property
+    def dimension(self) -> int:
+        return self._inner.dimension
+
+    def __getattr__(self, attr: str) -> Any:  # settings, usage, ...: the wrapped encoder's
+        return getattr(self._inner, attr)
+
+    def cached(self, text: str) -> bool:
+        with self._lock:
+            return text in self._cache
+
+    def _remember(self, texts: Sequence[str], vectors: Sequence[list[float]]) -> None:
+        with self._lock:
+            for text, vector in zip(texts, vectors, strict=True):
+                self._cache[text] = list(vector)
+                self._cache.move_to_end(text)
+            while len(self._cache) > self.MAX_CACHED:
+                self._cache.popitem(last=False)
+
+    def prefetch(self, texts: Sequence[str]) -> int:
+        """Embed every query in `texts` not yet in memory, in one call; the number of
+        calls made (0 or 1)."""
+        with self._lock:
+            missing = list(dict.fromkeys(t for t in texts if t and t not in self._cache))
+        if not missing:
+            return 0
+        self._remember(missing, self._inner.encode(missing, is_query=True))
+        return 1
+
+    def encode(self, texts: Sequence[str], *, is_query: bool = False) -> list[list[float]]:
+        if is_query:
+            with self._lock:
+                found = [self._cache.get(t) for t in texts]
+            if all(v is not None for v in found):
+                return [list(v) for v in found if v is not None]
+        vectors = self._inner.encode(texts, is_query=is_query)
+        if is_query:
+            self._remember(texts, vectors)
+        return vectors
+
+
 @dataclass
 class OntologyIndex:
     slug: str
     store: TargetStore
     retrievers: list[Retriever]  # BM25 first, then dense when available
     status: dict[str, RetrieverStatus]  # {"bm25": ..., "dense": ...}
+    # The dense retriever's query encoder (shared by every ontology), for batching.
+    encoder: PrefetchEncoder | None = None
 
 
 class IndexSettings(Protocol):
@@ -193,14 +262,16 @@ def open_indexes(
     The four dense retrievers share one query encoder (one connection pool), created on
     first need: from `encoder_factory` when given (tests, offline use; no key needed),
     otherwise the default Qwen3 encoder with `api_key`."""
-    shared: list[Encoder] = []
+    shared: list[PrefetchEncoder] = []
 
     def shared_encoder() -> Encoder:
         if not shared:
             shared.append(
-                encoder_factory()
-                if encoder_factory is not None
-                else default_embeddings_encoder(api_key=api_key, **QUERY_ENCODER_SETTINGS)
+                PrefetchEncoder(
+                    encoder_factory()
+                    if encoder_factory is not None
+                    else default_embeddings_encoder(api_key=api_key, **QUERY_ENCODER_SETTINGS)
+                )
             )
         return shared[0]
 
@@ -227,7 +298,8 @@ def open_indexes(
         )
         if retriever is not None:
             retrievers.append(retriever)
-        opened[slug] = OntologyIndex(slug, store, retrievers, status)
+        encoder = shared[0] if retriever is not None and shared else None
+        opened[slug] = OntologyIndex(slug, store, retrievers, status, encoder)
     return opened
 
 
@@ -287,15 +359,17 @@ def open_neon_indexes(
     except Exception as exc:  # noqa: BLE001 - reported as the reason for every ontology
         return _all_unavailable(slugs, _neon_reason("", exc))
 
-    shared: list[Encoder] = []
+    shared: list[PrefetchEncoder] = []
 
     def query_encoder() -> Encoder:
         if not shared:
             shared.append(
-                encoder_factory()
-                if encoder_factory is not None
-                else default_embeddings_encoder(
-                    api_key=api_key, dimensions=dimensions, **QUERY_ENCODER_SETTINGS
+                PrefetchEncoder(
+                    encoder_factory()
+                    if encoder_factory is not None
+                    else default_embeddings_encoder(
+                        api_key=api_key, dimensions=dimensions, **QUERY_ENCODER_SETTINGS
+                    )
                 )
             )
         return shared[0]
@@ -361,7 +435,8 @@ def open_neon_indexes(
                 status["dense"] = _ok()
             except Exception as exc:  # noqa: BLE001
                 status["dense"] = _unavailable(_neon_reason(slug, exc))
-        opened[slug] = OntologyIndex(slug, store, retrievers, status)
+        encoder = shared[0] if status.get("dense") == _ok() and shared else None
+        opened[slug] = OntologyIndex(slug, store, retrievers, status, encoder)
     return opened
 
 

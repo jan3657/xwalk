@@ -26,14 +26,18 @@ ROUTES: dict[str, str] = {
     "food": "foodon-sample",
 }
 
-# The full catalogs, loaded into Postgres by ner-site/tools/load_neon.py --source full and
-# served with NER_SITE_BACKEND=neon NER_SITE_NEON_CATALOG=full (docs/ner-site/NEON.md).
-FULL_ROUTES: dict[str, str] = {
+# The full catalogs ner-site/tools/load_neon.py --source full can load into Postgres
+# (docs/ner-site/NEON.md), by entity type.
+FULL_CATALOGS: dict[str, str] = {
     "chemical": "chebi",
     "disease": "ctd-disease",
     "gene": "ncbi-gene",
     "food": "foodon",
 }
+# What NER_SITE_BACKEND=neon NER_SITE_NEON_CATALOG=full serves. NCBI Gene is left out
+# (not loaded, by the operator's choice, 4 November 2026): with the full catalogs genes
+# are neither asked for in the default prompt nor routed.
+FULL_ROUTES: dict[str, str] = {t: s for t, s in FULL_CATALOGS.items() if t != "gene"}
 FULL_NAMES: dict[str, str] = {
     "chebi": "ChEBI",
     "ctd-disease": "CTD diseases / MeSH",

@@ -47,6 +47,27 @@ Handled = tuple[int, dict[str, str], bytes]
 
 
 @pytest.fixture(autouse=True)
+def _no_key_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Health asks OpenRouter about the key; offline tests never reach the network."""
+    monkeypatch.setattr(http_mod, "check_key", lambda settings: None)
+
+
+def test_health_reports_what_the_key_check_found(
+    cache_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ner_site.schema import RetrieverStatus
+
+    refused = RetrieverStatus(status="unavailable", reason="OPENROUTER_API_KEY was refused")
+    monkeypatch.setattr(http_mod, "check_key", lambda settings: refused)
+    s = _settings(cache_dir, tmp_path, OPENROUTER_API_KEY=SENTINEL_KEY)
+    _, _, body = http_mod.handle("GET", "/api/health", {}, b"", settings=s)
+    assert json.loads(body)["llm"] == {
+        "status": "unavailable",
+        "reason": "OPENROUTER_API_KEY was refused",
+    }
+
+
+@pytest.fixture(autouse=True)
 def _fresh_memo() -> Iterator[None]:
     indexes_mod.reset()
     http_mod.reset()
@@ -505,6 +526,10 @@ def test_full_post_live_through_mock_transport(cache_dir: Path, tmp_path: Path) 
         "prompt_tokens": 412,
         "completion_tokens": 88,
         "embedding_requests": 0,
+        "selector_calls": 0,
+        "selector_prompt_tokens": None,
+        "selector_completion_tokens": None,
+        "selector_cost_usd": None,
     }
     assert bodies[0]["model"] == "google/gemini-2.5-flash-lite"
     assert SECRET_PROMPT in bodies[0]["messages"][-1]["content"]
@@ -584,10 +609,10 @@ def test_full_post_with_dense_through_the_default_encoder(
     assert by_id["CHEBI:5613"].retrievers["bm25"] == 1
     assert any("dense-qwen3" in m.retrievers for m in halo.matches)
     assert all(m.id.startswith("CHEBI:") for m in halo.matches)
-    assert out.usage.embedding_requests == 2  # one per routed entity, none for "other"
+    assert out.usage.embedding_requests == 1  # one batch for both routed entities
     assert not any("dense" in w for w in out.warnings)
     query_calls = seen[built:]
-    assert len(query_calls) == 2
+    assert len(query_calls) == 1
     assert all(r.headers["authorization"] == f"Bearer {SENTINEL_KEY}" for r in query_calls)
     assert SENTINEL_KEY.encode() not in result[2]
     assert SENTINEL_KEY not in capsys.readouterr().err
@@ -869,9 +894,10 @@ def test_abandoned_embedding_threads_do_not_hold_the_response(
     again = _post(s, {"text": SIX, "top_k": 3}, llm_factory=_fake(SIX_ANSWER))
     later = NerResponse.model_validate_json(again[2])
     assert later.retrieval["dense"].status == "ok"
-    assert later.usage.embedding_requests == 6
+    assert later.usage.embedding_requests == 1  # one batch
     assert not any("timed out" in n for e in later.entities for n in e.notes)
-    assert out.usage.embedding_requests == 6  # the first response is unchanged
+    # The first response is unchanged: the stuck batch, then six single requests.
+    assert out.usage.embedding_requests == 7
     assert "Traceback" not in capsys.readouterr().err
 
 
