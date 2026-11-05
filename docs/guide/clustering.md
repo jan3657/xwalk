@@ -38,7 +38,7 @@ relation: >-                  # optional: what "equivalent" means in your domain
 order: label                  # label (default) or input
 pool: {}                      # see below; defaults shown in the table
 policy: {}
-# dense: {kind: dense, model: sentence-transformers/all-MiniLM-L6-v2}  # optional, xwalk[dense]
+# dense: {kind: dense, model: sentence-transformers/all-MiniLM-L6-v2}  # optional, xwalk-match[dense]
 ```
 
 | Key | Default | Meaning |

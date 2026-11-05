@@ -13,7 +13,7 @@ the agent can then inspect them with the read tools.
 ## Install and launch
 
 ```
-pip install 'xwalk[mcp]'      # the official MCP Python SDK, mcp>=2.3,<3
+pip install "xwalk-match[mcp] @ git+https://github.com/jan3657/xwalk.git"      # the official MCP Python SDK, mcp>=2.3,<3
 xwalk mcp                      # serves on stdin/stdout until the client disconnects
 ```
 
@@ -23,7 +23,8 @@ xwalk mcp                      # serves on stdin/stdout until the client disconn
 | `--offline-model` | off | answer every model call with a fixed scripted reply instead of the job's endpoint; for demos and tests, the results are meaningless |
 | `--root DIR` | the working directory | a directory the tools may read and write; repeat it to allow several. Given at least once, it replaces the working directory |
 
-Without the extra, `xwalk mcp` exits `2` and prints `pip install 'xwalk[mcp]'` on stderr.
+Without the extra, `xwalk mcp` exits `2` and prints a missing-extra message.
+Use the Git installation above until `xwalk-match` is published on PyPI.
 The base install never imports `mcp`.
 
 stdout carries protocol messages only. While serving, the SDK's stdio transport points
@@ -93,7 +94,7 @@ or a project `.mcp.json`:
 Claude Desktop (`claude_desktop_config.json`) does not set a working directory, so give
 the project directory with `--root` (otherwise the root is whatever directory the host
 starts the server in, possibly `/`), use absolute paths in tool arguments, and name the
-full path of the `xwalk` executable of the environment where you installed `xwalk[mcp]`:
+full path of the `xwalk` executable of the environment where you installed `xwalk-match[mcp]`:
 
 ```json
 {

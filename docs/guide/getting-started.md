@@ -6,22 +6,22 @@ By the end you will have a run directory you can score, resume, and hand to a re
 ## Install
 
 ```bash
-pip install xwalk
+pip install "xwalk-match @ git+https://github.com/jan3657/xwalk.git"
 ```
 
-(0.2 is a release candidate and not on PyPI yet; until it is, install from the
-repository with `pip install "xwalk @ git+https://github.com/jan3657/xwalk"`.)
+The PyPI name `xwalk` belongs to an unrelated project. Use the Git installation above
+in a fresh virtual environment until the first `xwalk-match` release is published. Imports and the CLI remain `xwalk`.
 
 That is BM25 retrieval plus any OpenAI-compatible endpoint, and it does not install
 PyTorch. Add extras only when you need them:
 
 ```bash
-pip install 'xwalk[dense]'      # sentence-transformers, torch, faiss-cpu
-pip install 'xwalk[ontology]'   # rdflib, for OWL sources
-pip install 'xwalk[sql]'        # SQLAlchemy, for database sources
-pip install 'xwalk[litellm]'    # the LiteLLM adapter
-pip install 'xwalk[mcp]'        # the MCP SDK, for `xwalk mcp`
-pip install 'xwalk[all]'
+pip install "xwalk-match[dense] @ git+https://github.com/jan3657/xwalk.git"      # sentence-transformers, torch, faiss-cpu
+pip install "xwalk-match[ontology] @ git+https://github.com/jan3657/xwalk.git"   # rdflib, for OWL sources
+pip install "xwalk-match[sql] @ git+https://github.com/jan3657/xwalk.git"        # SQLAlchemy, for database sources
+pip install "xwalk-match[litellm] @ git+https://github.com/jan3657/xwalk.git"    # the LiteLLM adapter
+pip install "xwalk-match[mcp] @ git+https://github.com/jan3657/xwalk.git"        # the MCP SDK, for `xwalk mcp`
+pip install "xwalk-match[all] @ git+https://github.com/jan3657/xwalk.git"
 ```
 
 If an extra is missing you get an error naming the extra and the install command, not a

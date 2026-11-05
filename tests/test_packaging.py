@@ -156,7 +156,7 @@ def test_the_installed_version_comes_from_metadata():
 
     from xwalk import __version__
 
-    assert __version__ == version("xwalk")
+    assert __version__ == version("xwalk-match")
 
 
 def _workflow(name: str) -> dict:
@@ -222,7 +222,7 @@ def extracted_sdist(tmp_path_factory: pytest.TempPathFactory) -> Path:
         text=True,
     )
     assert built.returncode == 0, built.stderr[-2000:]
-    (sdist,) = out.glob("xwalk-*.tar.gz")
+    (sdist,) = out.glob("xwalk_match-*.tar.gz")
     with tarfile.open(sdist) as archive:
         try:
             archive.extractall(out / "x", filter="data")
@@ -307,8 +307,27 @@ def test_the_wheel_ships_the_bundled_example_and_prompt_skeletons(tmp_path):
         text=True,
     )
     assert built.returncode == 0, built.stderr[-2000:]
-    (wheel,) = tmp_path.glob("xwalk-*.whl")
-    names = set(zipfile.ZipFile(wheel).namelist())
+    (wheel,) = tmp_path.glob("xwalk_match-*.whl")
+    archive = zipfile.ZipFile(wheel)
+    names = set(archive.namelist())
+    from email.parser import BytesParser
+
+    from packaging.requirements import Requirement
+
+    metadata_name = next(n for n in names if n.endswith(".dist-info/METADATA"))
+    metadata = BytesParser().parsebytes(archive.read(metadata_name))
+    assert metadata["Name"] == "xwalk-match"
+    requirements = metadata.get_all("Requires-Dist", [])
+    # Hatch expands self-referencing extras into their actual requirements.
+    assert any(
+        Requirement(r).name == "sentence-transformers"
+        and Requirement(r).marker.evaluate({"extra": "all"})
+        for r in requirements
+    )
+    assert not any(re.match(r"xwalk(?:\[|[ <>=;@]|$)", r) for r in requirements)
+    entry_points = next(n for n in names if n.endswith(".dist-info/entry_points.txt"))
+    assert "xwalk = xwalk.cli.main:main" in archive.read(entry_points).decode()
+
     for name in ("job.yaml", "slots.yaml", "targets.csv", "sources.csv", "README.md"):
         assert f"xwalk/resources/quickstart/{name}" in names
     for name in ("select.j2", "score.j2", "verify.j2", "rewrite.j2"):

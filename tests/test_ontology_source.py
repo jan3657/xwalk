@@ -64,7 +64,7 @@ def test_obo_yields_the_final_stanza(tmp_path):
     assert [r.id for r in obo_source(path)] == ["X:1"]
 
 
-# --- OWL (needs xwalk[ontology]) --------------------------------------------------
+# --- OWL (needs xwalk-match[ontology]) --------------------------------------------------
 
 
 @pytest.mark.ontology
@@ -127,7 +127,7 @@ def test_owl_without_the_extra_gives_an_actionable_error(monkeypatch):
         return real(name, *args, **kwargs)
 
     monkeypatch.setattr(importlib, "import_module", fake)
-    with pytest.raises(MissingExtra, match=r"xwalk\[ontology\]"):
+    with pytest.raises(MissingExtra, match=r"xwalk-match\[ontology\]"):
         list(owl_source(OWL))
 
 

@@ -7,6 +7,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Distribution name
+
+- The distribution is now `xwalk-match`; `import xwalk` and the `xwalk` CLI are unchanged.
+  PyPI's `xwalk` name belongs to an unrelated project. Use a fresh environment when
+  migrating from the old Git-installed distribution. Optional extras, metadata lookup,
+  and build artifacts use the new name.
+
+### Repository split and publication preparation
+
+- Browser applications, hosting files, and UI tests now live in
+  [xwalk-ui](https://github.com/jan3657/xwalk-ui). The core wheel no longer includes
+  the browser server or static assets; use `xwalk-ui` instead of `xwalk ui`.
+- Reworked the README around installation, the tested offline quickstart, capabilities,
+  and limits. Corrected stale benchmark status and unsafe PyPI installation instructions:
+  the distribution name `xwalk` is now owned by an unrelated project.
+
+
 Merged after 0.2.0rc1 was cut: the decider path, developed on the `jev-decider` and
 `jev-recall-cost` branches against 0.1.1 and adapted to the 0.2 contracts
 (`docs/claude-upgrade/CONTRACTS.md`). Accuracy and cost figures quoted in

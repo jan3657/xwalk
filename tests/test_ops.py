@@ -103,7 +103,7 @@ def test_a_missing_extra_is_named_in_the_headline(tmp_path, monkeypatch):
     result = ops.validate(path, check_credentials=False)
     assert result.exit_code == 2
     assert result.lines[0].startswith("job 'tiny' is valid")
-    assert "xwalk[litellm]" in result.lines[0]
+    assert "xwalk-match[litellm]" in result.lines[0]
 
 
 def test_a_template_naming_an_absent_column_is_named_with_the_file(tmp_path):
@@ -182,7 +182,7 @@ def test_validate_names_an_unavailable_optional_extra(tmp_path, monkeypatch):
     result = ops.validate(path, check_credentials=False)
     assert result.exit_code == 2
     assert [e.code for e in result.errors] == ["missing_extra"]
-    assert "xwalk[dense]" in result.errors[0].message
+    assert "xwalk-match[dense]" in result.errors[0].message
 
 
 # --- index identity (CONTRACTS.md section 7) ----------------------------------------

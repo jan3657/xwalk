@@ -119,7 +119,7 @@ def owl_source(
 ) -> Iterator[Record]
 ```
 
-Requires `xwalk[ontology]`. Parses the file with rdflib (`format=None` lets rdflib
+Requires `xwalk-match[ontology]`. Parses the file with rdflib (`format=None` lets rdflib
 guess) and yields one `Record` per `owl:Class` with a URI, sorted by URI so output
 order is deterministic; blank-node class expressions are skipped.
 
@@ -153,7 +153,7 @@ def sql_source(
 ) -> Iterator[Record]
 ```
 
-Requires `xwalk[sql]`. Runs `query` (with bound `params`) against a SQLAlchemy `url`
+Requires `xwalk-match[sql]`. Runs `query` (with bound `params`) against a SQLAlchemy `url`
 and streams the result in chunks of `chunk_size` rather than materialising it —
 "point at your warehouse" is exactly the case where loading the whole result set
 defeats the purpose.
@@ -200,9 +200,9 @@ should not download torch. Loaders that need a heavy library call
 a bare `ImportError` from a library you have never heard of. The message shape is:
 
 ```
-owl_source requires the optional dependency 'rdflib', which is part of xwalk[ontology].
+owl_source requires the optional dependency 'rdflib', which is part of xwalk-match[ontology].
 
-    pip install 'xwalk[ontology]'
+    pip install "xwalk-match[ontology] @ git+https://github.com/jan3657/xwalk.git"
 
 underlying import error: No module named 'rdflib'
 ```

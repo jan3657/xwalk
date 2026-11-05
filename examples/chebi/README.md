@@ -5,7 +5,7 @@ simplest source shape — one mention field plus sentence context — against an
 ontology-shaped target.
 
 What it exercises: the **OWL loader** (`target.kind: owl`, parsed with rdflib behind
-`xwalk[ontology]`), and long-document context, where the surrounding paragraph decides
+`xwalk-match[ontology]`), and long-document context, where the surrounding paragraph decides
 which of several chemically-related terms is meant.
 
 ## Files
@@ -22,7 +22,7 @@ which of several chemically-related terms is meant.
 ## Run
 
 ```bash
-pip install 'xwalk[ontology]'
+pip install 'xwalk-match[ontology]'
 export OPENAI_API_KEY=...
 xwalk index --job examples/chebi/job.yaml --out runs/chebi/index
 xwalk match --job examples/chebi/job.yaml --out runs/chebi

@@ -69,7 +69,7 @@ QWEN_QUERY = DEFAULT_QUERY_PREFIX  # the default encoder's prefix is the one mea
 @dataclass(frozen=True)
 class Preset:
     """One embedding configuration. `model` starting with "local:" is a
-    sentence-transformers model (needs xwalk[dense]); anything else is remote."""
+    sentence-transformers model (needs xwalk-match[dense]); anything else is remote."""
 
     name: str
     model: str
@@ -270,7 +270,7 @@ PRESETS: dict[str, Preset] = {
         Preset(
             "local-e5-small",
             "local:intfloat/multilingual-e5-small",
-            "the examples' local model (needs xwalk[dense])",
+            "the examples' local model (needs xwalk-match[dense])",
             query_prefix="query: ",
             doc_prefix="passage: ",
         ),
@@ -790,7 +790,7 @@ class Options:
 
 def load_all(datasets: Sequence[Dataset], log: Callable[[str], None]) -> list[Loaded]:
     """Every dataset that loads. One needing a missing extra (OWL needs
-    xwalk[ontology]) is skipped with the reason."""
+    xwalk-match[ontology]) is skipped with the reason."""
     from xwalk._extras import MissingExtra
 
     loaded: list[Loaded] = []

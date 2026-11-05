@@ -30,7 +30,7 @@ from xwalk.evaluate import GoldSet
 
 
 def _needs_owl() -> None:
-    """The cafeteria catalog is OWL, which needs xwalk[ontology]."""
+    """The cafeteria catalog is OWL, which needs xwalk-match[ontology]."""
     pytest.importorskip("rdflib")
 
 

@@ -195,7 +195,7 @@ Both take the same shape. Several fields apply only to some `kind` values.
 
 `obo` and `owl` both emit the same field names — `label`, `synonyms`, `definition`,
 `parents`, `obsolete` — so one `doc` template works against either. `owl` needs
-`xwalk[ontology]`; `sql` needs `xwalk[sql]`; `obo` needs nothing.
+`xwalk-match[ontology]`; `sql` needs `xwalk-match[sql]`; `obo` needs nothing.
 
 ## `retrievers[]`
 
@@ -207,7 +207,7 @@ Both take the same shape. Several fields apply only to some `kind` values.
 | `exact_fields` | `list[str] \| None` | no | `None` → `["label", "synonyms"]` | bm25 | fields whose whole-string value gets a large boost |
 | `analyzer` | `default \| en_stem` | no | `default` | bm25 | tokenizer for the text field; `en_stem` adds ASCII folding and English stemming |
 | `fuzzy_distance` | `int` | no | `0` | bm25 | edit distance (0 to 2) for extra fuzzy clauses on query terms of 5+ characters; `0` is off |
-| `encoder` | `sentence_transformers \| openai_embeddings` | no | `sentence_transformers` | dense | a local model (needs `xwalk[dense]`) or an OpenAI-compatible `/embeddings` endpoint (needs nothing extra) |
+| `encoder` | `sentence_transformers \| openai_embeddings` | no | `sentence_transformers` | dense | a local model (needs `xwalk-match[dense]`) or an OpenAI-compatible `/embeddings` endpoint (needs nothing extra) |
 | `model` | `str \| None` | required for `sentence_transformers` | `None` | dense | sentence-transformers model name, or the endpoint's model id (`qwen/qwen3-embedding-8b`). Omitted on `openai_embeddings`: the default encoder (below) |
 | `name_fields` | `list[str] \| None` | no | `None` | dense | also embed each distinct value of these fields (`[label, synonyms]`) as its own vector; a record scores by its best vector, the whole-doc vector included |
 | `query_prefix` | `str` | no | `""` | dense | prepended when encoding a query |
@@ -299,7 +299,7 @@ Valid `profile` values are `openai`, `anthropic-compat`, `google-compat`, `vllm`
 seeding, `Retry-After` — never whether it trusts the answer; every response is parsed and
 validated regardless. `unknown` asks for nothing, which always works.
 
-`kind: litellm` needs `xwalk[litellm]` and ignores `profile`. `model`, `temperature`,
+`kind: litellm` needs `xwalk-match[litellm]` and ignores `profile`. `model`, `temperature`,
 `max_tokens`, `seed`, the key named by `api_key_env` (as `api_key`) and `base_url` (as
 `api_base`) reach `LiteLLMClient`; its capabilities default to all-false. The endpoint is
 part of the run fingerprint with any userinfo or credential-like query parameter removed;

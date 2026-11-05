@@ -1,7 +1,7 @@
 """Ontology record sources.
 
 OBO is parsed here directly -- the format is line-oriented stanzas, and sixty lines of
-parsing beats pulling rdflib in for it. OWL uses rdflib behind xwalk[ontology].
+parsing beats pulling rdflib in for it. OWL uses rdflib behind xwalk-match[ontology].
 
 Both emit the same field names -- `label`, `synonyms`, `definition`, `parents`,
 `obsolete` -- so a single `doc` template works against either.
@@ -128,7 +128,7 @@ def owl_source(
     definition_predicates: Sequence[str] = DEFAULT_DEFINITION_PREDICATES,
     include_obsolete: bool = False,
 ) -> Iterator[Record]:
-    """Yield one Record per owl:Class. Requires xwalk[ontology]."""
+    """Yield one Record per owl:Class. Requires xwalk-match[ontology]."""
     rdflib = require("ontology", "rdflib", purpose="owl_source")
 
     graph = rdflib.Graph()

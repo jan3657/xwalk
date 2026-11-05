@@ -578,7 +578,7 @@ class JobSpec(_Spec):
     @staticmethod
     def build_encoder(spec: RetrieverSpec, *, where: str | None = None) -> Encoder:
         """The encoder a dense retriever spec describes. A local model is loaded
-        (requires xwalk[dense]); an API encoder reads its key variable. Neither encodes
+        (requires xwalk-match[dense]); an API encoder reads its key variable. Neither encodes
         anything. `where` is the spec's path in the job file, for the missing-key error."""
         if spec.uses_api_encoder:
             from xwalk.retrieval.embeddings_api import OpenAIEmbeddingsEncoder

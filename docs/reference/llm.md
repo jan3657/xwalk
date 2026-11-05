@@ -257,7 +257,7 @@ and none of the others changes what the model is asked.
 ## LiteLLMClient
 
 The adapter for everything LiteLLM proxies. Requires the `litellm` extra
-(`pip install 'xwalk[litellm]'`); importable from `xwalk.llm.litellm`.
+(`pip install "xwalk-match[litellm] @ git+https://github.com/jan3657/xwalk.git"`); importable from `xwalk.llm.litellm`.
 
 ```python
 LiteLLMClient(

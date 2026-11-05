@@ -16,7 +16,7 @@ def skip_if_loader_missing(target_kind: str) -> None:
 def load_encoder_or_skip(model: str) -> Any:
     """A real SentenceTransformerEncoder, or a skip when the extra or the model is missing.
 
-    `_env.sh` runs HuggingFace offline, so a machine with xwalk[dense] but no cached model
+    `_env.sh` runs HuggingFace offline, so a machine with xwalk-match[dense] but no cached model
     raises OSError on load; that is a missing prerequisite, not a failing test.
     """
     pytest.importorskip("sentence_transformers")
@@ -35,7 +35,7 @@ def load_encoder_or_skip(model: str) -> Any:
 def e5_retriever(limit: int) -> dict[str, Any]:
     """The multilingual E5 dense block the decider jobs carry beside BM25 (A2).
 
-    Needs xwalk[dense] and the model in the HF cache: `_env.sh` runs offline, so pull it
+    Needs xwalk-match[dense] and the model in the HF cache: `_env.sh` runs offline, so pull it
     once with HF_HUB_OFFLINE=0 via `SentenceTransformerEncoder("intfloat/multilingual-e5-small")`.
     """
     return {

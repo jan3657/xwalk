@@ -4,12 +4,13 @@ What this page can and cannot tell you, how to reproduce it, and where the raw n
 are. The harness lives in `benchmarks/` at the repository root; it is not part of the
 installed package.
 
-**Status (5 October 2026).** Only offline smoke checks have been run. Every number that
-involves a model answer comes from a **SYNTHETIC** deterministic judge, not an LLM.
-**Real-model results are PENDING**: no inference endpoint or budget was configured. The
-string baselines, BM25 retrieval and candidate recall involve no model and are real
-measurements on the pilot data, but the pilot is 50 records per dataset, so treat them
-as a sanity check, not a ranking.
+**Status (5 November 2026).** Real-model pilot runs were recorded on 3 November:
+[GPT-4o-mini](https://github.com/jan3657/xwalk/tree/main/benchmarks/results/real-2026-11-03-gpt-4o-mini)
+and [Jev with BM25](https://github.com/jan3657/xwalk/tree/main/benchmarks/results/real-2026-11-03-jev-bm25).
+Each report records the code revision, configuration, scope, and cost evidence.
+These runs were not repeated for the UI extraction or documentation cleanup.
+The synthetic smoke results below test the harness; they are not model-quality results.
+The pilot contains 50 records per variant, so small differences are not a reliable ranking.
 
 ## Reproduce
 
@@ -90,7 +91,7 @@ settings and candidate budget (k = 25 or 30, 25 shown to the model).
 | `xwalk_single_attempt` | `xwalk.ops.run` with `max_attempts: 1`, no verification | select + score |
 | `xwalk_full` | `xwalk.ops.run` with the example job unchanged | as many as the loop needs |
 
-Not run: dense retrieval (needs `xwalk[dense]` and model weights) and LinkTransformer
+Not run: dense retrieval (needs `xwalk-match[dense]` and model weights) and LinkTransformer
 (adapter in `benchmarks/adapters/linktransformer.py`, written against its documented
 API but never executed; needs the package and a model download). Splink/dedupe were not
 attempted: the pilot sources have one text field, which is not what they are for.
@@ -220,7 +221,7 @@ Other candidates inspected and not changed:
   `CachingLLM`. Coalescing would not change these workloads measurably.
 - Repeated index construction: a fresh run directory builds its index once; reopening
   a compatible index is task 03's tested path. Not a cost here.
-- Dense-array copies: not measurable without `xwalk[dense]`.
+- Dense-array copies: not measurable without `xwalk-match[dense]`.
 - Peak Python memory of a full run is about 1.6-2.0 MiB at this size; nothing to fix.
 
 ## Embedding bake-off
@@ -244,7 +245,7 @@ Presets cover the OpenRouter embedding models current in November 2026: NVIDIA N
 3.5 Embed 8B and 1B and Nemotron 3 Embed 1B (free), Qwen3-Embedding 8B and 4B, Voyage 4
 lite/base/large, OpenAI `text-embedding-3-small`/`-large`, Gemini Embedding 2, Perplexity
 pplx-embed v1, BGE-M3, multilingual E5 large, LFM 2.5 350M (free), and the examples'
-local `multilingual-e5-small` (needs `xwalk[dense]`). Where a model card names query
+local `multilingual-e5-small` (needs `xwalk-match[dense]`). Where a model card names query
 and document roles but it is not known whether OpenRouter forwards `input_type` for that
 model, there are two presets: prefixes in the text, and `-it` with `input_type`.
 

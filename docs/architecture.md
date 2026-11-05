@@ -95,7 +95,7 @@ Each one has tests; a change that needs to weaken one needs a reviewed contract 
 | Job file keys or validation | `config.py` (and `cluster/job.py`) | `test_config.py`, `test_job_validation.py` |
 | An operation, JSON envelope or exit code | `ops.py` | `test_ops.py`, `test_ops_read.py`, `test_cli_json.py` |
 | CLI flags or output | `cli/main.py` | `test_cli.py`, `test_cli_json.py` |
-| MCP tools | `mcp_server.py` | `test_mcp.py` (needs `xwalk[mcp]` for most) |
+| MCP tools | `mcp_server.py` | `test_mcp.py` (needs `xwalk-match[mcp]` for most) |
 | Clustering | `cluster/*.py` | `test_cluster_engine.py`, `test_cluster_pool.py`, `test_cluster_ops.py` |
 | Metrics, gold, reports | `evaluate/*.py` | `test_metrics.py`, `test_gold.py`, `test_ceiling.py`, `test_eval_report.py`, `test_compare.py`, `test_ablate.py` |
 | Prompt drafting or optimisation | `prompts/author.py`, `prompts/optimize.py`, `evaluate/failures.py`, `evaluate/partition.py` | `test_author.py`, `test_optimize.py`, `test_failures.py`, `test_partition.py` |

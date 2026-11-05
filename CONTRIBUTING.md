@@ -9,7 +9,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-The optional extras are genuinely optional; install them only for the suites you intend
+The runtime extras are optional; install them only for the suites you intend
 to run:
 
 ```bash
@@ -47,10 +47,11 @@ Markers:
 | Marker | What it needs |
 |---|---|
 | `integration` | a real LLM provider and an API key |
-| `dense` | `xwalk[dense]` |
-| `ontology` | `xwalk[ontology]` |
-| `sql` | `xwalk[sql]` |
-| `mcp` | `xwalk[mcp]` (the `xwalk mcp` server tests; the missing-extra tests are unmarked) |
+| `dense` | `xwalk-match[dense]` |
+| `ontology` | `xwalk-match[ontology]` |
+| `sql` | `xwalk-match[sql]` |
+| `chatgpt` | mocked subscription provider contract tests; OAuth UI tests live in `xwalk-ui` |
+| `mcp` | `xwalk-match[mcp]` (the `xwalk mcp` server tests; the missing-extra tests are unmarked) |
 
 `python -m pytest -q` on a base install must stay green: every optional-dependency test
 skips cleanly when its extra is absent.

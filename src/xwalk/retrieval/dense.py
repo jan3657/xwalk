@@ -64,7 +64,7 @@ class Encoder(Protocol):
 
 
 class SentenceTransformerEncoder:
-    """The default encoder. Requires xwalk[dense]."""
+    """The default encoder. Requires xwalk-match[dense]."""
 
     def __init__(
         self,

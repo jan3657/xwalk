@@ -235,7 +235,7 @@ torch installed at all; `OpenAIEmbeddingsEncoder` below is the one xwalk ships.
 
 ### `SentenceTransformerEncoder`
 
-The default encoder. Requires `xwalk[dense]`.
+The default encoder. Requires `xwalk-match[dense]`.
 
 ```python
 SentenceTransformerEncoder(
@@ -384,7 +384,7 @@ is a *speed* fallback with identical semantics on normalised vectors — `IndexF
 exact — not a silent ranking change. Without FAISS, search is an exact inner-product
 scan in pure Python, sorted by descending score with ascending row index as the
 tie-break. An empty or whitespace-only query, or an empty index, returns no hits.
-`xwalk[dense]` pulls `faiss-cpu` along with sentence-transformers and torch; only the
+`xwalk-match[dense]` pulls `faiss-cpu` along with sentence-transformers and torch; only the
 encoder strictly needs the extra, so a custom `Encoder` runs FAISS-less on the pure
 Python path.
 
