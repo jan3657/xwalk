@@ -41,7 +41,7 @@ retrievers:
     name: bm25
     limit: 150
     exact_fields: [label, synonyms]
-  # Uncomment once xwalk[dense] is installed; this is what recovers Slovenian-only rows.
+  # Uncomment once xwalk-match[dense] is installed; this is what recovers Slovenian-only rows.
   # - kind: dense
   #   name: e5
   #   model: intfloat/multilingual-e5-small

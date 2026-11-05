@@ -37,7 +37,7 @@ class MyRetriever:
 
 `TargetStore` stays separate, so the backend never needs your records in memory.
 
-**2. Use dense retrieval only.** Install `xwalk[dense]` and configure a single dense
+**2. Use dense retrieval only.** Install `xwalk-match[dense]` and configure a single dense
 retriever. Expect different behaviour on exact-string matches — a lexical index and an
 embedding index disagree most sharply on precisely the cases where a label matches
 verbatim — which is why this is a decision you make rather than one xwalk makes for you.

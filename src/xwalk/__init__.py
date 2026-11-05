@@ -13,7 +13,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
 try:
-    __version__ = _version("xwalk")
+    __version__ = _version("xwalk-match")
 except PackageNotFoundError:  # pragma: no cover - only in an uninstalled checkout
     __version__ = "0.0.0.dev0+unknown"
 

@@ -1,4 +1,4 @@
-"""LiteLLM adapter. Requires xwalk[litellm].
+"""LiteLLM adapter. Requires xwalk-match[litellm].
 
 Capabilities default to all-false: LiteLLM proxies a hundred providers with wildly
 different structured-output support, and claiming support we cannot verify is exactly

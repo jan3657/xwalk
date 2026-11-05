@@ -1,4 +1,4 @@
-"""SQL record source. Requires xwalk[sql].
+"""SQL record source. Requires xwalk-match[sql].
 
 Streamed in chunks rather than materialised: "point at your warehouse" is exactly the
 case where loading the whole result set defeats the purpose.

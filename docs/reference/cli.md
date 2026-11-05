@@ -547,7 +547,7 @@ is not a run directory or an out-of-range flag is `2`.
 
 Serves `validate_job`, `search_candidates`, `match_records`, `get_run`, `list_results` and
 `explain_result` to an agent over MCP on stdin/stdout until the client disconnects. Needs
-`pip install 'xwalk[mcp]'`; without it, `xwalk mcp` prints the install command on stderr
+`pip install "xwalk-match[mcp] @ git+https://github.com/jan3657/xwalk.git"`; without it, `xwalk mcp` prints the install command on stderr
 and exits `2`, as it does for a `--root` that is not a directory. See the
 [MCP guide](../guide/mcp.md).
 

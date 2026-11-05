@@ -299,7 +299,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     mcp = sub.add_parser(
-        "mcp", help="serve bounded operations to an agent over MCP stdio (needs xwalk[mcp])"
+        "mcp", help="serve bounded operations to an agent over MCP stdio (needs xwalk-match[mcp])"
     )
     mcp.add_argument(
         "--max-calls-cap",

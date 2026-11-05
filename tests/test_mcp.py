@@ -32,7 +32,7 @@ TOOLS = {
 
 
 def _mcp() -> Any:
-    return pytest.importorskip("mcp", reason="needs xwalk[mcp]")
+    return pytest.importorskip("mcp", reason="needs xwalk-match[mcp]")
 
 
 @pytest.fixture
@@ -464,7 +464,7 @@ def test_the_base_install_imports_xwalk_without_mcp(without_mcp):
     from xwalk._extras import MissingExtra
     from xwalk.mcp_server import build_server
 
-    with pytest.raises(MissingExtra, match=r"pip install 'xwalk\[mcp\]'"):
+    with pytest.raises(MissingExtra, match=r"pip install 'xwalk-match\[mcp\]'"):
         build_server()
 
 
@@ -472,4 +472,4 @@ def test_xwalk_mcp_without_the_extra_says_what_to_install(without_mcp, capsys):
     assert main(["mcp"]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""  # stdout belongs to the protocol, even for this error
-    assert "xwalk[mcp]" in captured.err
+    assert "xwalk-match[mcp]" in captured.err

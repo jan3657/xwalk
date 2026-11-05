@@ -25,7 +25,7 @@ why every metric counts any listed ID as correct.
 ## Run
 
 ```bash
-pip install 'xwalk[ontology]'
+pip install 'xwalk-match[ontology]'
 export OPENAI_API_KEY=...
 xwalk index --job examples/cafeteria_fcd/job.yaml --out runs/cafeteria/index
 xwalk match --job examples/cafeteria_fcd/job.yaml --out runs/cafeteria

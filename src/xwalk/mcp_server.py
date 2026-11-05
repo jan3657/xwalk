@@ -1,4 +1,4 @@
-"""A thin MCP server over `xwalk.ops` (stdio only). Needs ``pip install 'xwalk[mcp]'``.
+"""A thin MCP server over `xwalk.ops` (stdio only). Needs ``pip install 'xwalk-match[mcp]'``.
 
     xwalk mcp                      # serve on stdin/stdout until the client disconnects
     xwalk mcp --offline-model      # scripted model answers: demos and tests, no endpoint

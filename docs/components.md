@@ -49,8 +49,8 @@ qualify equally.
 |---|---|
 | `sources/base.py` | Defines `RecordSource = Iterable[Record]`. That is the whole file, and that is the point. |
 | `sources/tabular.py` | `csv_source` and `jsonl_source`. Both are lazy generators. Handles multi-value columns (`dextrose\|grape sugar` becomes a list) and refuses a blank id rather than inventing one. TSV is `csv_source(delimiter="\t")`. |
-| `sources/ontology.py` | `obo_source` (parsed directly, no dependency) and `owl_source` (rdflib, needs `xwalk[ontology]`). Both emit the *same* field names — `label`, `synonyms`, `definition`, `parents`, `obsolete` — so one `doc` template works against either format. |
-| `sources/sql.py` | `sql_source`: streams a query through SQLAlchemy in chunks rather than materialising it, and disposes the engine even if you abandon the generator. Needs `xwalk[sql]`. |
+| `sources/ontology.py` | `obo_source` (parsed directly, no dependency) and `owl_source` (rdflib, needs `xwalk-match[ontology]`). Both emit the *same* field names — `label`, `synonyms`, `definition`, `parents`, `obsolete` — so one `doc` template works against either format. |
+| `sources/sql.py` | `sql_source`: streams a query through SQLAlchemy in chunks rather than materialising it, and disposes the engine even if you abandon the generator. Needs `xwalk-match[sql]`. |
 | `stores/base.py` | The `TargetStore` protocol: `get`, `get_many`, `fingerprint`. Kept separate from retrieval on purpose — retrievers return ids and ranks, the store turns ids into records, and that split is what lets an external search backend scale without holding every record in memory. |
 | `stores/memory.py` | `MemoryStore`, the dict-backed default. Refuses duplicate target ids outright; skips unknown ids on lookup, because a stale index may legitimately name a deleted record. |
 
@@ -60,7 +60,7 @@ qualify equally.
 |---|---|
 | `retrieval/base.py` | The `Retriever` protocol (`name`, `fingerprint`, `default_limit`, `async search`), the `SearchRequest` value object, and `RetrieverError`. A request object rather than `search(query, k)` so filters can be added later without breaking every implementation. |
 | `retrieval/bm25.py` | Lexical retrieval over Tantivy. `exact_fields` adds a heavily boosted whole-string match so an exact label or synonym hit outranks a document that merely repeats the query term. `sanitise_query` strips query-syntax characters rather than escaping them, because real mentions contain `(`, `-`, `+` and `:`. |
-| `retrieval/dense.py` | Vector retrieval behind a pluggable `Encoder` protocol, with `SentenceTransformerEncoder` as the default. Uses FAISS when available purely for speed — on unit-normalised vectors the ranking is identical either way. Needs `xwalk[dense]`. |
+| `retrieval/dense.py` | Vector retrieval behind a pluggable `Encoder` protocol, with `SentenceTransformerEncoder` as the default. Uses FAISS when available purely for speed — on unit-normalised vectors the ranking is identical either way. Needs `xwalk-match[dense]`. |
 | `retrieval/fusion.py` | Reciprocal rank fusion. Combines rankings whose raw scores share no scale (BM25 against cosine) using rank position alone, with deterministic tie-breaking so two identical runs produce byte-identical candidate order. |
 
 ## The pipeline — [reference](reference/pipeline.md)
@@ -81,7 +81,7 @@ qualify equally.
 |---|---|
 | `llm/base.py` | The `LLMClient` protocol, `LLMRequest` / `LLMResponse` / `LLMCapabilities`, and the error hierarchy. Capabilities decide what the adapter *asks* a provider for; they never decide whether to trust the answer. |
 | `llm/openai_compat.py` | Chat Completions over httpx: retry with backoff, capability profiles per provider family, and a structured-output fallback that asks once and remembers. The API key is deliberately excluded from the fingerprint so rotating a key does not invalidate a resumable run. |
-| `llm/litellm.py` | A thin adapter over LiteLLM for the hundred providers it proxies. No retry loop and no profiles — it cannot know what any given backend supports, so it asks for nothing by default. Needs `xwalk[litellm]`. |
+| `llm/litellm.py` | A thin adapter over LiteLLM for the hundred providers it proxies. No retry loop and no profiles — it cannot know what any given backend supports, so it asks for nothing by default. Needs `xwalk-match[litellm]`. |
 | `llm/fake.py` | A scripted client. This is the reason the entire matcher loop is testable offline, and it is why the test suite runs in seconds with no credentials. |
 | `llm/budget.py` | `CallBudget` and `BudgetedLLM`: a per-invocation cap on upstream requests, reserved before each dispatch (retries included), so concurrent records cannot overshoot it. This is `--max-calls`. |
 | `llm/cache.py` | `CachingLLM` — serves an identical repeated request from the ledger. Delegates its identity to the wrapped client, so caching changes how an answer was obtained and never what it means. |
@@ -148,7 +148,7 @@ makes scoring a run free, repeatable, and runnable on a machine with no credenti
 | `config.py` | `JobSpec` — a job file is serialized constructor arguments and nothing more. Every field maps to something you would otherwise pass by hand, no config field gates behaviour the SDK cannot express, and credentials are environment variable *names*, never values. |
 | `ops.py` | The operations layer: `validate`, `index`, `run`, `search`, `inspect`, `explain`, `results`, `export`, `review_export`, `review_apply`, `init`, `cluster`. Each returns an `OpResult`, the versioned `--json` envelope with its exit code; strict job loading, index reuse checks, run-directory collision checks and the call budget live here. `run` takes LLM jobs and decider jobs alike. |
 | `cli/main.py` | Argument parsing and dispatch for the seventeen subcommands. Each one parses, calls one `ops` operation (or, for `eval`, `fit`, `compare`, `ablate` and `prompts`, one library function), prints, and returns an exit code. `ablate` and `prompts` refuse a decider job rather than half-work on it. |
-| `mcp_server.py` | `xwalk mcp`: six bounded tools over the Model Context Protocol, each calling one `ops` operation. Needs `xwalk[mcp]`. See the [MCP guide](guide/mcp.md). |
+| `mcp_server.py` | `xwalk mcp`: six bounded tools over the Model Context Protocol, each calling one `ops` operation. Needs `xwalk-match[mcp]`. See the [MCP guide](guide/mcp.md). |
 
 ## Clustering (experimental) — [guide](guide/clustering.md)
 

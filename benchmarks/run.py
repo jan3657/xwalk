@@ -59,7 +59,7 @@ SYNTHETIC_WARNING = (
     "chars/4 estimates."
 )
 PENDING = {
-    "dense_retrieval": "skipped: needs xwalk[dense] and sentence-transformer weights (a "
+    "dense_retrieval": "skipped: needs xwalk-match[dense] and sentence-transformer weights (a "
     "large download); not run in this environment",
     "linktransformer": "pending: benchmarks/adapters/linktransformer.py documents the "
     "adapter; running it needs the linktransformer package and model weights",

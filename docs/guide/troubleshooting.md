@@ -170,9 +170,9 @@ conflict and does nothing.
 ## `MissingExtra` on import
 
 ```
-owl_source requires the optional dependency 'rdflib', which is part of xwalk[ontology].
+owl_source requires the optional dependency 'rdflib', which is part of xwalk-match[ontology].
 
-    pip install 'xwalk[ontology]'
+    pip install "xwalk-match[ontology] @ git+https://github.com/jan3657/xwalk.git"
 ```
 
 Do what it says. If you have already installed the extra and still see this, read the

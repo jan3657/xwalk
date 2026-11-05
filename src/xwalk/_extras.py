@@ -22,6 +22,6 @@ def require(extra: str, module: str, *, purpose: str) -> ModuleType:
     except ImportError as exc:
         raise MissingExtra(
             f"{purpose} requires the optional dependency {module!r}, which is part of "
-            f"xwalk[{extra}].\n\n    pip install 'xwalk[{extra}]'\n\n"
+            f"xwalk-match[{extra}].\n\n    pip install 'xwalk-match[{extra}]'\n\n"
             f"underlying import error: {exc}"
         ) from exc

@@ -22,6 +22,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Require a tag and an unambiguous distribution name
+        run: |
+          python - <<'PYCODE'
+          import os, sys, tomllib
+          with open("pyproject.toml", "rb") as f:
+              name = tomllib.load(f)["project"]["name"]
+          if os.environ["GITHUB_REF_TYPE"] != "tag":
+              sys.exit("Release from a version tag, not a branch.")
+          if name != "xwalk-match":
+              sys.exit("Expected distribution xwalk-match; check publishing configuration.")
+          PYCODE
       - name: Record the commit under test
         run: |
           echo "commit $(git rev-parse HEAD) for ref ${GITHUB_REF_NAME}"
@@ -128,7 +139,7 @@ jobs:
     # leaves the machine, and is also what the Trusted Publisher registration names.
     environment:
       name: pypi
-      url: https://pypi.org/p/xwalk
+      url: https://pypi.org/p/xwalk-match
     permissions:
       # Trusted Publishing exchanges this OIDC token for a short-lived PyPI credential.
       # There is no API token stored anywhere, so there is none to leak.

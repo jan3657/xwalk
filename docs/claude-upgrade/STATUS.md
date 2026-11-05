@@ -1,5 +1,14 @@
 # Execution status
 
+**Distribution rename (5 November 2026).** Selected `xwalk-match`; import and CLI remain
+`xwalk`. Updated runtime extra hints, packaging metadata, documentation and release
+checks. PyPI account setup is still required before publishing. Balances: unreported.
+
+**Publication documentation (5 November 2026).** Reworked README and corrected stale
+benchmark and PyPI claims. `xwalk` is now an unrelated PyPI distribution; publication
+is blocked pending a new distribution name. See [readiness](../publication-readiness.md).
+Balances: unreported.
+
 **UI extraction (5 November 2026).** Browser applications, web server, deployment
 assets and UI tests moved to the sibling `xwalk-ui` repository. Core retains CLI,
 engine and provider protocol definitions. Review: [repository audit](../repository-audit.md).

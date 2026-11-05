@@ -88,8 +88,8 @@ def _preflight_errors(spec: ClusterJobSpec, *, custom_encoder: bool) -> list[OpM
             errors.append(
                 OpMessage(
                     "missing_extra",
-                    f"{where}: needs {module!r}, part of xwalk[{extra}]; "
-                    f"pip install 'xwalk[{extra}]'",
+                    f"{where}: needs {module!r}, part of xwalk-match[{extra}]; "
+                    f"pip install 'xwalk-match[{extra}]'",
                 )
             )
     return errors
